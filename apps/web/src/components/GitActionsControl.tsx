@@ -32,7 +32,13 @@ import {
   GlobeIcon,
 } from "lucide-react";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "~/components/Icons";
+import {
+  AzureDevOpsIcon,
+  BitbucketIcon,
+  ForgejoIcon,
+  GitHubIcon,
+  GitLabIcon,
+} from "~/components/Icons";
 import { RadioGroup } from "~/components/ui/radio-group";
 import { Spinner } from "~/components/ui/spinner";
 import { cn } from "~/lib/utils";
@@ -115,7 +121,7 @@ interface PendingDefaultBranchAction {
 
 type PublishProviderKind = Extract<
   SourceControlProviderKind,
-  "github" | "gitlab" | "bitbucket" | "azure-devops"
+  "github" | "gitlab" | "bitbucket" | "azure-devops" | "forgejo"
 >;
 
 type GitActionToastId = ReturnType<typeof toastManager.add>;
@@ -194,6 +200,16 @@ const PUBLISH_PROVIDER_OPTIONS = [
     host: "dev.azure.com",
     pathPlaceholder: "project/repository",
     Icon: AzureDevOpsIcon,
+  },
+  {
+    value: "forgejo",
+    label: "Forgejo",
+    // Every Forgejo is somebody's own, so there is no host to print in front of the path. The
+    // instance is named in the path instead, which is what its repository spec already takes.
+    description: "self-hosted",
+    host: "",
+    pathPlaceholder: "host/owner/repository",
+    Icon: ForgejoIcon,
   },
 ] as const satisfies ReadonlyArray<{
   readonly value: PublishProviderKind;
@@ -416,6 +432,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
       gitlab: null,
       bitbucket: null,
       "azure-devops": null,
+      forgejo: null,
     };
     for (const provider of sourceControlDiscovery.data?.sourceControlProviders ?? []) {
       if (isPublishProviderKind(provider.kind)) {
@@ -703,7 +720,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                   <div className="flex items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:outline-2 focus-within:-outline-offset-1 focus-within:outline-ring">
                     <span className="flex shrink-0 items-center gap-1.5 border-r border-input bg-muted/50 px-2.5 font-mono text-xs text-muted-foreground">
                       <currentPublishProvider.Icon className="size-3.5" />
-                      {publishHost}/
+                      {publishHost.length > 0 ? `${publishHost}/` : null}
                     </span>
                     <input
                       id="publish-repository-path"

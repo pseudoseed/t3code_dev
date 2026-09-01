@@ -15,6 +15,12 @@ describe("parsePullRequestReference", () => {
     ).toBe("https://dev.azure.com/acme/project/_git/t3code/pullrequest/42");
   });
 
+  it("accepts Forgejo pull request URLs on a self-hosted instance", () => {
+    expect(parsePullRequestReference("https://git.acme.test/acme/web/pulls/42")).toBe(
+      "https://git.acme.test/acme/web/pulls/42",
+    );
+  });
+
   it("accepts GitLab merge request URLs", () => {
     expect(parsePullRequestReference("https://gitlab.com/group/project/-/merge_requests/42")).toBe(
       "https://gitlab.com/group/project/-/merge_requests/42",

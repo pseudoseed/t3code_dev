@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -54,7 +55,41 @@ export interface ForgejoRepositoryLocator {
   readonly scheme: "http" | "https";
 }
 
+export interface ForgejoRawResponse {
+  readonly status: number;
+  readonly body: string;
+  /** The body was longer than `maxBytes` and is cut short. */
+  readonly truncated: boolean;
+}
+
 export interface ForgejoApiShape {
+  /**
+   * One authenticated request against an instance, for callers that own their own endpoints.
+   * The pull request service builds on this the way its Bitbucket counterpart builds on
+   * `BitbucketApi.request`, so credential lookup and error shaping live in one place.
+   *
+   * `path` is below `/api/v1`. `cwd` is optional and only decides the scheme: an instance served
+   * over plain HTTP is reached the way its own remote spells it, rather than being forced to
+   * HTTPS by a caller that only knows a hostname.
+   */
+  readonly request: (input: {
+    readonly operation: string;
+    readonly method: "GET" | "POST" | "PATCH" | "DELETE";
+    readonly host: string;
+    readonly path: string;
+    readonly cwd?: string;
+    readonly body?: string;
+    readonly accept?: string;
+    readonly maxBytes?: number;
+  }) => Effect.Effect<ForgejoRawResponse, ForgejoApiError>;
+  /**
+   * Which instance a checkout belongs to, as its remote spells it. Callers that are handed a
+   * repository rather than a checkout still need the host to address it.
+   */
+  readonly resolveLocator: (input: {
+    readonly cwd: string;
+    readonly context?: SourceControlProvider.SourceControlProviderContext;
+  }) => Effect.Effect<ForgejoRepositoryLocator, ForgejoApiError>;
   readonly listPullRequests: (input: {
     readonly cwd: string;
     readonly context?: SourceControlProvider.SourceControlProviderContext;
@@ -368,6 +403,60 @@ export const make = Effect.gen(function* () {
       ForgejoRepositorySchema,
     );
 
+  const schemeByHost = new Map<string, "http" | "https">();
+
+  /**
+   * How an instance is addressed. Learnt from a checkout's own remote where one is to hand, so a
+   * Forgejo served over plain HTTP on a LAN keeps working, and remembered because a host does not
+   * change scheme between requests. HTTPS is the answer for a host nothing is checked out from.
+   */
+  const resolveScheme = (host: string, cwd: string | undefined) =>
+    Effect.suspend(() => {
+      const cached = schemeByHost.get(host);
+      if (cached !== undefined) return Effect.succeed(cached);
+      if (cwd === undefined) return Effect.succeed<"http" | "https">("https");
+      // Anything at all going wrong here means HTTPS, which is the answer for all but a LAN
+      // instance: how a host is addressed is a safe guess, and no failure to make it should take
+      // down the request it was being made for.
+      return Effect.exit(resolveRepository({ cwd })).pipe(
+        Effect.map((exit): "http" | "https" =>
+          Exit.isSuccess(exit) && exit.value.host === host ? exit.value.scheme : "https",
+        ),
+        Effect.tap((scheme) => Effect.sync(() => schemeByHost.set(host, scheme))),
+      );
+    });
+
+  const request: ForgejoApiShape["request"] = (input) =>
+    Effect.gen(function* () {
+      const scheme = yield* resolveScheme(input.host, input.cwd);
+      const url = `${scheme}://${input.host}/api/v1${input.path}`;
+      const base = HttpClientRequest.make(input.method)(url);
+      const withBody =
+        input.body === undefined
+          ? base
+          : base.pipe(HttpClientRequest.bodyText(input.body, "application/json"));
+      const withAccept = withBody.pipe(
+        HttpClientRequest.setHeader("Accept", input.accept ?? "application/json"),
+      );
+      const authed = yield* withAuth(input.host, withAccept);
+      const response = yield* httpClient
+        .execute(authed)
+        .pipe(Effect.mapError((cause) => requestError(input.operation, cause)));
+      if (response.status < 200 || response.status >= 300) {
+        return yield* responseError(input.operation, response);
+      }
+      const text = yield* response.text.pipe(
+        Effect.mapError((cause) => requestError(input.operation, cause)),
+      );
+      const maxBytes = input.maxBytes;
+      const truncated = maxBytes !== undefined && text.length > maxBytes;
+      return {
+        status: response.status,
+        body: truncated ? text.slice(0, maxBytes) : text,
+        truncated,
+      } satisfies ForgejoRawResponse;
+    });
+
   const viewerLoginByHost = new Map<string, string | null>();
 
   /**
@@ -410,6 +499,8 @@ export const make = Effect.gen(function* () {
     git.readConfigValue(cwd, key).pipe(Effect.orElseSucceed(() => null));
 
   return ForgejoApi.of({
+    request,
+    resolveLocator: (input) => resolveRepository(input),
     listPullRequests: (input) =>
       resolveRepository(input).pipe(
         Effect.flatMap((locator) => {

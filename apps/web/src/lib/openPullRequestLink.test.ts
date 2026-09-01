@@ -113,6 +113,12 @@ describe("gitHubPullRequestBrowserUrl", () => {
 });
 
 describe("changeRequestRepositoryUrl", () => {
+  it("finds the repository behind a Forgejo pull request", () => {
+    expect(changeRequestRepositoryUrl("https://git.acme.test/acme/web/pulls/42")).toBe(
+      "https://git.acme.test/acme/web",
+    );
+  });
+
   it("preserves repository path casing", () => {
     expect(
       changeRequestRepositoryUrl(
@@ -205,6 +211,20 @@ describe("parseChangeRequestUrl", () => {
       repository: "t3tools/t3code",
       number: 123,
     });
+  });
+
+  it("reads a Forgejo pull request on a host named nothing in particular", () => {
+    // Forgejo has no canonical hostname, so the plural `/pulls/` path is what identifies it.
+    expect(parseChangeRequestUrl("https://git.acme.test/acme/web/pulls/42")).toEqual({
+      host: "git.acme.test",
+      repository: "acme/web",
+      number: 42,
+    });
+  });
+
+  it("keeps GitHub's singular pull path apart from Forgejo's plural one", () => {
+    expect(parseChangeRequestUrl("https://github.com/acme/web/pull/42")?.number).toBe(42);
+    expect(parseChangeRequestUrl("https://git.acme.test/acme/web/pull/42")).toBeNull();
   });
 
   it("reads a pull request on a GitHub Enterprise host", () => {

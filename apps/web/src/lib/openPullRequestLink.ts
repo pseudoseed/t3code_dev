@@ -146,6 +146,12 @@ export function parseChangeRequestUrl(targetUrl: string): ChangeRequestLink | nu
   // separator is GitLab's own, so the hostname is not asked about.
   const gitlab = /^\/([^/]+(?:\/[^/]+)+)\/-\/merge_requests\/(\d+)(?:\/|$)/u.exec(url.pathname);
   if (gitlab) return claim(host, gitlab);
+  // Forgejo and Gitea, which are always self-hosted: /{owner}/{repo}/pulls/{n}. The plural is
+  // theirs alone — GitHub writes `/pull/`, Bitbucket `/pull-requests/` — so it is trusted on any
+  // hostname, the way GitLab's `/-/` marker is. There is no hostname to guard it with: an
+  // instance is named whatever its admin chose.
+  const forgejo = /^\/([^/]+\/[^/]+)\/pulls\/(\d+)(?:\/|$)/u.exec(url.pathname);
+  if (forgejo) return claim(host, forgejo);
   // Bitbucket Cloud: /{workspace}/{repo}/pull-requests/{n}
   if (isHostOf(host, "bitbucket.org", "bitbucket")) {
     const match = /^\/([^/]+\/[^/]+)\/pull-requests\/(\d+)(?:\/|$)/u.exec(url.pathname);
@@ -183,7 +189,7 @@ export function changeRequestRepositoryUrl(targetUrl: string): string | null {
   const url = new URL(targetUrl);
   const repositoryPath =
     /^(.*?)\/-\/merge_requests\/\d+(?:\/|$)/iu.exec(url.pathname)?.[1] ??
-    /^(.*?)(?:\/pull\/\d+|\/-\/merge_requests\/\d+|\/pull-requests\/\d+|\/pullrequest\/\d+)(?:\/|$)/iu.exec(
+    /^(.*?)(?:\/pull\/\d+|\/-\/merge_requests\/\d+|\/pulls\/\d+|\/pull-requests\/\d+|\/pullrequest\/\d+)(?:\/|$)/iu.exec(
       url.pathname,
     )?.[1];
   if (!repositoryPath) return null;

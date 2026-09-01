@@ -5,6 +5,7 @@ import type { SourceControlProviderKind } from "@t3tools/contracts";
 
 import * as AzureDevOpsCli from "../sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "../sourceControl/BitbucketApi.ts";
+import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 import * as GitHubGraphQlBudget from "../sourceControl/githubGraphQlBudget.ts";
 import * as GitLabCli from "../sourceControl/GitLabCli.ts";
@@ -12,6 +13,8 @@ import * as AzureDevOpsPullRequestCli from "./AzureDevOpsPullRequestCli.ts";
 import * as AzureDevOpsPullRequestProvider from "./AzureDevOpsPullRequestProvider.ts";
 import * as BitbucketPullRequestApi from "./BitbucketPullRequestApi.ts";
 import * as BitbucketPullRequestProvider from "./BitbucketPullRequestProvider.ts";
+import * as ForgejoPullRequestApi from "./ForgejoPullRequestApi.ts";
+import * as ForgejoPullRequestProvider from "./ForgejoPullRequestProvider.ts";
 import * as GitHubPullRequestCli from "./GitHubPullRequestCli.ts";
 import * as GitHubPullRequestProvider from "./GitHubPullRequestProvider.ts";
 import * as GitLabPullRequestCli from "./GitLabPullRequestCli.ts";
@@ -48,6 +51,7 @@ export const make = Effect.map(
     GitLabPullRequestProvider.make,
     BitbucketPullRequestProvider.make,
     AzureDevOpsPullRequestProvider.make,
+    ForgejoPullRequestProvider.make,
   ]),
   fromProviders,
 );
@@ -62,4 +66,5 @@ export const layer = Layer.effect(PullRequestProviderRegistry, make).pipe(
   Layer.provide(GitLabPullRequestCli.layer.pipe(Layer.provide(GitLabCli.layer))),
   Layer.provide(BitbucketPullRequestApi.layer.pipe(Layer.provide(BitbucketApi.layer))),
   Layer.provide(AzureDevOpsPullRequestCli.layer.pipe(Layer.provide(AzureDevOpsCli.layer))),
+  Layer.provide(ForgejoPullRequestApi.layer.pipe(Layer.provide(ForgejoApi.layer))),
 );
