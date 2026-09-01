@@ -163,6 +163,12 @@ it.effect("reports implemented tools separately from locally available executabl
           auth: "unauthenticated",
           account: Option.none(),
         },
+        {
+          kind: "forgejo",
+          status: "missing",
+          auth: "unknown",
+          account: Option.none(),
+        },
       ],
     );
     const bitbucket = result.sourceControlProviders.find((item) => item.kind === "bitbucket");
@@ -278,6 +284,12 @@ Logged in to gitlab.com as gitlab-user
           auth: "authenticated",
           account: Option.some("bitbucket-user"),
           detail: Option.none(),
+        },
+        {
+          kind: "forgejo",
+          auth: "unknown",
+          account: Option.none(),
+          detail: Option.some("Hosting integration command was not found on the server PATH."),
         },
       ],
     );
