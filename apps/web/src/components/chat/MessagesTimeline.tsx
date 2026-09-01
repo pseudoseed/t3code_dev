@@ -19,6 +19,9 @@ const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
+// Module-level so the settings selector stays referentially stable and the
+// timeline does not re-derive on every render.
+const selectCopyOnSelect = (settings: { copyOnSelect: boolean }) => settings.copyOnSelect;
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   createContext,
@@ -124,6 +127,8 @@ import {
   type ParsedPreviewAnnotation,
 } from "~/lib/previewAnnotation";
 import { cn } from "~/lib/utils";
+import { useCopyOnSelect } from "~/hooks/useCopyOnSelect";
+import { useClientSettings } from "~/hooks/useSettings";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -462,6 +467,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const copyOnSelect = useClientSettings(selectCopyOnSelect);
+  useCopyOnSelect({
+    enabled: copyOnSelect,
+    scope: timelineViewportElement,
+    target: "message selection",
+  });
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const handleAnchorReady = useCallback(

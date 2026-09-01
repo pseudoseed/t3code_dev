@@ -388,6 +388,11 @@ export function TerminalViewport({
     onAddTerminalContext(selection);
   });
   const readTerminalLabel = useEffectEvent(() => terminalLabel);
+  const copyOnSelect = useClientSettings((settings) => settings.copyOnSelect);
+  // The surface is set up once per mount, so the setting is read through an
+  // effect event rather than closed over — toggling it must not tear down and
+  // rebuild the terminal.
+  const readCopyOnSelect = useEffectEvent(() => copyOnSelect);
   const terminalFontFamily = useClientSettings((settings) =>
     resolveTerminalFontPreference({
       advanced: advancedTypography,
@@ -828,6 +833,17 @@ export function TerminalViewport({
           return;
         }
         selectionPointerRef.current = { x: event.clientX, y: event.clientY };
+        if (readCopyOnSelect()) {
+          const copyOnSelectAction = readSelectionAction();
+          if (copyOnSelectAction) {
+            // Silent by design, like a terminal emulator. A denied clipboard
+            // permission must not write an error line into the session the
+            // user is reading.
+            void writeTextToClipboard(copyOnSelectAction.clipboardText, "terminal selection").catch(
+              () => {},
+            );
+          }
+        }
         const delay = terminalSelectionActionDelayForClickCount(event.detail);
         selectionActionTimerRef.current = window.setTimeout(() => {
           selectionActionTimerRef.current = null;

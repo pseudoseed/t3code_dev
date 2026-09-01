@@ -507,6 +507,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
+      ...(settings.copyOnSelect !== DEFAULT_UNIFIED_SETTINGS.copyOnSelect
+        ? ["Copy on select"]
+        : []),
       ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
         ? ["Show skills in slash menu"]
         : []),
@@ -561,6 +564,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
       settings.confirmThreadUnpin,
+      settings.copyOnSelect,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
@@ -657,6 +661,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
+      copyOnSelect: DEFAULT_UNIFIED_SETTINGS.copyOnSelect,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
@@ -2084,6 +2089,28 @@ export function GeneralSettingsPanel() {
                 updateSettings({ diffIgnoreWhitespace: Boolean(checked) })
               }
               aria-label="Hide whitespace changes by default"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("copy-on-select")}
+          description="Copy highlighted text to the clipboard as soon as you release the drag. Applies to messages and terminal output only, never to text you are editing."
+          resetAction={
+            settings.copyOnSelect !== DEFAULT_UNIFIED_SETTINGS.copyOnSelect ? (
+              <SettingResetButton
+                label="copy on select"
+                onClick={() =>
+                  updateSettings({ copyOnSelect: DEFAULT_UNIFIED_SETTINGS.copyOnSelect })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.copyOnSelect}
+              onCheckedChange={(checked) => updateSettings({ copyOnSelect: Boolean(checked) })}
+              aria-label="Copy on select"
             />
           }
         />
