@@ -35,6 +35,10 @@ const isForgejoApiErrorValue = Schema.is(ForgejoApiError);
 // independent of the caller's `limit` (which caps the matching results).
 const PULL_REQUEST_PAGE_SIZE = 50;
 
+const ForgejoViewerSchema = Schema.Struct({
+  login: TrimmedNonEmptyString,
+});
+
 const ForgejoRepositorySchema = Schema.Struct({
   full_name: TrimmedNonEmptyString,
   clone_url: Schema.optional(Schema.NullOr(Schema.String)),
@@ -110,7 +114,10 @@ function normalizeChangeRequestId(reference: string): string {
 }
 
 function parseRepoPath(pathname: string): { owner: string; repo: string } | null {
-  const normalized = pathname.trim().replace(/\.git$/u, "").replace(/^\/+/u, "");
+  const normalized = pathname
+    .trim()
+    .replace(/\.git$/u, "")
+    .replace(/^\/+/u, "");
   const parts = normalized.split("/").filter((part) => part.length > 0);
   if (parts.length < 2) return null;
   const owner = parts.at(-2);
@@ -244,13 +251,15 @@ export const make = Effect.gen(function* () {
     `${locator.scheme}://${locator.host}/api/v1${path}`;
 
   const withAuth = (host: string, request: HttpClientRequest.HttpClientRequest) =>
-    keyStore.getCredential(host).pipe(
-      Effect.map((credential) =>
-        credential === null
-          ? request
-          : request.pipe(HttpClientRequest.setHeader(...keyStore.authHeader(credential))),
-      ),
-    );
+    keyStore
+      .getCredential(host)
+      .pipe(
+        Effect.map((credential) =>
+          credential === null
+            ? request
+            : request.pipe(HttpClientRequest.setHeader(...keyStore.authHeader(credential))),
+        ),
+      );
 
   const decodeResponse = <S extends Schema.Top>(
     operation: string,
@@ -280,7 +289,9 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<S["Type"], ForgejoApiError, S["DecodingServices"]> =>
     withAuth(host, request.pipe(HttpClientRequest.acceptJson)).pipe(
       Effect.flatMap((authed) => httpClient.execute(authed)),
-      Effect.mapError((cause) => (isForgejoApiError(cause) ? cause : requestError(operation, cause))),
+      Effect.mapError((cause) =>
+        isForgejoApiError(cause) ? cause : requestError(operation, cause),
+      ),
       Effect.flatMap((response) => decodeResponse(operation, schema, response)),
     );
 
@@ -357,6 +368,31 @@ export const make = Effect.gen(function* () {
       ForgejoRepositorySchema,
     );
 
+  const viewerLoginByHost = new Map<string, string | null>();
+
+  /**
+   * The signed-in account on one host, or null where the host would not say. Cached because it
+   * cannot change for the life of a credential, and asked for lazily so a workspace that never
+   * creates a repository never spends the request.
+   */
+  const getViewerLogin = (locator: Pick<ForgejoRepositoryLocator, "host" | "scheme">) =>
+    Effect.suspend(() => {
+      const cached = viewerLoginByHost.get(locator.host);
+      if (cached !== undefined) return Effect.succeed(cached);
+      return executeJson(
+        "getViewer",
+        locator.host,
+        HttpClientRequest.get(apiUrl(locator, "/user")),
+        ForgejoViewerSchema,
+      ).pipe(
+        Effect.map((raw) => raw.login),
+        // A host that will not name the reader is not a reason to fail the write it was asked
+        // about: the org route still answers, and its own error says what went wrong.
+        Effect.orElseSucceed(() => null),
+        Effect.tap((login) => Effect.sync(() => viewerLoginByHost.set(locator.host, login))),
+      );
+    });
+
   const getRawPullRequestFromLocator = (locator: ForgejoRepositoryLocator, reference: string) =>
     executeJson(
       "getPullRequest",
@@ -377,7 +413,8 @@ export const make = Effect.gen(function* () {
     listPullRequests: (input) =>
       resolveRepository(input).pipe(
         Effect.flatMap((locator) => {
-          const apiState = input.state === "open" ? "open" : input.state === "all" ? "all" : "closed";
+          const apiState =
+            input.state === "open" ? "open" : input.state === "all" ? "all" : "closed";
           // Fetch a full page (not the caller's `limit`): Forgejo can't filter by head branch,
           // so a small limit (e.g. status passes 1) would hide the branch's PR behind unrelated
           // recently-updated PRs. The caller's `limit` is applied to the filtered matches below.
@@ -454,12 +491,14 @@ export const make = Effect.gen(function* () {
                 : "Multiple Forgejo instances are configured; specify the repository as host/owner/repository.",
           });
         }
-        const credential = yield* keyStore.getCredential(locator.host);
-        // Route to /user/repos when creating under your own account; otherwise treat the owner as an org.
-        const isOwnAccount = credential !== null && credential.name === locator.owner;
-        const endpoint = isOwnAccount
-          ? `/user/repos`
-          : `/orgs/${encodeURIComponent(locator.owner)}/repos`;
+        // Route to /user/repos when creating under your own account; otherwise treat the owner
+        // as an org. The login is asked of the host rather than read from `fj`'s keys file,
+        // which records no name for a token added with `fj auth add-token`.
+        const viewer = yield* getViewerLogin(locator);
+        const endpoint =
+          viewer !== null && viewer.toLowerCase() === locator.owner.toLowerCase()
+            ? `/user/repos`
+            : `/orgs/${encodeURIComponent(locator.owner)}/repos`;
         const raw = yield* executeJson(
           "createRepository",
           locator.host,
@@ -551,7 +590,9 @@ export const make = Effect.gen(function* () {
           const originRemoteUrl = yield* readConfigValueNullable(input.cwd, "remote.origin.url");
           const httpUrl = pullRequest.head.repo?.clone_url?.trim() ?? "";
           const sshUrl = pullRequest.head.repo?.ssh_url?.trim() ?? "";
-          const cloneUrl = shouldPreferSshRemote(originRemoteUrl) ? sshUrl || httpUrl : httpUrl || sshUrl;
+          const cloneUrl = shouldPreferSshRemote(originRemoteUrl)
+            ? sshUrl || httpUrl
+            : httpUrl || sshUrl;
           if (cloneUrl.length === 0) {
             return yield* new ForgejoApiError({
               operation: "checkoutPullRequest",
@@ -570,14 +611,21 @@ export const make = Effect.gen(function* () {
           headBranch: remoteBranch,
           isCrossRepository,
         });
-        const localBranchExists = (yield* git.listLocalBranchNames(input.cwd)).includes(localBranch);
+        const localBranchExists = (yield* git.listLocalBranchNames(input.cwd)).includes(
+          localBranch,
+        );
 
         if (input.force === true || !localBranchExists) {
           yield* git.fetchRemoteBranch({ cwd: input.cwd, remoteName, remoteBranch, localBranch });
         } else {
           yield* git.fetchRemoteTrackingBranch({ cwd: input.cwd, remoteName, remoteBranch });
         }
-        yield* git.setBranchUpstream({ cwd: input.cwd, branch: localBranch, remoteName, remoteBranch });
+        yield* git.setBranchUpstream({
+          cwd: input.cwd,
+          branch: localBranch,
+          remoteName,
+          remoteBranch,
+        });
         yield* Effect.scoped(git.switchRef({ cwd: input.cwd, refName: localBranch }));
       }).pipe(
         Effect.mapError((cause) =>

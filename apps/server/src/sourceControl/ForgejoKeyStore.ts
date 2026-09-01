@@ -25,20 +25,34 @@ export class ForgejoKeyStore extends Context.Service<ForgejoKeyStore, ForgejoKey
   "t3/sourceControl/ForgejoKeyStore",
 ) {}
 
-export const defaultKeysPath = Effect.fn("defaultKeysPath")(function* () {
+/**
+ * Where `fj` keeps its logins, newest layout first.
+ *
+ * The CLI derives this directory from an application identifier that it has changed between
+ * releases (`Cyborus.forgejo-cli` up to 0.5, `forgejo-cli.forgejo-cli` from 0.6), so both are
+ * tried rather than pinning T3 to whichever version happened to be installed first.
+ */
+export const candidateKeysPaths = Effect.fn("candidateKeysPaths")(function* () {
   const { join } = yield* Path.Path;
   const platform = yield* HostProcessPlatform;
   const env = yield* HostProcessEnvironment;
   const home = NodeOS.homedir();
   if (platform === "darwin") {
-    return join(home, "Library", "Application Support", "Cyborus.forgejo-cli", "keys.json");
+    const support = join(home, "Library", "Application Support");
+    return [
+      join(support, "forgejo-cli.forgejo-cli", "keys.json"),
+      join(support, "Cyborus.forgejo-cli", "keys.json"),
+    ] as const;
   }
   if (platform === "win32") {
     const base = env["APPDATA"] ?? join(home, "AppData", "Roaming");
-    return join(base, "Cyborus", "forgejo-cli", "data", "keys.json");
+    return [
+      join(base, "forgejo-cli", "forgejo-cli", "data", "keys.json"),
+      join(base, "Cyborus", "forgejo-cli", "data", "keys.json"),
+    ] as const;
   }
   const base = env["XDG_DATA_HOME"] ?? join(home, ".local", "share");
-  return join(base, "forgejo-cli", "keys.json");
+  return [join(base, "forgejo-cli", "keys.json")] as const;
 });
 
 export function parseKeysFile(content: string): Map<string, ForgejoCredential> {
@@ -72,14 +86,28 @@ export function parseKeysFile(content: string): Map<string, ForgejoCredential> {
 export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const overridePath = yield* Config.string("T3CODE_FORGEJO_KEYS_PATH").pipe(Config.option);
-  const keysPath = Option.isSome(overridePath) ? overridePath.value : yield* defaultKeysPath();
+  const searchPaths = Option.isSome(overridePath)
+    ? ([overridePath.value] as const)
+    : yield* candidateKeysPaths();
 
-  const readStore = fileSystem
-    .readFileString(keysPath)
-    .pipe(
+  // Resolved per read rather than once at startup: `fj` creates the file on first login, which
+  // routinely happens after the server is already running.
+  const readStore = Effect.forEach(searchPaths, (keysPath) =>
+    fileSystem.readFileString(keysPath).pipe(
       Effect.map(parseKeysFile),
       Effect.orElseSucceed(() => new Map<string, ForgejoCredential>()),
-    );
+    ),
+  ).pipe(
+    Effect.map((stores) => {
+      const merged = new Map<string, ForgejoCredential>();
+      for (const store of stores) {
+        for (const [host, credential] of store) {
+          if (!merged.has(host)) merged.set(host, credential);
+        }
+      }
+      return merged;
+    }),
+  );
 
   return ForgejoKeyStore.of({
     listHosts: readStore.pipe(Effect.map((store) => Array.from(store.keys()))),

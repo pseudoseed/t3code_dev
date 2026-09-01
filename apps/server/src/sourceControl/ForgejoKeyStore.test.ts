@@ -5,6 +5,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
+import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+
 import * as ForgejoKeyStore from "./ForgejoKeyStore.ts";
 
 function layerWithKeysFile(contents: string) {
@@ -71,4 +73,23 @@ it.effect("degrades to an empty store on malformed JSON", () =>
       assert.deepStrictEqual(yield* store.listHosts, []);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+it.effect("looks in both `fj` application directories on macOS", () =>
+  Effect.gen(function* () {
+    // `fj` renamed its application directory between 0.5 and 0.6, so a login made with either
+    // release has to be found; the current one is preferred where both exist.
+    const paths = yield* ForgejoKeyStore.candidateKeysPaths().pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(HostProcessPlatform)("darwin"),
+          Layer.succeed(HostProcessEnvironment)({}),
+        ),
+      ),
+    );
+    assert.deepStrictEqual(
+      paths.map((entry) => entry.split("/").slice(-2).join("/")),
+      ["forgejo-cli.forgejo-cli/keys.json", "Cyborus.forgejo-cli/keys.json"],
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
 );

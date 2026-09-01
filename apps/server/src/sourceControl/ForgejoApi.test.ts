@@ -44,10 +44,19 @@ const keysJson = JSON.stringify({
   },
 });
 
+/** What `fj auth add-token` writes: a token, and no account name to route on. */
+const namelessKeysJson = JSON.stringify({
+  hosts: {
+    "git.example.org": { type: "Application", token: "t" },
+  },
+});
+
 function makeLayer(input: {
   readonly response: (request: HttpClientRequest.HttpClientRequest) => Response;
   readonly git?: Partial<GitVcsDriver.GitVcsDriver["Service"]>;
   readonly remotes?: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+  /** The `fj` keys file to stand up, for a test that cares what it does or does not record. */
+  readonly keys?: string;
 }) {
   const execute = vi.fn((request: HttpClientRequest.HttpClientRequest) =>
     Effect.succeed(HttpClientResponse.fromWeb(request, input.response(request))),
@@ -56,18 +65,18 @@ function makeLayer(input: {
     readConfigValue: vi.fn<GitVcsDriver.GitVcsDriver["Service"]["readConfigValue"]>(() =>
       Effect.succeed<string | null>("git@git.example.org:owner/repo.git"),
     ),
-    resolvePrimaryRemoteName: vi.fn<GitVcsDriver.GitVcsDriver["Service"]["resolvePrimaryRemoteName"]>(
-      () => Effect.succeed("origin"),
-    ),
+    resolvePrimaryRemoteName: vi.fn<
+      GitVcsDriver.GitVcsDriver["Service"]["resolvePrimaryRemoteName"]
+    >(() => Effect.succeed("origin")),
     ensureRemote: vi.fn<GitVcsDriver.GitVcsDriver["Service"]["ensureRemote"]>(() =>
       Effect.succeed("fork-owner"),
     ),
     fetchRemoteBranch: vi.fn<GitVcsDriver.GitVcsDriver["Service"]["fetchRemoteBranch"]>(
       () => Effect.void,
     ),
-    fetchRemoteTrackingBranch: vi.fn<GitVcsDriver.GitVcsDriver["Service"]["fetchRemoteTrackingBranch"]>(
-      () => Effect.void,
-    ),
+    fetchRemoteTrackingBranch: vi.fn<
+      GitVcsDriver.GitVcsDriver["Service"]["fetchRemoteTrackingBranch"]
+    >(() => Effect.void),
     setBranchUpstream: vi.fn<GitVcsDriver.GitVcsDriver["Service"]["setBranchUpstream"]>(
       () => Effect.void,
     ),
@@ -107,7 +116,7 @@ function makeLayer(input: {
   const layerEffect = Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const keysPath = yield* fileSystem.makeTempFileScoped({ prefix: "forgejo-keys-" });
-    yield* fileSystem.writeFileString(keysPath, keysJson);
+    yield* fileSystem.writeFileString(keysPath, input.keys ?? keysJson);
 
     return ForgejoApi.layer.pipe(
       Layer.provide(
@@ -295,10 +304,7 @@ it.effect("creates pull requests using the Forgejo REST API payload shape", () =
       });
 
       const request = execute.mock.calls[0]?.[0];
-      assert.strictEqual(
-        request?.url,
-        "https://git.example.org/api/v1/repos/owner/repo/pulls",
-      );
+      assert.strictEqual(request?.url, "https://git.example.org/api/v1/repos/owner/repo/pulls");
       assert.strictEqual(request?.method, "POST");
       assert.ok(request);
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
@@ -359,7 +365,11 @@ it.effect("listPullRequests filters by head branch and returns empty on no match
 it.effect("fetches a full page regardless of the caller limit so the branch PR is found", () =>
   Effect.gen(function* () {
     const list = [
-      { ...forgejoPullRequest, number: 7, head: { ref: "other", repo: { full_name: "owner/repo" } } },
+      {
+        ...forgejoPullRequest,
+        number: 7,
+        head: { ref: "other", repo: { full_name: "owner/repo" } },
+      },
       {
         ...forgejoPullRequest,
         number: 42,
@@ -429,10 +439,21 @@ it.effect("matches the head fork owner when the selector is owner:branch", () =>
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
+/** Answers the viewer lookup with `login`, and everything else with a repository. */
+const repositoryResponseWithViewer =
+  (login: string) => (request: HttpClientRequest.HttpClientRequest) =>
+    new URL(request.url).pathname === "/api/v1/user"
+      ? Response.json({ login })
+      : Response.json(repositoryJson);
+
+const createRepositoryPost = (execute: {
+  readonly mock: { readonly calls: ReadonlyArray<readonly [HttpClientRequest.HttpClientRequest]> };
+}) => execute.mock.calls.map(([request]) => request).find((request) => request.method === "POST");
+
 it.effect("createRepository posts to /user/repos for own account", () =>
   Effect.gen(function* () {
     const { execute, layerEffect } = makeLayer({
-      response: () => Response.json(repositoryJson),
+      response: repositoryResponseWithViewer("owner"),
     });
 
     const layer = yield* layerEffect;
@@ -444,10 +465,9 @@ it.effect("createRepository posts to /user/repos for own account", () =>
         visibility: "private",
       });
 
-      const request = execute.mock.calls[0]?.[0];
-      assert.strictEqual(request?.url, "https://git.example.org/api/v1/user/repos");
-      assert.strictEqual(request?.method, "POST");
+      const request = createRepositoryPost(execute);
       assert.ok(request);
+      assert.strictEqual(request.url, "https://git.example.org/api/v1/user/repos");
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
       assert.ok(rawBody);
       // @effect-diagnostics-next-line preferSchemaOverJson:off
@@ -455,6 +475,51 @@ it.effect("createRepository posts to /user/repos for own account", () =>
         name: "repo",
         private: true,
       });
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+it.effect("createRepository posts to /orgs when the owner is not the signed-in account", () =>
+  Effect.gen(function* () {
+    const { execute, layerEffect } = makeLayer({
+      response: repositoryResponseWithViewer("someone-else"),
+    });
+
+    const layer = yield* layerEffect;
+    yield* Effect.gen(function* () {
+      const forgejo = yield* ForgejoApi.ForgejoApi;
+      yield* forgejo.createRepository({
+        cwd: "/repo",
+        repository: "owner/repo",
+        visibility: "private",
+      });
+
+      const request = createRepositoryPost(execute);
+      assert.strictEqual(request?.url, "https://git.example.org/api/v1/orgs/owner/repos");
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+it.effect("createRepository routes on the host's login, not the name in the keys file", () =>
+  Effect.gen(function* () {
+    // `fj auth add-token` records a token with no account name, so routing that trusted the keys
+    // file sent every own-account creation to the organisation endpoint.
+    const { execute, layerEffect } = makeLayer({
+      response: repositoryResponseWithViewer("owner"),
+      keys: namelessKeysJson,
+    });
+
+    const layer = yield* layerEffect;
+    yield* Effect.gen(function* () {
+      const forgejo = yield* ForgejoApi.ForgejoApi;
+      yield* forgejo.createRepository({
+        cwd: "/repo",
+        repository: "owner/repo",
+        visibility: "private",
+      });
+
+      const request = createRepositoryPost(execute);
+      assert.strictEqual(request?.url, "https://git.example.org/api/v1/user/repos");
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );

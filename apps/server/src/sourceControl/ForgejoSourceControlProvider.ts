@@ -83,7 +83,7 @@ function parseForgejoAuth(input: SourceControlProviderDiscovery.SourceControlAut
       status: "unauthenticated",
       detail:
         SourceControlProviderDiscovery.firstSafeAuthLine(output) ??
-        "Run `fj auth login <host>` to authenticate the Forgejo CLI.",
+        "Run `fj auth login --host <host>` to authenticate the Forgejo CLI.",
     });
   }
   return SourceControlProviderDiscovery.providerAuth({
@@ -119,7 +119,7 @@ export const discovery = {
   parseAuth: parseForgejoAuth,
   refineUnknownRemote: refineUnknownForgejoRemote,
   installHint:
-    "Install the Forgejo CLI (`fj`) from https://codeberg.org/forgejo-contrib/forgejo-cli and run `fj auth login <host>`.",
+    "Install the Forgejo CLI (`fj`) from https://codeberg.org/forgejo-contrib/forgejo-cli and run `fj auth login --host <host>`.",
 } satisfies SourceControlProviderDiscovery.SourceControlCliDiscoverySpec;
 
 export const make = Effect.gen(function* () {
