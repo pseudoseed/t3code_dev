@@ -71,6 +71,18 @@ Open the **Issues** tab in the right panel, next to Terminal, Files and Agents.
 - Leave a comment, open a new issue, and close or reopen one, wherever your account has write
   access. Where it does not, the controls stay hidden rather than failing when pressed
 
+From an open issue you can also:
+
+- **Start work**, which opens a thread on a branch named for the issue with the issue already in
+  the composer. Nothing sends until you send it
+- **Add to thread**, which appends the issue and its comments to the composer you are already in
+
+A thread started that way shows "Working on #12" in the sidebar, read from its branch name.
+
+Coding agents can read and write issues too, through `issue_list`, `issue_read`, `issue_comment`,
+`issue_create` and `issue_set_state`. They act on the project their thread belongs to, so there is
+no repository for an agent to get wrong.
+
 Works on GitHub and on Forgejo or Gitea. Other providers show the tab as unsupported.
 
 ### Know Your Setup at a Glance

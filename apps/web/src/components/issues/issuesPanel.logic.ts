@@ -146,3 +146,21 @@ export function issueBranchName(issue: {
     ? `issue-${issue.number}`
     : `issue-${issue.number}-${slug}`;
 }
+
+const ISSUE_BRANCH_PATTERN = /^issue-(\d+)(?:-|$)/u;
+
+/**
+ * The issue a branch was made for, or null.
+ *
+ * Read from the branch rather than recorded anywhere: "Start work" names branches
+ * `issue-{number}-{slug}`, so the link already exists in the one place git will keep it. That
+ * costs nothing to store and survives a thread being renamed or moved, and it is honest about
+ * its limit — a branch somebody named themselves says nothing, and gets nothing.
+ */
+export function issueNumberFromBranch(branch: string | null | undefined): number | null {
+  if (typeof branch !== "string") return null;
+  // A worktree branch may carry a namespace, so the last segment is the one that was named here.
+  const segment = branch.trim().split("/").at(-1) ?? "";
+  const matched = Number(ISSUE_BRANCH_PATTERN.exec(segment)?.[1]);
+  return Number.isSafeInteger(matched) && matched > 0 ? matched : null;
+}

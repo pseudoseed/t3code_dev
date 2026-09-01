@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   appendIssueContext,
   issueBranchName,
+  issueNumberFromBranch,
   formatCommentCount,
   issueContextForComposer,
   labelColor,
@@ -153,5 +154,23 @@ describe("issueBranchName", () => {
 
   it("falls back to the number alone when the title survives sanitising as nothing", () => {
     expect(issueBranchName({ number: 7, title: "!!!" })).toBe("issue-7");
+  });
+});
+
+describe("issueNumberFromBranch", () => {
+  it("reads the issue back out of a branch Start work named", () => {
+    expect(issueNumberFromBranch(issueBranchName({ number: 12, title: "Cache bug" }))).toBe(12);
+    expect(issueNumberFromBranch("issue-7")).toBe(7);
+  });
+
+  it("reads through a namespace, which a worktree branch may carry", () => {
+    expect(issueNumberFromBranch("chris/issue-42-sign-in-loops")).toBe(42);
+  });
+
+  it("says nothing about a branch somebody named themselves", () => {
+    expect(issueNumberFromBranch("feat/forgejo-provider")).toBeNull();
+    expect(issueNumberFromBranch("issues-12")).toBeNull();
+    expect(issueNumberFromBranch("issue-abc")).toBeNull();
+    expect(issueNumberFromBranch(null)).toBeNull();
   });
 });
