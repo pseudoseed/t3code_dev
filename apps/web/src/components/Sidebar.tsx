@@ -103,7 +103,7 @@ import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -126,6 +126,7 @@ import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
   animatePinnedLayoutChanges,
   buildBulkTitleRegenerationContextMenuItem,
+  ALL_PROJECTS_SCOPE_VALUE,
   filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
@@ -137,6 +138,9 @@ import {
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveSettledTimestamp,
+  resolveSidebarHiddenProjectKeys,
+  resolveVisibleSidebarProjectKeys,
+  sidebarProjectFilterLabel,
   resolveSidebarThreadStatus,
   searchSidebarThreadsByTitle,
   shouldCreateNewThreadInCurrentProject,
@@ -179,6 +183,7 @@ import {
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import {
   Combobox,
@@ -1950,14 +1955,18 @@ export default function Sidebar() {
 
   const changeRequestSnapshotByKey = useAtomValue(threadChangeRequestSnapshotsAtom);
 
-  // Project scope: one menu above the list. Scoping filters the list without
-  // making the header width depend on the number or length of project names.
-  const [projectScopeKey, setProjectScopeKey] = useState<string | null>(null);
+  // Project filter: one menu above the list. Multi-select, so the list can be
+  // narrowed to a few projects at once without the header width depending on
+  // the number or length of project names. The choice persists as a client
+  // setting; `sidebarHiddenProjectKeys` documents why the hidden set is stored
+  // rather than the shown set.
+  const hiddenProjectKeys = useClientSettings((s) => s.sidebarHiddenProjectKeys);
+  const updateClientSettings = useUpdateClientSettings();
   // {value, label} items let Base UI drive the combobox selection contract
   // while the popup search filters the same collection.
   const projectScopeItems = useMemo(
     () => [
-      { value: "all", label: "All projects" },
+      { value: ALL_PROJECTS_SCOPE_VALUE, label: "All projects" },
       ...projectGroups.map((project) => ({
         value: project.projectKey,
         label: project.displayName,
@@ -1969,11 +1978,27 @@ export default function Sidebar() {
     () => new Map(projectGroups.map((project) => [project.projectKey, project] as const)),
     [projectGroups],
   );
-  const selectedProjectScopeItem = useMemo(
+  const allProjectKeys = useMemo(
+    () => projectGroups.map((project) => project.projectKey),
+    [projectGroups],
+  );
+  const visibleProjectKeys = useMemo(
     () =>
-      projectScopeItems.find((item) => item.value === (projectScopeKey ?? "all")) ??
-      projectScopeItems[0]!,
-    [projectScopeItems, projectScopeKey],
+      resolveVisibleSidebarProjectKeys({
+        projectKeys: allProjectKeys,
+        hiddenKeys: hiddenProjectKeys,
+      }),
+    [allProjectKeys, hiddenProjectKeys],
+  );
+  const allProjectsVisible = visibleProjectKeys.length === allProjectKeys.length;
+  // Base UI drives selection from the item objects, so the checked set is
+  // expressed in the shape the list renders. The bulk row is never part of it:
+  // it is a control, and including it would make "everything is checked" and
+  // "the bulk row is checked" the same state.
+  const visibleProjectKeySet = useMemo(() => new Set(visibleProjectKeys), [visibleProjectKeys]);
+  const selectedProjectScopeItems = useMemo(
+    () => projectScopeItems.filter((item) => visibleProjectKeySet.has(item.value)),
+    [projectScopeItems, visibleProjectKeySet],
   );
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
     reduceSidebarProjectScopeMenuState,
@@ -1982,45 +2007,62 @@ export default function Sidebar() {
   const projectScopeFilter = useComboboxFilter();
   // Filtering derives from the same React state that controls the input, so
   // the visible query and the visible list can never desync — the peer wiring
-  // in DiffPanel and BranchToolbarBranchSelector. "All projects" is a scope
-  // reset, not a searchable entry: it only shows while a project scope is
-  // active (there is something to reset) and the query is empty, so it can't
-  // outrank a project match under autoHighlight and no-hit queries reach the
-  // empty state.
+  // in DiffPanel and BranchToolbarBranchSelector.
   const filteredProjectScopeItems = useMemo(
     () =>
       filterSidebarProjectScopeItems({
         items: projectScopeItems,
-        activeScopeKey: projectScopeKey,
         query: projectScopeMenuState.query,
         matches: (item, query) =>
           projectScopeFilter.contains(item, query, (candidate) => candidate.label),
       }),
-    [projectScopeFilter, projectScopeItems, projectScopeKey, projectScopeMenuState.query],
+    [projectScopeFilter, projectScopeItems, projectScopeMenuState.query],
   );
-  const scopedProjectGroup = useMemo(
+  const applyProjectSelection = useCallback(
+    (visibleKeys: readonly string[]) => {
+      updateClientSettings({
+        sidebarHiddenProjectKeys: resolveSidebarHiddenProjectKeys({
+          hiddenKeys: hiddenProjectKeys,
+          projectKeys: allProjectKeys,
+          visibleKeys,
+        }),
+      });
+    },
+    [allProjectKeys, hiddenProjectKeys, updateClientSettings],
+  );
+  // Named only while the filter isolates one project. The trigger and the
+  // empty state both read this so they agree on what "focused" means.
+  const soleVisibleProjectGroup = useMemo(
     () =>
-      projectScopeKey === null
-        ? null
-        : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null),
-    [projectGroups, projectScopeKey],
+      !allProjectsVisible && visibleProjectKeys.length === 1
+        ? (projectGroupByScopeKey.get(visibleProjectKeys[0]!) ?? null)
+        : null,
+    [allProjectsVisible, projectGroupByScopeKey, visibleProjectKeys],
   );
-  const scopedProjectKeys = useMemo(
-    () =>
-      scopedProjectGroup === null
-        ? null
-        : new Set(
-            scopedProjectGroup.memberProjectRefs.map(
-              (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
-            ),
-          ),
-    [scopedProjectGroup],
-  );
-  useEffect(() => {
-    if (projectScopeKey !== null && scopedProjectGroup === null) {
-      setProjectScopeKey(null);
+  const projectFilterLabel = sidebarProjectFilterLabel({
+    totalCount: allProjectKeys.length,
+    visibleCount: visibleProjectKeys.length,
+    soleVisibleLabel: soleVisibleProjectGroup?.displayName ?? null,
+  });
+  // `null` means "no filter", so every row-level check short-circuits instead
+  // of testing set membership per thread on the common path.
+  const scopedProjectKeys = useMemo(() => {
+    if (allProjectsVisible) return null;
+    const keys = new Set<string>();
+    for (const projectKey of visibleProjectKeys) {
+      const group = projectGroupByScopeKey.get(projectKey);
+      if (!group) continue;
+      for (const projectRef of group.memberProjectRefs) {
+        keys.add(`${projectRef.environmentId}:${projectRef.projectId}`);
+      }
     }
-  }, [projectScopeKey, scopedProjectGroup]);
+    return keys;
+  }, [allProjectsVisible, projectGroupByScopeKey, visibleProjectKeys]);
+  // Stable identity for "which projects are showing", used to reset selection
+  // and paging when the filter changes. Hidden keys for projects this client
+  // cannot see must not appear here, or an environment reconnecting would look
+  // like a filter change.
+  const projectFilterResetKey = `${visibleProjectKeys.length}:${visibleProjectKeys.join("|")}`;
   // Count-only subscription: the parent needs "are there draft rows" for the
   // empty state, while SidebarDraftBlock owns the per-keystroke content
   // subscription. Selecting a number keeps typing in a draft composer from
@@ -2047,11 +2089,11 @@ export default function Sidebar() {
     }
     return count;
   });
-  // Scope flips drop the selection: rows selected under the old scope may be
-  // hidden now, and bulk actions must never count or touch invisible rows.
+  // Filter changes drop the selection: rows selected under the old filter may
+  // be hidden now, and bulk actions must never count or touch invisible rows.
   useEffect(() => {
     clearSelection();
-  }, [clearSelection, projectScopeKey]);
+  }, [clearSelection, projectFilterResetKey]);
 
   const handleProjectSettings = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>, projectGroup: SidebarProjectSnapshot) => {
@@ -2224,7 +2266,7 @@ export default function Sidebar() {
   // filter context changes so a scope/search flip never inherits a deep
   // page state.
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
-  const settledResetKey = projectScopeKey ?? "all";
+  const settledResetKey = projectFilterResetKey;
   const lastSettledResetKeyRef = useRef(settledResetKey);
   if (lastSettledResetKeyRef.current !== settledResetKey) {
     lastSettledResetKeyRef.current = settledResetKey;
@@ -3551,16 +3593,24 @@ export default function Sidebar() {
                   items={projectScopeItems}
                   filteredItems={filteredProjectScopeItems}
                   autoHighlight
+                  multiple
                   itemToStringLabel={(item) => item.label}
                   isItemEqualToValue={(a, b) => a.value === b.value}
                   open={projectScopeMenuState.open}
                   onOpenChange={(open) => {
                     dispatchProjectScopeMenu({ type: "open-changed", open });
                   }}
-                  value={selectedProjectScopeItem}
-                  onValueChange={(item) => {
-                    if (!item) return;
-                    setProjectScopeKey(item.value === "all" ? null : item.value);
+                  value={selectedProjectScopeItems}
+                  onValueChange={(items) => {
+                    const nextKeys = new Set((items ?? []).map((item) => item.value));
+                    // The bulk row never survives into the persisted selection,
+                    // so seeing it here means it was just clicked. It shows
+                    // everything, or clears everything when all are already on.
+                    if (nextKeys.has(ALL_PROJECTS_SCOPE_VALUE)) {
+                      applyProjectSelection(allProjectsVisible ? [] : allProjectKeys);
+                      return;
+                    }
+                    applyProjectSelection(allProjectKeys.filter((key) => nextKeys.has(key)));
                   }}
                 >
                   <ComboboxTrigger
@@ -3571,19 +3621,19 @@ export default function Sidebar() {
                       />
                     }
                   >
-                    {scopedProjectGroup ? (
+                    {soleVisibleProjectGroup ? (
                       <ProjectFavicon
-                        environmentId={scopedProjectGroup.environmentId}
-                        cwd={scopedProjectGroup.workspaceRoot}
-                        faviconPath={scopedProjectGroup.faviconPath}
+                        environmentId={soleVisibleProjectGroup.environmentId}
+                        cwd={soleVisibleProjectGroup.workspaceRoot}
+                        faviconPath={soleVisibleProjectGroup.faviconPath}
                         className="size-4 shrink-0"
                       />
                     ) : (
-                      <FolderIcon className="size-4 shrink-0" />
+                      <FolderIcon
+                        className={`size-4 shrink-0${allProjectsVisible ? "" : " text-primary"}`}
+                      />
                     )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {scopedProjectGroup?.displayName ?? "All projects"}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate">{projectFilterLabel}</span>
                     <ChevronDownIcon className="-mr-px size-4 shrink-0" />
                   </ComboboxTrigger>
                   <ComboboxPopup
@@ -3618,6 +3668,12 @@ export default function Sidebar() {
                     <ComboboxList>
                       {(item: (typeof projectScopeItems)[number]) => {
                         const project = projectGroupByScopeKey.get(item.value) ?? null;
+                        const isBulkRow = item.value === ALL_PROJECTS_SCOPE_VALUE;
+                        // The bulk row reflects the whole set: checked when
+                        // every project shows, indeterminate while some do.
+                        const checked = isBulkRow
+                          ? allProjectsVisible
+                          : visibleProjectKeySet.has(item.value);
                         return (
                           <ComboboxItem
                             key={item.value}
@@ -3626,6 +3682,18 @@ export default function Sidebar() {
                             className="h-8 min-h-8 py-0 font-medium"
                             contentClassName="flex min-w-0 items-center gap-2"
                           >
+                            <Checkbox
+                              checked={checked}
+                              indeterminate={
+                                isBulkRow && !allProjectsVisible && visibleProjectKeys.length > 0
+                              }
+                              // The row owns the click; the box is a visual
+                              // state readout, so it must not steal the event
+                              // or take a second tab stop.
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              className="pointer-events-none size-3.5 shrink-0"
+                            />
                             {project ? (
                               <ProjectFavicon
                                 environmentId={project.environmentId}
@@ -4039,8 +4107,19 @@ export default function Sidebar() {
                     Add project
                   </button>
                 </>
-              ) : scopedProjectGroup ? (
-                `No threads in ${scopedProjectGroup.displayName} yet`
+              ) : visibleProjectKeys.length === 0 ? (
+                <>
+                  <span>Every project is filtered out</span>
+                  <button
+                    type="button"
+                    onClick={() => applyProjectSelection(allProjectKeys)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                  >
+                    Show all projects
+                  </button>
+                </>
+              ) : soleVisibleProjectGroup ? (
+                `No threads in ${soleVisibleProjectGroup.displayName} yet`
               ) : (
                 "No threads yet"
               )}

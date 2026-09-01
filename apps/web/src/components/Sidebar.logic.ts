@@ -575,18 +575,81 @@ export function searchSidebarThreadsByTitle<T extends { readonly title: string }
   return threads.filter((thread) => thread.title.toLowerCase().includes(normalizedQuery));
 }
 
+/**
+ * Value of the bulk row at the top of the project filter menu. It is a control
+ * rather than a project, so it is excluded from search results and from every
+ * count.
+ */
+export const ALL_PROJECTS_SCOPE_VALUE = "all";
+
 export function filterSidebarProjectScopeItems<TItem extends { readonly value: string }>(input: {
   items: readonly TItem[];
-  activeScopeKey: string | null;
   query: string;
   matches: (item: TItem, query: string) => boolean;
 }): readonly TItem[] {
-  const projectItems = input.items.filter((item) => item.value !== "all");
   const query = input.query.trim();
+  // Searching targets projects. Keeping the bulk row out of the results stops
+  // it outranking a typed match under autoHighlight.
   if (query.length > 0) {
-    return projectItems.filter((item) => input.matches(item, query));
+    return input.items.filter(
+      (item) => item.value !== ALL_PROJECTS_SCOPE_VALUE && input.matches(item, query),
+    );
   }
-  return input.activeScopeKey === null ? projectItems : input.items;
+  return input.items;
+}
+
+/**
+ * The project keys the sidebar shows. `hiddenKeys` may name projects this
+ * client no longer knows about (deleted, or on an environment that is
+ * currently offline); those are ignored here and deliberately left in storage
+ * so reconnecting does not un-hide them.
+ */
+export function resolveVisibleSidebarProjectKeys(input: {
+  projectKeys: readonly string[];
+  hiddenKeys: readonly string[];
+}): readonly string[] {
+  if (input.hiddenKeys.length === 0) return input.projectKeys;
+  const hidden = new Set(input.hiddenKeys);
+  return input.projectKeys.filter((key) => !hidden.has(key));
+}
+
+/**
+ * The hidden set to persist for a given selection. The menu always reports the
+ * complete selection over the projects this client knows about, so one
+ * function covers checking a box, unchecking one, and both bulk rows.
+ *
+ * Hidden keys naming projects this client cannot see are carried through
+ * untouched: they belong to an offline environment, and dropping them would
+ * un-hide those projects the moment it reconnects.
+ */
+export function resolveSidebarHiddenProjectKeys(input: {
+  hiddenKeys: readonly string[];
+  projectKeys: readonly string[];
+  visibleKeys: readonly string[];
+}): readonly string[] {
+  const known = new Set(input.projectKeys);
+  const visible = new Set(input.visibleKeys);
+  return [
+    ...input.hiddenKeys.filter((key) => !known.has(key)),
+    ...input.projectKeys.filter((key) => !visible.has(key)),
+  ];
+}
+
+/**
+ * Trigger label for the filter menu. Naming the project when exactly one is
+ * shown keeps the common "focus on this one" case readable; the count form
+ * makes an active filter visible so a hidden project never reads as a missing
+ * one.
+ */
+export function sidebarProjectFilterLabel(input: {
+  totalCount: number;
+  visibleCount: number;
+  soleVisibleLabel: string | null;
+}): string {
+  if (input.totalCount > 0 && input.visibleCount === input.totalCount) return "All projects";
+  if (input.visibleCount === 0) return "No projects";
+  if (input.visibleCount === 1 && input.soleVisibleLabel !== null) return input.soleVisibleLabel;
+  return `${input.visibleCount} of ${input.totalCount} projects`;
 }
 
 export interface SidebarProjectScopeMenuState {

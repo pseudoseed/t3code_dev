@@ -25,6 +25,30 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+## Filtering by project
+
+The menu above the thread list controls which projects the sidebar shows. Open it and tick the
+projects you want. Ticking several shows all of them at once, so you can watch two or three
+projects without the rest in the way.
+
+**All projects** at the top of the menu is a bulk control. It ticks everything when some projects
+are hidden, and clears everything when they are all showing. Type in the menu's search box to find
+a project by name when the list is long.
+
+The button always says what the filter is doing: **All projects** when nothing is hidden, the
+project's name when you have narrowed to exactly one, and a count such as **2 of 7 projects**
+otherwise. A project you hide is still there; it is only filtered out of the list.
+
+Your choice is remembered and comes back the next time you open T3 Code. A project you add later
+shows up by default, so a filter you set months ago never hides new work from you. Hiding every
+project is allowed: the list then offers a **Show all projects** button to undo it. You can also
+clear the filter from **Settings → General → Restore default settings**.
+
+Projects on an environment that is offline keep their filter state while it is disconnected, so
+reconnecting does not un-hide them.
+
+The filter is a web and desktop feature. The mobile app is unaffected.
+
 ## Environment artwork
 
 Dev and Nightly environments can identify themselves with artwork at the top of the sidebar and in

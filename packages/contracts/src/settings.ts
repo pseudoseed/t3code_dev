@@ -271,6 +271,16 @@ export const ClientSettingsSchema = Schema.Struct({
     TrimmedNonEmptyString,
     SidebarProjectGroupingMode,
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Projects the sidebar filter hides, by project key. Stored as the hidden
+  // set rather than the shown set so a project added later is visible by
+  // default: a user who filtered down to two projects months ago should not
+  // silently lose a project they just created. Empty means no filter, which
+  // the sidebar treats as a fast path that skips per-thread scope checks.
+  // Keys for projects that are gone (or whose environment is offline) are
+  // kept, so a disconnect-reconnect cycle does not un-hide a project.
+  sidebarHiddenProjectKeys: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_SORT_ORDER)),
   ),
@@ -990,6 +1000,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),
   ),
+  sidebarHiddenProjectKeys: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),

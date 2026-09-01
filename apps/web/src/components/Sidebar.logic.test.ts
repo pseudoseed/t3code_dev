@@ -20,6 +20,9 @@ import {
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   resolveProjectStatusIndicator,
+  resolveSidebarHiddenProjectKeys,
+  resolveVisibleSidebarProjectKeys,
+  sidebarProjectFilterLabel,
   resolveThreadRowClassName,
   resolveSidebarThreadStatus,
   resolveThreadStatusPill,
@@ -752,30 +755,98 @@ describe("filterSidebarProjectScopeItems", () => {
     { value: "alpha", label: "Alpha workspace" },
     { value: "beta", label: "Beta tools" },
   ] as const;
-  const filter = (activeScopeKey: string | null, query: string) =>
+  const filter = (query: string) =>
     filterSidebarProjectScopeItems({
       items,
-      activeScopeKey,
       query,
       matches: (item, candidate) =>
         item.label.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
     });
 
-  it("omits the reset row when the sidebar is already unscoped", () => {
-    expect(filter(null, "")).toEqual(items.slice(1));
+  it("keeps the bulk row first while the query is empty", () => {
+    expect(filter("")).toEqual(items);
   });
 
-  it("shows the reset row first while a project scope is active", () => {
-    expect(filter("alpha", "")).toEqual(items);
-  });
-
-  it("hides the reset row while filtering an active scope", () => {
-    expect(filter("alpha", "all")).toEqual([]);
+  it("drops the bulk row from search results even when its label matches", () => {
+    expect(filter("all")).toEqual([]);
   });
 
   it("returns matching projects in source order and supports no-match results", () => {
-    expect(filter(null, "WORK")).toEqual([items[1]]);
-    expect(filter(null, "missing")).toEqual([]);
+    expect(filter("WORK")).toEqual([items[1]]);
+    expect(filter("missing")).toEqual([]);
+  });
+});
+
+describe("sidebar project visibility filter", () => {
+  const projectKeys = ["alpha", "beta", "gamma"];
+
+  it("shows every project when nothing is hidden", () => {
+    expect(resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: [] })).toEqual(projectKeys);
+  });
+
+  it("ignores hidden keys for projects this client does not know about", () => {
+    expect(
+      resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: ["beta", "offline-project"] }),
+    ).toEqual(["alpha", "gamma"]);
+  });
+
+  it("hides exactly the projects left out of the selection", () => {
+    expect(
+      resolveSidebarHiddenProjectKeys({
+        hiddenKeys: [],
+        projectKeys,
+        visibleKeys: ["alpha", "gamma"],
+      }),
+    ).toEqual(["beta"]);
+  });
+
+  it("stores nothing when everything is selected and everything when nothing is", () => {
+    expect(
+      resolveSidebarHiddenProjectKeys({
+        hiddenKeys: ["beta"],
+        projectKeys,
+        visibleKeys: projectKeys,
+      }),
+    ).toEqual([]);
+    expect(
+      resolveSidebarHiddenProjectKeys({ hiddenKeys: [], projectKeys, visibleKeys: [] }),
+    ).toEqual(projectKeys);
+  });
+
+  it("carries through hidden projects belonging to an offline environment", () => {
+    expect(
+      resolveSidebarHiddenProjectKeys({
+        hiddenKeys: ["offline-project", "beta"],
+        projectKeys,
+        visibleKeys: projectKeys,
+      }),
+    ).toEqual(["offline-project"]);
+  });
+
+  it("round-trips a selection back through the visible-key resolver", () => {
+    const hidden = resolveSidebarHiddenProjectKeys({
+      hiddenKeys: ["offline-project"],
+      projectKeys,
+      visibleKeys: ["gamma"],
+    });
+    expect(resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: hidden })).toEqual([
+      "gamma",
+    ]);
+  });
+
+  it("labels the trigger by state", () => {
+    const label = (visibleCount: number, soleVisibleLabel: string | null = null) =>
+      sidebarProjectFilterLabel({ totalCount: 3, visibleCount, soleVisibleLabel });
+    expect(label(3)).toBe("All projects");
+    expect(label(0)).toBe("No projects");
+    expect(label(1, "Alpha workspace")).toBe("Alpha workspace");
+    expect(label(2)).toBe("2 of 3 projects");
+  });
+
+  it("does not claim all projects are shown when there are none", () => {
+    expect(
+      sidebarProjectFilterLabel({ totalCount: 0, visibleCount: 0, soleVisibleLabel: null }),
+    ).toBe("No projects");
   });
 });
 
