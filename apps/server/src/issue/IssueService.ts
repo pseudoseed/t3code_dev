@@ -170,50 +170,48 @@ export const make = Effect.gen(function* () {
     list: (input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
-          resolved.api
-            .getViewer({ cwd: resolved.cwd })
-            // Involvement narrowing wants a name; without one the listing is simply not narrowed.
-            .pipe(Effect.orElseSucceed(() => ""))
-            .pipe(
-              Effect.flatMap((viewer) =>
-                resolved.api.listIssues({
-                  cwd: resolved.cwd,
-                  repository: resolved.repository,
-                  host: resolved.host,
-                  state: input.state,
-                  involvement: input.involvement ?? "all",
-                  viewer,
-                  limit: input.limit ?? DEFAULT_LIST_LIMIT,
-                  ...(input.query === undefined ? {} : { query: input.query }),
-                }),
-              ),
-              Effect.map((page): IssueListResult => {
-                const query = input.query?.trim().toLowerCase() ?? "";
-                // A host that does not search its own issues answers unnarrowed, so the rows are
-                // narrowed here instead. One that does has already done it, and this changes
-                // nothing.
-                const rows =
-                  query.length === 0 || resolved.api.capabilities.search
-                    ? page.items
-                    : page.items.filter((item) => item.title.toLowerCase().includes(query));
-                return {
-                  entries: rows.map(
-                    (item): IssueListEntry => ({
-                      ...item,
-                      provider: resolved.kind,
-                      host: resolved.host,
-                      projectId: resolved.projectId,
-                      projectTitle: resolved.projectTitle,
-                      repository: resolved.repository,
-                    }),
-                  ),
-                  provider: providerSummary(resolved),
-                  errors: [],
-                  truncated: page.truncated,
-                };
+          resolved.api.getViewer({ cwd: resolved.cwd }).pipe(
+            // Involvement narrowing wants a name; without one the listing is not narrowed.
+            Effect.orElseSucceed(() => ""),
+            Effect.flatMap((viewer) =>
+              resolved.api.listIssues({
+                cwd: resolved.cwd,
+                repository: resolved.repository,
+                host: resolved.host,
+                state: input.state,
+                involvement: input.involvement ?? "all",
+                viewer,
+                limit: input.limit ?? DEFAULT_LIST_LIMIT,
+                ...(input.query === undefined ? {} : { query: input.query }),
               }),
-              Effect.mapError(toError),
             ),
+            Effect.map((page): IssueListResult => {
+              const query = input.query?.trim().toLowerCase() ?? "";
+              // A host that does not search its own issues answers unnarrowed, so the rows are
+              // narrowed here instead. One that does has already done it, and this changes
+              // nothing.
+              const rows =
+                query.length === 0 || resolved.api.capabilities.search
+                  ? page.items
+                  : page.items.filter((item) => item.title.toLowerCase().includes(query));
+              return {
+                entries: rows.map(
+                  (item): IssueListEntry => ({
+                    ...item,
+                    provider: resolved.kind,
+                    host: resolved.host,
+                    projectId: resolved.projectId,
+                    projectTitle: resolved.projectTitle,
+                    repository: resolved.repository,
+                  }),
+                ),
+                provider: providerSummary(resolved),
+                errors: [],
+                truncated: page.truncated,
+              };
+            }),
+            Effect.mapError(toError),
+          ),
         ),
       ),
 

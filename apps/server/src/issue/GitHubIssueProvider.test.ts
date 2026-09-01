@@ -101,10 +101,8 @@ layer("reads one issue", (it) => {
     Effect.gen(function* () {
       execute.mockImplementation((input) =>
         input.args[0] === "repo"
-          ? // @effect-diagnostics-next-line preferSchemaOverJson:off
-            output(JSON.stringify({ viewerPermission: "READ" }))
+          ? output(JSON.stringify({ viewerPermission: "READ" }))
           : output(
-              // @effect-diagnostics-next-line preferSchemaOverJson:off
               JSON.stringify(
                 issueJson({
                   body: "It never clears.",
@@ -144,8 +142,7 @@ layer("reads one issue", (it) => {
                 cause: new Error("no"),
               }),
             )
-          : // @effect-diagnostics-next-line preferSchemaOverJson:off
-            output(JSON.stringify(issueJson({ body: "", comments: [] }))),
+          : output(JSON.stringify(issueJson({ body: "", comments: [] }))),
       );
       const provider = yield* GitHubIssueProvider.make;
       const detail = yield* provider.getIssue({ ...target, number: 12 });

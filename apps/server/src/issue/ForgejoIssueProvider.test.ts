@@ -15,7 +15,6 @@ const layer = it.layer(Layer.mock(ForgejoApi.ForgejoApi)({ request, resolveLocat
 const target = { cwd: "/repo", host: "git.example.org", repository: "acme/web" };
 
 function ok(body: unknown) {
-  // @effect-diagnostics-next-line preferSchemaOverJson:off
   return Effect.succeed({ status: 200, body: JSON.stringify(body), truncated: false });
 }
 

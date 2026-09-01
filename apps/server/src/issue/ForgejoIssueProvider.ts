@@ -449,7 +449,6 @@ export const make = Effect.gen(function* () {
 
 /** One place for the encode, so the diagnostic suppression is not repeated at every call. */
 function stringifyBody(body: unknown): string {
-  // @effect-diagnostics-next-line preferSchemaOverJson:off
   return JSON.stringify(body);
 }
 
