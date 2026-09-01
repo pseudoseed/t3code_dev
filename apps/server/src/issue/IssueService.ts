@@ -157,13 +157,18 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  const providerSummary = (resolved: ResolvedProject): IssueProviderSummary => ({
+  const providerSummary = (
+    resolved: ResolvedProject,
+    disabledReason?: string,
+  ): IssueProviderSummary => ({
     host: resolved.host,
     kind: resolved.kind,
     projectCount: 1,
-    configured: true,
+    // A tracker that is switched off is a host this cannot be read from, which is what the
+    // panel needs to know to explain an empty list rather than claim there are no issues.
+    configured: disabledReason === undefined,
     searchesOnHost: resolved.api.capabilities.search,
-    detail: null,
+    detail: disabledReason ?? null,
   });
 
   return IssueService.of({

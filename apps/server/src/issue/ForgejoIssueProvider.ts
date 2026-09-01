@@ -81,6 +81,8 @@ const ForgejoCommentSchema = Schema.Struct({
 });
 
 const ForgejoRepositorySchema = Schema.Struct({
+  /** False where the repository's issue tracker has been switched off. */
+  has_issues: Schema.optional(Schema.NullOr(Schema.Boolean)),
   permissions: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -312,7 +314,35 @@ export const make = Effect.gen(function* () {
         cwd: input.cwd,
         path: `${base}/issues?${query.toString()}`,
         decode: decodeIssueList,
-      });
+      }).pipe(
+        // Forgejo answers 404 for a repository whose tracker is off, which is the same answer it
+        // gives for one that is not there. Rather than guess, the repository is read: it says
+        // which of the two this is, and only a failed listing pays for the question.
+        Effect.catchIf(
+          (error) => error.reason === "failed",
+          (error) =>
+            read({
+              operation: "listIssues",
+              method: "GET",
+              host: input.host,
+              cwd: input.cwd,
+              path: base,
+              decode: decodeRepository,
+            }).pipe(
+              Effect.map((repository) => repository.has_issues !== false),
+              // Unknown counts as on, so a real failure is still reported as one.
+              Effect.orElseSucceed(() => true),
+              Effect.flatMap((enabled) => (enabled ? Effect.fail(error) : Effect.succeed(null))),
+            ),
+        ),
+      );
+      if (rows === null) {
+        return {
+          items: [],
+          truncated: false,
+          disabledReason: "Issues are turned off for this repository on this instance.",
+        };
+      }
 
       // `type=issues` is honoured by current Forgejo, and the guard costs nothing on a host
       // that ignores it: a row carrying `pull_request` is a change request, not an issue.

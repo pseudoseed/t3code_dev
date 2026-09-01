@@ -17,11 +17,13 @@ import ChatMarkdown from "../ChatMarkdown";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
+  ISSUE_SORTS,
   ISSUE_STATE_FILTERS,
   formatCommentCount,
   labelColor,
   narrowIssues,
   sortIssues,
+  type IssueSort,
 } from "./issuesPanel.logic";
 
 interface IssuesPanelProps {
@@ -40,6 +42,7 @@ interface IssuesPanelProps {
  */
 export function IssuesPanel(props: IssuesPanelProps) {
   const [state, setState] = useState<IssueListState>("open");
+  const [sort, setSort] = useState<IssueSort>("recent");
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [openNumber, setOpenNumber] = useState<number | null>(null);
@@ -59,10 +62,10 @@ export function IssuesPanel(props: IssuesPanelProps) {
   const result = listQuery.data;
   const searchesOnHost = result?.provider?.searchesOnHost ?? false;
   const entries = useMemo(() => {
-    const rows = sortIssues(result?.entries ?? []);
+    const rows = sortIssues(result?.entries ?? [], sort);
     // A host that searched for us has already matched bodies this cannot see.
     return searchesOnHost ? rows : narrowIssues(rows, submittedSearch);
-  }, [result?.entries, searchesOnHost, submittedSearch]);
+  }, [result?.entries, searchesOnHost, sort, submittedSearch]);
 
   const submitSearch = useCallback(() => setSubmittedSearch(search), [search]);
   const clearSearch = useCallback(() => {
@@ -148,7 +151,7 @@ export function IssuesPanel(props: IssuesPanelProps) {
             <Plus className="size-3.5" />
           </Button>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
           {ISSUE_STATE_FILTERS.map((filter) => (
             <button
               key={filter.value}
@@ -164,6 +167,22 @@ export function IssuesPanel(props: IssuesPanelProps) {
               {filter.label}
             </button>
           ))}
+          <span aria-hidden className="mx-0.5 h-3 w-px bg-border/70" />
+          {ISSUE_SORTS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setSort(option.value)}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[11px] transition-colors",
+                sort === option.value
+                  ? "bg-muted font-medium text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -172,13 +191,22 @@ export function IssuesPanel(props: IssuesPanelProps) {
           <PanelMessage title="Issues could not be read." detail={listQuery.error} />
         ) : entries.length === 0 ? (
           <PanelMessage
-            title={listQuery.isPending ? "Loading issues." : "No issues."}
+            title={
+              listQuery.isPending
+                ? "Loading issues."
+                : result?.provider?.configured === false
+                  ? "No issue tracker here."
+                  : "No issues."
+            }
             detail={
               listQuery.isPending
                 ? null
-                : submittedSearch.length > 0
-                  ? "Nothing matched that search."
-                  : `Nothing open in ${props.projectTitle}.`
+                : // A tracker that is off is a setting, not an empty list, and saying so stops
+                  // the reader looking for issues that can never appear.
+                  (result?.provider?.detail ??
+                  (submittedSearch.length > 0
+                    ? "Nothing matched that search."
+                    : `Nothing open in ${props.projectTitle}.`))
             }
           />
         ) : (

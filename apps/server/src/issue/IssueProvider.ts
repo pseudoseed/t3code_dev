@@ -65,6 +65,13 @@ export interface ProviderIssuePage {
   readonly items: ReadonlyArray<ProviderIssue>;
   /** The host has more than the listing asked for. */
   readonly truncated: boolean;
+  /**
+   * The repository has its issue tracker turned off, so there is nothing to list and never will
+   * be until somebody turns it back on. Reported rather than failed: it is a setting, not a
+   * fault, and a panel that says "issues are off here" is more use than one saying a command
+   * failed.
+   */
+  readonly disabledReason?: string;
 }
 
 export interface ProviderIssueDetail extends ProviderIssue {

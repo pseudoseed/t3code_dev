@@ -94,6 +94,62 @@ layer("lists issues", (it) => {
       assert.ok(args.includes("@me"), args.join(" "));
     }),
   );
+
+  it.effect("reports a repository with its tracker off instead of failing", () =>
+    Effect.gen(function* () {
+      // `gh` exits non-zero and the sentence explaining why never reaches the error, so the
+      // provider asks GitHub whether the tracker is on before reporting a failure.
+      execute.mockImplementation((input) =>
+        input.args[0] === "repo"
+          ? output(JSON.stringify({ hasIssuesEnabled: false }))
+          : Effect.fail(
+              new GitHubCli.GitHubCliCommandError({
+                command: "gh",
+                cwd: "/repo",
+                cause: new Error("exit 1"),
+              }),
+            ),
+      );
+      const provider = yield* GitHubIssueProvider.make;
+      const page = yield* provider.listIssues({
+        ...target,
+        state: "open",
+        involvement: "all",
+        viewer: "bilal",
+        limit: 20,
+      });
+      // A setting, not a fault: the panel says the tracker is off rather than that gh failed.
+      assert.deepStrictEqual(page.items, []);
+      assert.match(page.disabledReason ?? "", /turned off/u);
+    }),
+  );
+
+  it.effect("keeps a real failure a failure when the tracker is on", () =>
+    Effect.gen(function* () {
+      execute.mockImplementation((input) =>
+        input.args[0] === "repo"
+          ? output(JSON.stringify({ hasIssuesEnabled: true }))
+          : Effect.fail(
+              new GitHubCli.GitHubCliCommandError({
+                command: "gh",
+                cwd: "/repo",
+                cause: new Error("exit 1"),
+              }),
+            ),
+      );
+      const provider = yield* GitHubIssueProvider.make;
+      const error = yield* Effect.flip(
+        provider.listIssues({
+          ...target,
+          state: "open",
+          involvement: "all",
+          viewer: "bilal",
+          limit: 20,
+        }),
+      );
+      assert.strictEqual(error.reason, "failed");
+    }),
+  );
 });
 
 layer("reads one issue", (it) => {

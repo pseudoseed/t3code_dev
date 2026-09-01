@@ -33,6 +33,37 @@ describe("sortIssues", () => {
   });
 });
 
+describe("sortIssues orders", () => {
+  const rows = [
+    issue({
+      number: 1,
+      createdAt: "2026-06-10T00:00:00Z",
+      updatedAt: "2026-06-16T00:00:00Z",
+      commentCount: 1,
+    }),
+    issue({
+      number: 2,
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-17T00:00:00Z",
+      commentCount: 0,
+    }),
+    issue({
+      number: 3,
+      createdAt: "2026-06-20T00:00:00Z",
+      updatedAt: "2026-06-15T00:00:00Z",
+      commentCount: 9,
+    }),
+  ];
+
+  it("puts the longest-standing first when asked for oldest", () => {
+    expect(sortIssues(rows, "oldest").map((row) => row.number)).toEqual([2, 1, 3]);
+  });
+
+  it("puts the most discussed first, breaking ties by recency", () => {
+    expect(sortIssues(rows, "comments").map((row) => row.number)).toEqual([3, 1, 2]);
+  });
+});
+
 describe("narrowIssues", () => {
   const rows = [
     issue({ number: 1, title: "Cache is never invalidated" }),

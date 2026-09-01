@@ -331,6 +331,16 @@ function RightPanelEmptyState(props: {
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
     },
+    {
+      label: "Issues",
+      description: "Read and open this project's issues.",
+      icon: CircleDot,
+      shortcut: "I",
+      available: props.issuesAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.issues,
+      onClick: props.onAddIssues,
+      badgeCount: 0,
+    },
   ] as const;
 
   type SurfaceAction = (typeof actions)[number];

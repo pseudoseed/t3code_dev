@@ -9,12 +9,40 @@ export const ISSUE_STATE_FILTERS: ReadonlyArray<{
   { value: "all", label: "All" },
 ];
 
+export const ISSUE_SORTS = [
+  { value: "recent", label: "Recent" },
+  { value: "oldest", label: "Oldest" },
+  { value: "comments", label: "Discussed" },
+] as const;
+
+export type IssueSort = (typeof ISSUE_SORTS)[number]["value"];
+
 /**
- * Rows as the panel shows them: newest change first, which is the order somebody scanning a
- * list expects and the order every host reports its own "recently updated" in.
+ * Rows as the panel shows them.
+ *
+ * Newest change first by default, which is the order somebody scanning a list expects and the
+ * order every host reports its own "recently updated" in. The other two answer the two
+ * questions a list of issues actually gets asked: what has been sitting here longest, and what
+ * is being argued about.
  */
-export function sortIssues(entries: ReadonlyArray<IssueListEntry>): ReadonlyArray<IssueListEntry> {
-  return [...entries].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+export function sortIssues(
+  entries: ReadonlyArray<IssueListEntry>,
+  sort: IssueSort = "recent",
+): ReadonlyArray<IssueListEntry> {
+  const rows = [...entries];
+  switch (sort) {
+    case "oldest":
+      return rows.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    case "comments":
+      // A host that reports no counts leaves every row at zero, so this falls back to recency
+      // rather than shuffling the list into an order that means nothing.
+      return rows.sort(
+        (left, right) =>
+          right.commentCount - left.commentCount || right.updatedAt.localeCompare(left.updatedAt),
+      );
+    case "recent":
+      return rows.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
 }
 
 /**

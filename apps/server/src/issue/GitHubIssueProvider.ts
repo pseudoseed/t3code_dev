@@ -78,9 +78,14 @@ const GitHubRepositoryPermissionSchema = Schema.Struct({
   viewerPermission: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
+const GitHubRepositoryIssuesEnabledSchema = Schema.Struct({
+  hasIssuesEnabled: Schema.optional(Schema.NullOr(Schema.Boolean)),
+});
+
 const decodeIssueList = decodeJsonResult(Schema.Array(GitHubIssueSchema));
 const decodeIssueDetail = decodeJsonResult(GitHubIssueDetailSchema);
 const decodeRepositoryPermission = decodeJsonResult(GitHubRepositoryPermissionSchema);
+const decodeRepositoryIssuesEnabled = decodeJsonResult(GitHubRepositoryIssuesEnabledSchema);
 
 const LIST_FIELDS = "number,title,url,author,state,createdAt,updatedAt,labels,assignees";
 const DETAIL_FIELDS = `${LIST_FIELDS},body,closedAt,comments`;
@@ -225,6 +230,29 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  /** Whether GitHub has this repository's tracker on. Unknown counts as on, so a real failure
+   * is still reported as one rather than being explained away. */
+  const issuesEnabled = (input: {
+    readonly cwd: string;
+    readonly host: string;
+    readonly repository: string;
+  }) =>
+    read({
+      operation: "listIssues",
+      cwd: input.cwd,
+      args: [
+        "repo",
+        "view",
+        repoArgument(input.host, input.repository),
+        "--json",
+        "hasIssuesEnabled",
+      ],
+      decode: decodeRepositoryIssuesEnabled,
+    }).pipe(
+      Effect.map((repository) => repository.hasIssuesEnabled !== false),
+      Effect.orElseSucceed(() => true),
+    );
+
   const listIssues: IssueProviderApi["listIssues"] = (input) =>
     Effect.gen(function* () {
       const args = [
@@ -244,13 +272,35 @@ export const make = Effect.gen(function* () {
       if (input.involvement === "authored") args.push("--author", "@me");
       if (input.involvement === "assigned") args.push("--assignee", "@me");
 
-      const rows = yield* read({
+      return yield* read({
         operation: "listIssues",
         cwd: input.cwd,
         args,
         decode: decodeIssueList,
-      });
-      return { items: rows.map(toIssue), truncated: rows.length >= input.limit };
+      }).pipe(
+        Effect.map((rows) => ({
+          items: rows.map(toIssue),
+          truncated: rows.length >= input.limit,
+        })),
+        // `gh` exits non-zero for a repository whose tracker is off, and the sentence saying so
+        // does not survive into the error. So the question is put to GitHub instead, and only
+        // once a listing has already failed: the happy path spends nothing on it.
+        Effect.catchIf(
+          (error) => error.reason === "failed",
+          (error) =>
+            issuesEnabled(input).pipe(
+              Effect.flatMap((enabled) =>
+                enabled
+                  ? Effect.fail(error)
+                  : Effect.succeed({
+                      items: [],
+                      truncated: false,
+                      disabledReason: "Issues are turned off for this repository on GitHub.",
+                    }),
+              ),
+            ),
+        ),
+      );
     });
 
   const getIssue: IssueProviderApi["getIssue"] = (input) =>
