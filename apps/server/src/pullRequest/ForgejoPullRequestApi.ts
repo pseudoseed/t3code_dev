@@ -301,15 +301,32 @@ export const make = Effect.gen(function* () {
     send(input).pipe(
       Effect.flatMap((response) => {
         const decoded = input.decode(response.body);
-        return Result.isSuccess(decoded)
-          ? Effect.succeed(decoded.success)
-          : Effect.fail(
-              new ForgejoPullRequestApiError({
-                operation: input.operation,
-                detail: "Forgejo returned a payload this could not read.",
-                cause: decoded.failure,
-              }),
-            );
+        if (!Result.isSuccess(decoded)) {
+          return Effect.annotateCurrentSpan({
+            "forgejo.decode": "failed",
+            "forgejo.detail": String(decoded.failure).slice(0, 500),
+          }).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new ForgejoPullRequestApiError({
+                  operation: input.operation,
+                  detail: "Forgejo returned a payload this could not read.",
+                  cause: decoded.failure,
+                }),
+              ),
+            ),
+          );
+        }
+        const value = decoded.success;
+        return Effect.annotateCurrentSpan({
+          "forgejo.rows": Array.isArray(value) ? value.length : -1,
+          "forgejo.bytes": response.body.length,
+        }).pipe(Effect.as(value));
+      }),
+      // Spans are how this server reports itself; a read that answers nothing is otherwise
+      // indistinguishable from one that was never made.
+      Effect.withSpan(`ForgejoPullRequestApi.${input.operation}`, {
+        attributes: { "forgejo.path": input.path },
       }),
     );
 
@@ -456,6 +473,13 @@ export const make = Effect.gen(function* () {
         items.push(item);
       }
 
+      yield* Effect.annotateCurrentSpan({
+        "forgejo.repository": input.repository,
+        "forgejo.state": input.state,
+        "forgejo.involvement": input.involvement,
+        "forgejo.raw": rows.length,
+        "forgejo.kept": items.length,
+      });
       return {
         items,
         truncated: rows.length >= pageSize,
@@ -464,7 +488,7 @@ export const make = Effect.gen(function* () {
         cursorAdvance: rows.length,
         continues: true,
       } satisfies ProviderChangeRequestPage;
-    });
+    }).pipe(Effect.withSpan("ForgejoPullRequestApi.listChangeRequests"));
 
   const listChangeRequestsAcross: ForgejoPullRequestApiShape["listChangeRequestsAcross"] = (
     input,
@@ -515,11 +539,19 @@ export const make = Effect.gen(function* () {
         });
       }
 
+      yield* Effect.annotateCurrentSpan({
+        "forgejo.wanted": input.repositories.join(","),
+        "forgejo.raw": rows.length,
+        "forgejo.kept": items.length,
+        "forgejo.saw": [
+          ...new Set(rows.map((row) => (row.repository?.full_name ?? "?").trim())),
+        ].join(","),
+      });
       return {
         items,
         truncated: rows.length >= pageSize,
       } satisfies ProviderBatchedChangeRequestPage;
-    });
+    }).pipe(Effect.withSpan("ForgejoPullRequestApi.listChangeRequestsAcross"));
 
   /**
    * What this account may do, from the one thing Forgejo says about it: whether it can write.
