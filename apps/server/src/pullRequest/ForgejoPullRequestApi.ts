@@ -442,10 +442,14 @@ export const make = Effect.gen(function* () {
         ) {
           continue;
         }
+        // Forgejo's `/pulls` takes no text filter, so the narrowing happens here, over the same
+        // title and description its own `q` searches. That reaches only as far as the page
+        // fetched; the whole-host read below uses Forgejo's search and has no such limit, and it
+        // is the path a listing takes whenever the host offers one.
+        const needle = input.query?.trim().toLowerCase() ?? "";
         if (
-          input.query !== undefined &&
-          input.query.trim().length > 0 &&
-          !item.title.toLowerCase().includes(input.query.trim().toLowerCase())
+          needle.length > 0 &&
+          !`${row.title ?? ""}\n${row.body ?? ""}`.toLowerCase().includes(needle)
         ) {
           continue;
         }

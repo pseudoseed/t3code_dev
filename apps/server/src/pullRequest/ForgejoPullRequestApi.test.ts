@@ -131,6 +131,30 @@ layer("lists open change requests and reports whether more remain", (it) => {
     }),
   );
 
+  it.effect("narrows a page by description as well as title", () =>
+    Effect.gen(function* () {
+      routes({
+        "/repos/acme/web/pulls": [
+          pullRequest({ number: 5, title: "Tidy up", body: "fixes the cache invalidation" }),
+          pullRequest({ number: 6, title: "Tidy up more", body: "unrelated" }),
+        ],
+      });
+      const api = yield* ForgejoPullRequestApi.ForgejoPullRequestApi;
+      const page = yield* api.listChangeRequests({
+        ...target,
+        state: "open",
+        involvement: "all",
+        viewer: "bilal",
+        limit: 25,
+        query: "cache",
+      });
+      assert.deepStrictEqual(
+        page.items.map((item) => item.number),
+        [5],
+      );
+    }),
+  );
+
   it.effect("keeps only rows the viewer was asked to review", () =>
     Effect.gen(function* () {
       routes({
