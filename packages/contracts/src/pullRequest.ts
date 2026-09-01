@@ -1006,6 +1006,12 @@ const PROVIDER_REQUIREMENT: Partial<
     unauthenticated:
       "Bitbucket rejected the configured credentials. Check T3CODE_BITBUCKET_EMAIL and T3CODE_BITBUCKET_API_TOKEN.",
   },
+  forgejo: {
+    missing:
+      "Forgejo CLI (`fj`) is required to sign in to an instance. Install it from https://codeberg.org/forgejo-contrib/forgejo-cli and run `fj auth login --host <host>`.",
+    unauthenticated:
+      "Forgejo rejected the stored token, or it lacks the access this needs. Run `fj auth login --host <host>` again with repository read and write.",
+  },
 };
 
 /**

@@ -43,6 +43,7 @@ import {
   ClockIcon,
   FolderIcon,
   FolderPlusIcon,
+  CircleDotIcon,
   GitBranchIcon,
   MessageSquareIcon,
   PinIcon,
@@ -166,6 +167,7 @@ import {
   type TerminalStatusIndicator,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
+import { issueNumberFromBranch } from "./issues/issuesPanel.logic";
 import {
   resolveSnoozePresets,
   snoozeWakeDescription,
@@ -303,6 +305,10 @@ function SidebarThreadTooltip({
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
 }) {
+  // "Start work" names a branch after the issue it came from, so the link is already in the one
+  // place git keeps it. Nothing is stored for this, and a branch named by hand simply says
+  // nothing.
+  const linkedIssueNumber = issueNumberFromBranch(thread.branch);
   const driverKind = providerEntry?.driverKind ?? null;
   return (
     <TooltipPopup
@@ -338,6 +344,14 @@ function SidebarThreadTooltip({
             <div className="flex min-w-0 items-center gap-2">
               <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
               <div className="min-w-0 truncate text-foreground/75">{thread.branch}</div>
+            </div>
+          ) : null}
+          {linkedIssueNumber !== null ? (
+            <div className="flex min-w-0 items-center gap-2">
+              <CircleDotIcon className="size-3 shrink-0 stroke-muted-foreground" />
+              <div className="min-w-0 truncate text-foreground/75">
+                Working on #{linkedIssueNumber}
+              </div>
             </div>
           ) : null}
           {branchMismatch ? (

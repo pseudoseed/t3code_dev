@@ -10,6 +10,8 @@ T3 Code works with the platforms your team already uses:
 - **GitLab** – Merge requests, repository publishing, and hosted clones
 - **Bitbucket** – Pull request workflows (via API token authentication)
 - **Azure DevOps** – Pull request support for Microsoft-hosted repositories
+- **Forgejo and Gitea** – Pull requests, reviews, repository creation, and clone integration on
+  your own self-hosted instance
 
 ## What You Can Do
 
@@ -18,8 +20,8 @@ T3 Code works with the platforms your team already uses:
 **Clone repositories directly**
 
 - Open the Command Palette (`Cmd/Ctrl + K`) → **Add Project**
-- Choose **GitHub repository**, **GitLab repository**, **Bitbucket repository**, **Azure DevOps repository**, or paste any **Git URL**
-- Enter the repository path (`owner/repo`, `group/project`, `workspace/repository`, or `project/repository`) or a full Git URL, pick a destination, and start coding
+- Choose **GitHub repository**, **GitLab repository**, **Bitbucket repository**, **Azure DevOps repository**, **Forgejo repository**, or paste any **Git URL**
+- Enter the repository path (`owner/repo`, `group/project`, `workspace/repository`, `project/repository`, or `host/owner/repository` for Forgejo) or a full Git URL, pick a destination, and start coding
 
 **Publish local projects to the cloud**
 
@@ -35,7 +37,7 @@ T3 Code works with the platforms your team already uses:
 - T3 Code can suggest titles and descriptions based on your commits
 - With **Repository conventions** selected, generated source control text follows the project's
   `AGENTS.md` along with recent commit subjects. Claude writers also follow `CLAUDE.md`
-- Supports GitHub Pull Requests, GitLab Merge Requests, Bitbucket Pull Requests, and Azure DevOps Pull Requests
+- Supports GitHub Pull Requests, GitLab Merge Requests, Bitbucket Pull Requests, Azure DevOps Pull Requests, and Forgejo or Gitea Pull Requests
 
 **Stay on top of open reviews**
 
@@ -54,8 +56,34 @@ T3 Code works with the platforms your team already uses:
 - Rewrite a pull request's title and description from the review itself, in Markdown, with a
   preview before you save
 - Rewrite your own comments the same way, wherever they are shown
-- Works on GitHub, GitLab, and Bitbucket. Azure DevOps takes a new title and description; its
-  comments stay read-only here, as they already were
+- Works on GitHub, GitLab, Bitbucket, and Forgejo. Azure DevOps takes a new title and description;
+  its comments stay read-only here, as they already were
+
+### Track Issues Beside Your Work
+
+Open the **Issues** tab in the right panel, next to Terminal, Files and Agents.
+
+- The list follows whichever project you are in, so there is nothing to pick
+- Filter by **Open**, **Closed**, or **All**
+- Search by title, label, or issue number. On GitHub and Forgejo the search runs on the host, so
+  it matches descriptions too
+- Open an issue to read it with its full conversation
+- Leave a comment, open a new issue, and close or reopen one, wherever your account has write
+  access. Where it does not, the controls stay hidden rather than failing when pressed
+
+From an open issue you can also:
+
+- **Start work**, which opens a thread on a branch named for the issue with the issue already in
+  the composer. Nothing sends until you send it
+- **Add to thread**, which appends the issue and its comments to the composer you are already in
+
+A thread started that way shows "Working on #12" in the sidebar, read from its branch name.
+
+Coding agents can read and write issues too, through `issue_list`, `issue_read`, `issue_comment`,
+`issue_create` and `issue_set_state`. They act on the project their thread belongs to, so there is
+no repository for an agent to get wrong.
+
+Works on GitHub and on Forgejo or Gitea. Other providers show the tab as unsupported.
 
 ### Know Your Setup at a Glance
 
@@ -117,6 +145,34 @@ export T3CODE_BITBUCKET_API_TOKEN="your-token"
 
 If both are set, the access token wins. Restart T3 Code and verify the connection in **Source
 Control settings**.
+
+### For Forgejo and Gitea
+
+Forgejo has no single address: every instance is somebody's own, so T3 Code signs in to each one
+separately through the Forgejo CLI.
+
+1. Install the Forgejo CLI:
+   ```bash
+   brew install forgejo-cli
+   ```
+2. Sign in to your instance:
+   ```bash
+   fj auth login --host git.example.com
+   ```
+   This opens your browser. The token it creates has full access to your account, because Forgejo
+   does not yet limit what an app may do.
+3. Prefer a token you can limit? Create one in Forgejo under **Settings → Applications**, tick
+   **repository** read and write plus **user** read, then hand it over instead:
+   ```bash
+   fj auth add-token --host git.example.com
+   ```
+4. Open **Settings → Source Control** to confirm the connection
+
+Sign in to as many instances as you like; T3 Code reads each repository against the one its remote
+points at. Gitea instances work the same way.
+
+Reviews behave as they do everywhere else, with one exception: Forgejo has no way to mark a review
+conversation resolved, so that control is not shown.
 
 ### For Azure DevOps
 

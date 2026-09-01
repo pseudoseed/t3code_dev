@@ -22,6 +22,7 @@ export const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "agents",
+  "issues",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -62,7 +63,21 @@ export type RightPanelSurface =
       repository: string;
       number: number;
     }
-  | { id: "agents"; kind: "agents" };
+  | { id: "agents"; kind: "agents" }
+  /**
+   * The issues of whichever project the panel is beside. A singleton like the files tree: there
+   * is one list, and it follows the project rather than being pinned to a repository.
+   *
+   * `openNumber` is set when a link asked for one issue: the panel opens it instead of the list.
+   * `openRequestId` moves every time, so clicking the same link twice reopens it rather than
+   * doing nothing because the number has not changed.
+   */
+  | {
+      id: "issues";
+      kind: "issues";
+      openNumber?: number;
+      openRequestId?: number;
+    };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -90,6 +105,8 @@ interface RightPanelStoreState {
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  /** Opens the issues surface on one issue, as a link in the transcript asks for. */
+  openIssue: (ref: ScopedThreadRef, number: number) => void;
   openPullRequest: (
     ref: ScopedThreadRef,
     target: { environmentId?: string; projectId: string; repository: string; number: number },
@@ -136,6 +153,8 @@ const singletonSurface = (
       return { id: "files", kind };
     case "agents":
       return { id: "agents", kind };
+    case "issues":
+      return { id: "issues", kind };
   }
 };
 
@@ -388,6 +407,28 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             return upsertSurface(current, pullRequestSurface(target));
+          }),
+        })),
+      openIssue: (ref, number) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const existing = current.surfaces.find(
+              (surface): surface is Extract<RightPanelSurface, { kind: "issues" }> =>
+                surface.kind === "issues",
+            );
+            const surface = {
+              id: "issues",
+              kind: "issues",
+              openNumber: number,
+              openRequestId: (existing?.openRequestId ?? 0) + 1,
+            } as const;
+            return {
+              isOpen: true,
+              activeSurfaceId: surface.id,
+              surfaces: existing
+                ? current.surfaces.map((entry) => (entry.kind === "issues" ? surface : entry))
+                : [...current.surfaces, surface],
+            };
           }),
         })),
       openFile: (ref, relativePath, line) =>

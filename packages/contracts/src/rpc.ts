@@ -107,6 +107,18 @@ import {
   PullRequestUpdateInput,
 } from "./pullRequest.ts";
 import {
+  IssueCommentInput,
+  IssueCreateInput,
+  IssueCreateResult,
+  IssueDetail,
+  IssueDetailInput,
+  IssueListInput,
+  IssueListResult,
+  IssueOperationError,
+  IssueSetStateInput,
+  IssueUnavailableError,
+} from "./issue.ts";
+import {
   RelayClientInstallFailedError,
   RelayClientInstallProgressEventSchema,
   RelayClientStatusSchema,
@@ -316,6 +328,11 @@ export const WS_METHODS = {
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
 
   // Source control methods
+  issuesList: "issues.list",
+  issuesDetail: "issues.detail",
+  issuesComment: "issues.comment",
+  issuesCreate: "issues.create",
+  issuesSetState: "issues.setState",
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
@@ -488,6 +505,12 @@ export const WsServerGetBackgroundPolicyRpc = Rpc.make(WS_METHODS.serverGetBackg
   error: EnvironmentAuthorizationError,
 });
 
+const IssueRpcErrorWithAuth = Schema.Union([
+  IssueUnavailableError,
+  IssueOperationError,
+  EnvironmentAuthorizationError,
+]);
+
 const PullRequestRpcError = Schema.Union([
   PullRequestUnavailableError,
   PullRequestOperationError,
@@ -620,6 +643,36 @@ export const WsSourceControlLookupRepositoryRpc = Rpc.make(
     error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsIssuesListRpc = Rpc.make(WS_METHODS.issuesList, {
+  payload: IssueListInput,
+  success: IssueListResult,
+  error: IssueRpcErrorWithAuth,
+});
+
+export const WsIssuesDetailRpc = Rpc.make(WS_METHODS.issuesDetail, {
+  payload: IssueDetailInput,
+  success: IssueDetail,
+  error: IssueRpcErrorWithAuth,
+});
+
+export const WsIssuesCommentRpc = Rpc.make(WS_METHODS.issuesComment, {
+  payload: IssueCommentInput,
+  success: Schema.Void,
+  error: IssueRpcErrorWithAuth,
+});
+
+export const WsIssuesCreateRpc = Rpc.make(WS_METHODS.issuesCreate, {
+  payload: IssueCreateInput,
+  success: IssueCreateResult,
+  error: IssueRpcErrorWithAuth,
+});
+
+export const WsIssuesSetStateRpc = Rpc.make(WS_METHODS.issuesSetState, {
+  payload: IssueSetStateInput,
+  success: Schema.Void,
+  error: IssueRpcErrorWithAuth,
+});
 
 export const WsSourceControlCloneRepositoryRpc = Rpc.make(WS_METHODS.sourceControlCloneRepository, {
   payload: SourceControlCloneRepositoryInput,
@@ -1058,6 +1111,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsDiffFileContentsRpc,
   WsPullRequestsRunActionRpc,
   WsPullRequestsUpdateRpc,
+  WsIssuesListRpc,
+  WsIssuesDetailRpc,
+  WsIssuesCommentRpc,
+  WsIssuesCreateRpc,
+  WsIssuesSetStateRpc,
   WsPullRequestsCommentRpc,
   WsPullRequestsUpdateCommentRpc,
   WsPullRequestsSubmitReviewRpc,
