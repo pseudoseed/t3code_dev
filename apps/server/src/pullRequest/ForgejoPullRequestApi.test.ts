@@ -479,55 +479,17 @@ layer("acts on a change request", (it) => {
   );
 });
 
-layer("reads a whole host at once", (it) => {
-  it.effect("files each row against the repository that was asked for, and drops the rest", () =>
+layer("does not use Forgejo's cross-repository search", (it) => {
+  it.effect("reads each repository instead, because the search omits the branches", () =>
     Effect.gen(function* () {
-      routes({
-        "/repos/issues/search": [
-          { ...pullRequest({ number: 1 }), repository: { full_name: "acme/web" } },
-          { ...pullRequest({ number: 2 }), repository: { full_name: "acme/api" } },
-          // A repository this workspace has nothing checked out from.
-          { ...pullRequest({ number: 3 }), repository: { full_name: "other/thing" } },
-        ],
-      });
+      // `/repos/issues/search` answers with issues: no head, no base. A change request without
+      // its branches fails the contract, so the per-repository read is the only one used.
       const api = yield* ForgejoPullRequestApi.ForgejoPullRequestApi;
-      const page = yield* api.listChangeRequestsAcross({
-        cwd: "/repo",
-        host: "git.example.org",
-        repositories: ["acme/web", "acme/api"],
-        state: "open",
-        involvement: "all",
-        viewer: "bilal",
-        limit: 25,
-      });
-      assert.deepStrictEqual(
-        page.items.map((item) => [item.repository, item.number]),
-        [
-          ["acme/web", 1],
-          ["acme/api", 2],
-        ],
+      assert.strictEqual(
+        "listChangeRequestsAcross" in api,
+        false,
+        "a host-wide listing would be answered with rows that cannot be shown",
       );
-    }),
-  );
-
-  it.effect("asks Forgejo's own search to narrow by involvement", () =>
-    Effect.gen(function* () {
-      routes({ "/repos/issues/search": [] });
-      const api = yield* ForgejoPullRequestApi.ForgejoPullRequestApi;
-      yield* api.listChangeRequestsAcross({
-        cwd: "/repo",
-        host: "git.example.org",
-        repositories: ["acme/web"],
-        state: "open",
-        involvement: "reviewing",
-        viewer: "octocat",
-        limit: 25,
-        query: "cache",
-      });
-      const asked = mockedRequest.mock.calls.at(-1)?.[0].path ?? "";
-      assert.ok(asked.includes("review_requested=true"), asked);
-      assert.ok(asked.includes("q=cache"), asked);
-      assert.ok(asked.includes("type=pulls"), asked);
     }),
   );
 });

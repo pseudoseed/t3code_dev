@@ -80,29 +80,6 @@ export type ForgejoPullRequest = typeof ForgejoPullRequestSchema.Type;
 
 export const ForgejoPullRequestListSchema = Schema.Array(ForgejoPullRequestSchema);
 
-/** `/repos/issues/search` answers with issues and pull requests in one list. */
-export const ForgejoIssueSearchItemSchema = Schema.Struct({
-  ...ForgejoPullRequestSchema.fields,
-  repository: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        full_name: Schema.optional(Schema.NullOr(Schema.String)),
-        owner: Schema.optional(Schema.NullOr(Schema.String)),
-        name: Schema.optional(Schema.NullOr(Schema.String)),
-      }),
-    ),
-  ),
-  pull_request: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        merged: Schema.optional(Schema.NullOr(Schema.Boolean)),
-        draft: Schema.optional(Schema.NullOr(Schema.Boolean)),
-      }),
-    ),
-  ),
-});
-export const ForgejoIssueSearchListSchema = Schema.Array(ForgejoIssueSearchItemSchema);
-
 export const ForgejoCommentSchema = Schema.Struct({
   id: Schema.Number,
   body: Schema.optional(Schema.NullOr(Schema.String)),
@@ -611,7 +588,6 @@ export function normalizeOption(value: string | null | undefined): Option.Option
 
 export const decodeForgejoPullRequest = decodeJsonResult(ForgejoPullRequestSchema);
 export const decodeForgejoPullRequestList = decodeJsonResult(ForgejoPullRequestListSchema);
-export const decodeForgejoIssueSearchList = decodeJsonResult(ForgejoIssueSearchListSchema);
 export const decodeForgejoCommentList = decodeJsonResult(ForgejoCommentListSchema);
 export const decodeForgejoComment = decodeJsonResult(ForgejoCommentSchema);
 export const decodeForgejoReviewList = decodeJsonResult(ForgejoReviewListSchema);

@@ -84,9 +84,6 @@ export const make = Effect.gen(function* () {
     listChangeRequests: (input) =>
       api.listChangeRequests(input).pipe(Effect.mapError(fail("listChangeRequests"))),
 
-    listChangeRequestsAcross: (input) =>
-      api.listChangeRequestsAcross(input).pipe(Effect.mapError(fail("listChangeRequestsAcross"))),
-
     getChangeRequest: (input) =>
       api.getChangeRequest(input).pipe(Effect.mapError(fail("getChangeRequest"))),
 

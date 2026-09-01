@@ -31,7 +31,6 @@ import type {
 import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
 import * as Json from "./forgejoPullRequestJson.ts";
 import type {
-  ProviderBatchedChangeRequestPage,
   ProviderChangeRequest,
   ProviderChangeRequestActivity,
   ProviderChangeRequestDetail,
@@ -153,17 +152,6 @@ export interface ForgejoPullRequestApiShape {
       readonly cursor?: ProviderListCursor | undefined;
     },
   ) => Effect.Effect<ProviderChangeRequestPage, ForgejoPullRequestApiError>;
-  readonly listChangeRequestsAcross: (input: {
-    readonly cwd: string;
-    readonly host: string;
-    readonly repositories: ReadonlyArray<string>;
-    readonly state: PullRequestListState;
-    readonly involvement: PullRequestInvolvement;
-    readonly viewer: string;
-    readonly limit: number;
-    readonly query?: string | undefined;
-    readonly cursor?: ProviderListCursor | undefined;
-  }) => Effect.Effect<ProviderBatchedChangeRequestPage, ForgejoPullRequestApiError>;
   readonly getChangeRequest: (
     input: ForgejoChangeRequestTarget,
   ) => Effect.Effect<ProviderChangeRequestDetail, ForgejoPullRequestApiError>;
@@ -460,9 +448,10 @@ export const make = Effect.gen(function* () {
           continue;
         }
         // Forgejo's `/pulls` takes no text filter, so the narrowing happens here, over the same
-        // title and description its own `q` searches. That reaches only as far as the page
-        // fetched; the whole-host read below uses Forgejo's search and has no such limit, and it
-        // is the path a listing takes whenever the host offers one.
+        // title and description its own `q` searches, and reaches as far as the page fetched.
+        // Forgejo does have a search across repositories, and it is deliberately not used: it
+        // answers with issues rather than pull requests, carrying no head or base branch, and a
+        // row without them is not a change request this can show.
         const needle = input.query?.trim().toLowerCase() ?? "";
         if (
           needle.length > 0 &&
@@ -489,69 +478,6 @@ export const make = Effect.gen(function* () {
         continues: true,
       } satisfies ProviderChangeRequestPage;
     }).pipe(Effect.withSpan("ForgejoPullRequestApi.listChangeRequests"));
-
-  const listChangeRequestsAcross: ForgejoPullRequestApiShape["listChangeRequestsAcross"] = (
-    input,
-  ) =>
-    Effect.gen(function* () {
-      const pageSize = Math.min(Math.max(input.limit, 1), MAX_PAGE_SIZE);
-      const page = Math.floor((input.cursor?.delivered ?? 0) / pageSize) + 1;
-      const query = new URLSearchParams({
-        type: "pulls",
-        state: hostState(input.state),
-        sort: "recentupdate",
-        page: String(page),
-        limit: String(pageSize),
-      });
-      if (input.query !== undefined && input.query.trim().length > 0) {
-        query.set("q", input.query.trim());
-      }
-      if (input.involvement === "authored") query.set("created", "true");
-      if (input.involvement === "reviewing") query.set("review_requested", "true");
-
-      const rows = yield* read({
-        operation: "listChangeRequestsAcross",
-        method: "GET",
-        host: input.host,
-        cwd: input.cwd,
-        path: `/repos/issues/search?${query.toString()}`,
-        decode: Json.decodeForgejoIssueSearchList,
-      });
-
-      // The search spans every repository this account can see, so rows from a repository the
-      // caller did not ask about are dropped rather than filed against one it did.
-      const wanted = new Map(
-        input.repositories.map((repository) => [repository.toLowerCase(), repository]),
-      );
-      const items = [];
-      for (const row of rows) {
-        const fullName = (row.repository?.full_name ?? "").trim();
-        const repository = wanted.get(fullName.toLowerCase());
-        if (repository === undefined) continue;
-        const merged = row.pull_request?.merged ?? row.merged ?? false;
-        if (!keepForState(input.state, merged === true)) continue;
-        items.push({
-          ...Json.normalizeChangeRequest(
-            { ...row, merged },
-            { draft: row.pull_request?.draft ?? row.draft },
-          ),
-          repository,
-        });
-      }
-
-      yield* Effect.annotateCurrentSpan({
-        "forgejo.wanted": input.repositories.join(","),
-        "forgejo.raw": rows.length,
-        "forgejo.kept": items.length,
-        "forgejo.saw": [
-          ...new Set(rows.map((row) => (row.repository?.full_name ?? "?").trim())),
-        ].join(","),
-      });
-      return {
-        items,
-        truncated: rows.length >= pageSize,
-      } satisfies ProviderBatchedChangeRequestPage;
-    }).pipe(Effect.withSpan("ForgejoPullRequestApi.listChangeRequestsAcross"));
 
   /**
    * What this account may do, from the one thing Forgejo says about it: whether it can write.
@@ -1193,7 +1119,6 @@ export const make = Effect.gen(function* () {
   return ForgejoPullRequestApi.of({
     getViewer,
     listChangeRequests,
-    listChangeRequestsAcross,
     getChangeRequest,
     getChangeRequestActivity,
     getViewerPermissions,
