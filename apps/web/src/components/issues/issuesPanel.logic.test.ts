@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatCommentCount, labelColor, narrowIssues, sortIssues } from "./issuesPanel.logic";
+import {
+  appendIssueContext,
+  formatCommentCount,
+  issueContextForComposer,
+  labelColor,
+  narrowIssues,
+  sortIssues,
+} from "./issuesPanel.logic";
 
 const issue = (overrides: Partial<Parameters<typeof sortIssues>[0][number]> = {}) =>
   ({
@@ -97,5 +104,41 @@ describe("labelColor", () => {
     expect(labelColor("f00")).toBe("#f00");
     expect(labelColor("red; background: url(x)")).toBeUndefined();
     expect(labelColor(null)).toBeUndefined();
+  });
+});
+
+describe("issueContextForComposer", () => {
+  const issue = {
+    number: 12,
+    title: "Cache is never invalidated",
+    url: "https://git.example.org/acme/web/issues/12",
+    state: "open",
+    repository: "acme/web",
+    body: "It never clears.",
+    comments: [{ author: { login: "octocat" }, body: "Confirmed" }],
+  };
+
+  it("carries the whole issue, because an agent cannot go and fetch it", () => {
+    const context = issueContextForComposer(issue);
+    expect(context).toContain("acme/web#12: Cache is never invalidated");
+    expect(context).toContain("It never clears.");
+    expect(context).toContain("Comment from octocat");
+    expect(context).toContain("Confirmed");
+  });
+
+  it("says so rather than leaving a blank where there is no description", () => {
+    expect(issueContextForComposer({ ...issue, body: "   ", comments: [] })).toContain(
+      "_No description._",
+    );
+  });
+});
+
+describe("appendIssueContext", () => {
+  it("keeps what was already typed", () => {
+    expect(appendIssueContext("look at this", "## issue")).toBe("look at this\n\n## issue\n\n");
+  });
+
+  it("does not lead with blank lines in an empty composer", () => {
+    expect(appendIssueContext("   ", "## issue")).toBe("## issue\n\n");
   });
 });

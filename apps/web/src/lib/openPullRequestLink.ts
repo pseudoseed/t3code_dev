@@ -11,6 +11,7 @@ import { type MouseEvent, useCallback } from "react";
 
 import { pullRequestHostOf, type SourceControlProviderKind } from "@t3tools/contracts";
 
+import { findProjectForIssue, parseIssueUrl } from "./openIssueLink";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { readLocalApi } from "../localApi";
 import { useRightPanelStore } from "../rightPanelStore";
@@ -279,7 +280,24 @@ export function useOpenChangeRequestLink(
       if (shouldOpenPullRequestExternally(event)) return false;
       const resolvedThreadRef = targetThreadRef ?? threadRef;
       const parsed = parseChangeRequestUrl(targetUrl);
-      if (parsed === null) return false;
+      if (parsed === null) {
+        // An issue on a repository this workspace has open belongs in the issues panel, for the
+        // same reason a change request does: the reader is in a thread and should stay in it.
+        // Only beside a thread, since the panel follows a project rather than a whole workspace.
+        const issue = parseIssueUrl(targetUrl);
+        if (issue === null || !resolvedThreadRef) return false;
+        const project = findProjectForIssue(
+          allProjects.filter(
+            (candidate) => candidate.environmentId === resolvedThreadRef.environmentId,
+          ),
+          issue,
+        );
+        if (project === undefined) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        useRightPanelStore.getState().openIssue(resolvedThreadRef, issue.number);
+        return true;
+      }
       const reads = (environmentId: string) =>
         serverConfigs.get(environmentId as EnvironmentId)?.environment.capabilities.pullRequests ===
         true;

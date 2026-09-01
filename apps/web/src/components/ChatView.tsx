@@ -7111,6 +7111,9 @@ function ChatViewContent(props: ChatViewProps) {
           projectId={activeProject.id}
           projectTitle={activeProject.title}
           cwd={activeWorkspaceRoot}
+          openNumber={activeRightPanelSurface.openNumber}
+          openRequestId={activeRightPanelSurface.openRequestId}
+          composerDraftTarget={composerDraftTarget}
         />
       </Suspense>
     ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&

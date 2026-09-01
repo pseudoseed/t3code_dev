@@ -77,3 +77,53 @@ export function labelColor(color: string | null): string | undefined {
   const hex = color.trim().replace(/^#/u, "");
   return /^[0-9a-f]{3}$|^[0-9a-f]{6}$/iu.test(hex) ? `#${hex}` : undefined;
 }
+
+/**
+ * An issue as a block of context for the composer.
+ *
+ * The whole thing rather than a link: an agent handed a URL has to go and fetch it, and it
+ * cannot — the panel read it with the reader's own credentials. Comments are included because
+ * the argument in them is usually the part worth acting on, and the description alone often is
+ * not the current state of the question.
+ */
+export function issueContextForComposer(issue: {
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly state: string;
+  readonly repository: string;
+  readonly body: string;
+  readonly comments: ReadonlyArray<{
+    readonly author: { readonly login: string } | null;
+    readonly body: string;
+  }>;
+}): string {
+  const lines = [
+    `## ${issue.repository}#${issue.number}: ${issue.title}`,
+    "",
+    `State: ${issue.state}`,
+    `Link: ${issue.url}`,
+    "",
+    issue.body.trim().length > 0 ? issue.body.trim() : "_No description._",
+  ];
+  for (const comment of issue.comments) {
+    lines.push(
+      "",
+      `### Comment from ${comment.author?.login ?? "unknown"}`,
+      "",
+      comment.body.trim(),
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The composer's new contents once an issue is added.
+ *
+ * Appended rather than replacing: whatever was already typed is the reader's, and an issue is
+ * context for it rather than a substitute.
+ */
+export function appendIssueContext(prompt: string, context: string): string {
+  const existing = prompt.trimEnd();
+  return existing.length === 0 ? `${context}\n\n` : `${existing}\n\n${context}\n\n`;
+}

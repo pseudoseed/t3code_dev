@@ -4,10 +4,12 @@ import type {
   IssueListEntry,
   IssueListState,
   ProjectId,
+  ScopedThreadRef,
 } from "@t3tools/contracts";
 import { CircleCheck, CircleDot, Loader2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
+import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { cn } from "~/lib/utils";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -18,6 +20,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
   ISSUE_SORTS,
+  appendIssueContext,
+  issueContextForComposer,
   ISSUE_STATE_FILTERS,
   formatCommentCount,
   labelColor,
@@ -31,6 +35,12 @@ interface IssuesPanelProps {
   readonly projectId: ProjectId;
   readonly projectTitle: string;
   readonly cwd: string;
+  /** Set when a link in the transcript asked for one issue rather than the list. */
+  readonly openNumber?: number | undefined;
+  /** Moves on every link click, so the same issue reopens rather than being ignored. */
+  readonly openRequestId?: number | undefined;
+  /** Where "Add to thread" writes. Absent on a surface with no composer beside it. */
+  readonly composerDraftTarget?: ScopedThreadRef | DraftId | undefined;
 }
 
 /**
@@ -45,8 +55,16 @@ export function IssuesPanel(props: IssuesPanelProps) {
   const [sort, setSort] = useState<IssueSort>("recent");
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
-  const [openNumber, setOpenNumber] = useState<number | null>(null);
+  const [openNumber, setOpenNumber] = useState<number | null>(props.openNumber ?? null);
   const [composing, setComposing] = useState(false);
+  const [honouredRequestId, setHonouredRequestId] = useState(props.openRequestId ?? 0);
+
+  // A link in the transcript names an issue; the panel opens it, and opens it again if the same
+  // link is clicked after the reader has navigated away from it.
+  if (props.openRequestId !== undefined && props.openRequestId !== honouredRequestId) {
+    setHonouredRequestId(props.openRequestId);
+    setOpenNumber(props.openNumber ?? null);
+  }
 
   const listQuery = useEnvironmentQuery(
     issueEnvironment.list({
@@ -82,6 +100,7 @@ export function IssuesPanel(props: IssuesPanelProps) {
         repository={repository ?? result?.entries[0]?.repository ?? ""}
         number={openNumber}
         cwd={props.cwd}
+        composerDraftTarget={props.composerDraftTarget}
         onBack={() => setOpenNumber(null)}
         onChanged={listQuery.refresh}
       />
@@ -287,6 +306,7 @@ function IssueDetailView(props: {
   readonly repository: string;
   readonly number: number;
   readonly cwd: string;
+  readonly composerDraftTarget?: ScopedThreadRef | DraftId | undefined;
   readonly onBack: () => void;
   readonly onChanged: () => void;
 }) {
@@ -340,6 +360,22 @@ function IssueDetailView(props: {
         </Button>
         <span className="text-[11px] text-muted-foreground">#{props.number}</span>
         <div className="flex-1" />
+        {detail !== null && props.composerDraftTarget !== undefined ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              const store = useComposerDraftStore.getState();
+              const target = props.composerDraftTarget;
+              if (target === undefined) return;
+              const current = store.getComposerDraft(target)?.prompt ?? "";
+              store.setPrompt(target, appendIssueContext(current, issueContextForComposer(detail)));
+            }}
+          >
+            Add to thread
+          </Button>
+        ) : null}
         {detail?.capabilities.close && detail.viewerCanWrite ? (
           <Button
             variant="ghost"
