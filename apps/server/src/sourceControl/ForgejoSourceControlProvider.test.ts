@@ -13,6 +13,42 @@ describe("Forgejo discovery", () => {
     ]);
   });
 
+  it("parses a bare host, which is what a token login lists", () => {
+    // `fj auth add-token` stores no account name, so `fj auth list` prints the instance alone.
+    assert.deepStrictEqual(parseForgejoAuthHosts("git.example.org"), [
+      { account: null, host: "git.example.org" },
+    ]);
+  });
+
+  it("ignores the sentences `fj` prints when nothing is logged in", () => {
+    assert.deepStrictEqual(parseForgejoAuthHosts("No logins."), []);
+    assert.deepStrictEqual(
+      parseForgejoAuthHosts("Could not find keys file. Creating a new file.\nNo logins."),
+      [],
+    );
+  });
+
+  it("refines an unknown remote logged in with a token and no account", () => {
+    const refined = discovery.refineUnknownRemote!({
+      cwd: "/repo",
+      context: {
+        provider: { kind: "unknown", name: "git.example.org", baseUrl: "https://git.example.org" },
+        remoteName: "origin",
+        remoteUrl: "https://git.example.org/owner/repo",
+      },
+      auth: {
+        stdout: "git.example.org\n",
+        stderr: "",
+        exitCode: ChildProcessSpawner.ExitCode(0),
+      },
+    });
+    assert.deepStrictEqual(refined, {
+      kind: "forgejo",
+      name: "Forgejo",
+      baseUrl: "https://git.example.org",
+    });
+  });
+
   it("refines an unknown remote whose host is logged in", () => {
     const refined = discovery.refineUnknownRemote!({
       cwd: "/repo",

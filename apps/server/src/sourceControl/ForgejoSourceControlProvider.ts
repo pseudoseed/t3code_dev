@@ -54,14 +54,25 @@ function toChangeRequest(
   };
 }
 
+const FORGEJO_HOST = "[a-z0-9][a-z0-9.-]*(?::\\d+)?";
+/**
+ * `fj auth list` writes one line per instance, and names the account on it only when it knows
+ * one: a browser login records who signed in, while a token handed over with `fj auth add-token`
+ * records nothing but the token. Both forms are logins, so both are read.
+ */
+const FORGEJO_AUTH_LINE = new RegExp(`^(?:([^@\\s]+)@)?(${FORGEJO_HOST})$`, "iu");
+
 export function parseForgejoAuthHosts(
   output: string,
-): ReadonlyArray<{ readonly account: string; readonly host: string }> {
-  const entries: Array<{ account: string; host: string }> = [];
+): ReadonlyArray<{ readonly account: string | null; readonly host: string }> {
+  const entries: Array<{ account: string | null; host: string }> = [];
   for (const line of output.split(/\r?\n/)) {
-    const match = /^([^@\s]+)@([a-z0-9][a-z0-9.-]*(?::\d+)?)$/iu.exec(line.trim());
-    if (match?.[1] && match[2]) {
-      entries.push({ account: match[1], host: match[2].toLowerCase() });
+    const trimmed = line.trim();
+    // Forgejo hosts are domains; a bare word with no dot is one of `fj`'s own sentences.
+    if (!trimmed.includes(".")) continue;
+    const match = FORGEJO_AUTH_LINE.exec(trimmed);
+    if (match?.[2]) {
+      entries.push({ account: match[1] ?? null, host: match[2].toLowerCase() });
     }
   }
   return entries;
@@ -74,7 +85,8 @@ function parseForgejoAuth(input: SourceControlProviderDiscovery.SourceControlAut
   if (first) {
     return SourceControlProviderDiscovery.providerAuth({
       status: "authenticated",
-      account: first.account,
+      // A token login names no account, so the instance is what identifies the connection.
+      ...(first.account === null ? {} : { account: first.account }),
       host: first.host,
     });
   }
