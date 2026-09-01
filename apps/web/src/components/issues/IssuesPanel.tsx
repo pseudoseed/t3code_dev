@@ -9,7 +9,11 @@ import type {
 import { CircleCheck, CircleDot, Loader2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { toastManager } from "../ui/toast";
 import { cn } from "~/lib/utils";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -21,6 +25,7 @@ import { Input } from "../ui/input";
 import {
   ISSUE_SORTS,
   appendIssueContext,
+  issueBranchName,
   issueContextForComposer,
   ISSUE_STATE_FILTERS,
   formatCommentCount,
@@ -323,6 +328,8 @@ function IssueDetailView(props: {
   );
   const comment = useAtomCommand(issueEnvironment.comment, { reportFailure: true });
   const setState = useAtomCommand(issueEnvironment.setState, { reportFailure: true });
+  const newThread = useNewThreadHandler();
+  const [starting, setStarting] = useState(false);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<"comment" | "state" | null>(null);
 
@@ -352,14 +359,57 @@ function IssueDetailView(props: {
     if (result._tag === "Success") props.onChanged();
   }, [detail, pending, props, reference, setState]);
 
+  /**
+   * Opens a thread on this project, on a branch named for the issue, with the issue already in
+   * its composer. Nothing is sent: the reader reads what is there and decides.
+   */
+  const startWork = useCallback(async () => {
+    if (!detail || starting) return;
+    setStarting(true);
+    const opened = await newThread(scopeProjectRef(props.environmentId, props.projectId), {
+      branch: issueBranchName(detail),
+    }).then(
+      (result) => result,
+      () => null,
+    );
+    setStarting(false);
+    if (opened === null) {
+      toastManager.add({
+        type: "error",
+        title: "Could not open a thread",
+        description: "Try again from the project, or open a thread first.",
+      });
+      return;
+    }
+    const store = useComposerDraftStore.getState();
+    const current = store.getComposerDraft(opened.draftId)?.prompt ?? "";
+    store.setPrompt(opened.draftId, appendIssueContext(current, issueContextForComposer(detail)));
+    toastManager.add({
+      type: "success",
+      title: "Thread opened",
+      description: "The issue is in the composer. Read it over, then send.",
+    });
+  }, [detail, newThread, props.environmentId, props.projectId, starting]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/60 px-3 py-2">
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={props.onBack}>
           Back
         </Button>
         <span className="text-[11px] text-muted-foreground">#{props.number}</span>
         <div className="flex-1" />
+        {detail !== null ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={starting}
+            onClick={() => void startWork()}
+          >
+            {starting ? <Loader2 className="size-3 animate-spin" /> : "Start work"}
+          </Button>
+        ) : null}
         {detail !== null && props.composerDraftTarget !== undefined ? (
           <Button
             variant="ghost"

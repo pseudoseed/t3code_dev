@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   appendIssueContext,
+  issueBranchName,
   formatCommentCount,
   issueContextForComposer,
   labelColor,
@@ -140,5 +141,17 @@ describe("appendIssueContext", () => {
 
   it("does not lead with blank lines in an empty composer", () => {
     expect(appendIssueContext("   ", "## issue")).toBe("## issue\n\n");
+  });
+});
+
+describe("issueBranchName", () => {
+  it("leads with the number so branches sort and grep by issue", () => {
+    expect(issueBranchName({ number: 12, title: "Cache is never invalidated" })).toBe(
+      "issue-12-cache-is-never-invalidated",
+    );
+  });
+
+  it("falls back to the number alone when the title survives sanitising as nothing", () => {
+    expect(issueBranchName({ number: 7, title: "!!!" })).toBe("issue-7");
   });
 });

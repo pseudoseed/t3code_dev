@@ -47,14 +47,18 @@ export class IssueService extends Context.Service<
   IssueService,
   {
     readonly list: (input: IssueListInput) => Effect.Effect<IssueListResult, IssueError>;
+    /**
+     * `repository` is accepted and ignored: the project's own repository is authoritative, and
+     * a caller that does not know it may leave it out.
+     */
     readonly detail: (input: {
       readonly projectId: ProjectId;
-      readonly repository: string;
+      readonly repository?: string | undefined;
       readonly number: number;
     }) => Effect.Effect<IssueDetail, IssueError>;
     readonly comment: (input: {
       readonly projectId: ProjectId;
-      readonly repository: string;
+      readonly repository?: string | undefined;
       readonly number: number;
       readonly body: string;
     }) => Effect.Effect<void, IssueError>;
@@ -65,7 +69,7 @@ export class IssueService extends Context.Service<
     }) => Effect.Effect<IssueCreateResult, IssueError>;
     readonly setState: (input: {
       readonly projectId: ProjectId;
-      readonly repository: string;
+      readonly repository?: string | undefined;
       readonly number: number;
       readonly state: "open" | "closed";
     }) => Effect.Effect<void, IssueError>;

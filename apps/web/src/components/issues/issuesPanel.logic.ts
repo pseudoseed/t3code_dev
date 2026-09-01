@@ -1,3 +1,4 @@
+import { sanitizeBranchFragment } from "@t3tools/shared/git";
 import type { IssueListEntry, IssueListState } from "@t3tools/contracts";
 
 export const ISSUE_STATE_FILTERS: ReadonlyArray<{
@@ -126,4 +127,22 @@ export function issueContextForComposer(issue: {
 export function appendIssueContext(prompt: string, context: string): string {
   const existing = prompt.trimEnd();
   return existing.length === 0 ? `${context}\n\n` : `${existing}\n\n${context}\n\n`;
+}
+
+/**
+ * A branch for work on an issue: the number first so it sorts and greps by issue, then as much
+ * of the title as reads. The number alone would be unreadable in a branch list, and the title
+ * alone would collide the moment two issues are worded alike.
+ *
+ * A title that sanitises to nothing becomes the shared helper's own "update", which says less
+ * than the number already has, so it is dropped.
+ */
+export function issueBranchName(issue: {
+  readonly number: number;
+  readonly title: string;
+}): string {
+  const slug = sanitizeBranchFragment(issue.title);
+  return slug.length === 0 || slug === "update"
+    ? `issue-${issue.number}`
+    : `issue-${issue.number}-${slug}`;
 }
