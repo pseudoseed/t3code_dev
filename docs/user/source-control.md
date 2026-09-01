@@ -59,6 +59,20 @@ T3 Code works with the platforms your team already uses:
 - Works on GitHub, GitLab, Bitbucket, and Forgejo. Azure DevOps takes a new title and description;
   its comments stay read-only here, as they already were
 
+### Track Issues Beside Your Work
+
+Open the **Issues** tab in the right panel, next to Terminal, Files and Agents.
+
+- The list follows whichever project you are in, so there is nothing to pick
+- Filter by **Open**, **Closed**, or **All**
+- Search by title, label, or issue number. On GitHub and Forgejo the search runs on the host, so
+  it matches descriptions too
+- Open an issue to read it with its full conversation
+- Leave a comment, open a new issue, and close or reopen one, wherever your account has write
+  access. Where it does not, the controls stay hidden rather than failing when pressed
+
+Works on GitHub and on Forgejo or Gitea. Other providers show the tab as unsupported.
+
 ### Know Your Setup at a Glance
 
 The **Source Control settings** page shows you exactly what's connected:
