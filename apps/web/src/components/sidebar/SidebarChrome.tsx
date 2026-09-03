@@ -79,6 +79,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   );
 });
 
+/** Fork branding: set VITE_T3CODE_APP_NAME to replace the T3 mark with a name. */
+const BRAND_NAME = import.meta.env.VITE_T3CODE_APP_NAME?.trim() || null;
+
 function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   return (
     <Link
@@ -89,14 +92,14 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <T3Wordmark />
+      {BRAND_NAME ? null : <T3Wordmark />}
       <span
         className={cn(
           "-translate-y-px truncate text-sm font-medium tracking-tight",
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        Code
+        {BRAND_NAME ?? "Code"}
       </span>
     </Link>
   );

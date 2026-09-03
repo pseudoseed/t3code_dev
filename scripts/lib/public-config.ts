@@ -58,6 +58,15 @@ export function loadRepoEnv({
           VITE_CLERK_CLI_OAUTH_CLIENT_ID: config.clerkCliOAuthClientId,
         }
       : {}),
+    // Fork branding: exposed to the web bundle so the sidebar mark follows the
+    // same name the desktop and mobile apps use.
+    ...(localEnv.T3CODE_APP_NAME || rootEnv.T3CODE_APP_NAME || baseEnv.T3CODE_APP_NAME
+      ? {
+          VITE_T3CODE_APP_NAME: (localEnv.T3CODE_APP_NAME ??
+            rootEnv.T3CODE_APP_NAME ??
+            baseEnv.T3CODE_APP_NAME) as string,
+        }
+      : {}),
     ...(config.relayUrl
       ? {
           T3CODE_RELAY_URL: config.relayUrl,

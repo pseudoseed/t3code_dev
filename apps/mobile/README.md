@@ -190,11 +190,29 @@ One-time setup:
 Every upload needs a build number no earlier upload used. `ios.buildNumber` in `app.config.ts`
 carries it.
 
+The app name becomes the native project name, so a fork that sets
+`T3CODE_APP_NAME` builds `ios/<name>.xcworkspace` with a matching scheme rather than `T3Code`.
+Keep `/usr/bin` ahead of Homebrew on `PATH` for the export: Xcode's copy step passes Apple-only
+flags that Homebrew's rsync rejects.
+
 ```bash
 T3CODE_IOS_BUNDLE_ID=com.example.t3code \
 T3CODE_IOS_TEAM_ID=YOURTEAMID \
+T3CODE_IOS_BUILD_NUMBER=2 \
 APP_VARIANT=production EXPO_NO_GIT_STATUS=1 \
 vp exec expo prebuild --clean --platform ios
+
+cat > ExportOptions.plist <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>method</key><string>app-store-connect</string>
+    <key>teamID</key><string>YOURTEAMID</string>
+    <key>uploadSymbols</key><true/>
+  </dict>
+</plist>
+PLIST
 
 xcodebuild -workspace ios/T3Code.xcworkspace -scheme T3Code \
   -configuration Release -destination "generic/platform=iOS" \
@@ -209,19 +227,10 @@ xcrun altool --upload-app -f build/export/T3Code.ipa -t ios \
   --apiKey YOURKEYID --apiIssuer YOURISSUERID
 ```
 
-`ExportOptions.plist` selects the store distribution method:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>method</key><string>app-store-connect</string>
-    <key>teamID</key><string>YOURTEAMID</string>
-    <key>uploadSymbols</key><true/>
-  </dict>
-</plist>
-```
+Export needs an API key with **Admin** access. App Manager is enough to upload but not to create
+the distribution certificate, and `xcodebuild` reports that as `Cloud signing permission error`.
+Pass the key with `-authenticationKeyPath`, `-authenticationKeyID`, and `-authenticationKeyIssuerID`
+on both the export and the upload.
 
 Processing in App Store Connect takes a few minutes, after which the build appears in TestFlight and
 installs on any device signed in with an invited tester's Apple Account.

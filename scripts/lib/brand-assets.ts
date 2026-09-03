@@ -82,7 +82,16 @@ export function resolveWebIconOverrides(
   brand: WebAssetBrand,
   targetDirectory: string,
 ): ReadonlyArray<IconOverride> {
-  const sourcePaths = WEB_ICON_SOURCE_PATHS_BY_BRAND[brand];
+  // Fork branding. The apple touch icon is what the boot shell shows while the
+  // app loads, so pointing it at T3CODE_APP_ICON rebrands the loading screen.
+  // The favicons stay upstream's: they need .ico and small square crops that a
+  // single source PNG cannot supply without an image toolchain at build time.
+  // T3CODE_WEB_ICON exists so the web copy can be a small square rather than
+  // the 1024 source the app icons need.
+  const appIconOverride = (process.env.T3CODE_WEB_ICON ?? process.env.T3CODE_APP_ICON)?.trim();
+  const sourcePaths = appIconOverride
+    ? { ...WEB_ICON_SOURCE_PATHS_BY_BRAND[brand], appleTouchIconPng: appIconOverride }
+    : WEB_ICON_SOURCE_PATHS_BY_BRAND[brand];
   return [
     {
       sourceRelativePath: sourcePaths.faviconIco,

@@ -2084,6 +2084,17 @@ export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
+  // A PNG override covers macOS and Linux, which both take one. Windows needs
+  // a multi-resolution .ico, so it keeps the bundled artwork.
+  const iconOverride = process.env.T3CODE_APP_ICON?.trim();
+  if (iconOverride) {
+    return {
+      macIconPng: iconOverride,
+      linuxIconPng: iconOverride,
+      windowsIconIco: BRAND_ASSET_PATHS.productionWindowsIconIco,
+    };
+  }
+
   if (resolveDesktopUpdateChannel(version) === "nightly") {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
@@ -2116,7 +2127,15 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
   return `${trimmed.slice(0, versionSeparator)}/${trimmed.slice(versionSeparator + 1)}`;
 }
 
+/**
+ * Fork branding, shared with the mobile config: T3CODE_APP_NAME renames the
+ * app and T3CODE_APP_ICON replaces its artwork, both optional and both
+ * defaulting to the upstream values so a fork keeps its difference to one
+ * environment file rather than a rename across the tree.
+ */
 export function resolveDesktopProductName(version: string): string {
+  const override = process.env.T3CODE_APP_NAME?.trim();
+  if (override) return override;
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
     : (desktopPackageJson.productName ?? "T3 Code");

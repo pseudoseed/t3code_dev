@@ -21,6 +21,15 @@ const runtimeVersionPolicy =
 const iosBundleIdentifierOverride = (
   repoEnv.T3CODE_IOS_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
 )?.trim();
+// Fork branding. Both are optional and default to the upstream values, which
+// keeps the difference to these few lines rather than a rename spread across
+// every string in the file.
+const appNameOverride = repoEnv.T3CODE_APP_NAME?.trim();
+// Path to a 1024x1024 PNG, relative to the repository root.
+const appIconOverride = repoEnv.T3CODE_APP_ICON?.trim();
+// App Store Connect rejects a second upload that reuses a build number, so a
+// fork distributing its own TestFlight builds sets this per upload.
+const iosBuildNumberOverride = repoEnv.T3CODE_IOS_BUILD_NUMBER?.trim();
 // Optional. Xcode's automatic signing picks the sole available team when this
 // is unset, which is the common case for a free account.
 const iosTeamIdOverride = (
@@ -122,6 +131,7 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
 const iosBundleIdentifier = iosBundleIdentifierOverride ?? variant.iosBundleIdentifier;
+const overriddenAppIcon = appIconOverride ? fromRepoRoot(appIconOverride) : undefined;
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -180,7 +190,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 // family names without waiting for runtime font loading.
 
 const config: ExpoConfig = {
-  name: variant.appName,
+  name: appNameOverride ?? variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
@@ -192,7 +202,7 @@ const config: ExpoConfig = {
     policy: runtimeVersionPolicy,
   },
   orientation: "portrait",
-  icon: variant.assets.appIcon,
+  icon: overriddenAppIcon ?? variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
@@ -201,12 +211,13 @@ const config: ExpoConfig = {
     fallbackToCacheTimeout: 0,
   },
   ios: {
-    icon: variant.assets.iosIcon,
+    icon: overriddenAppIcon ?? variant.assets.iosIcon,
     supportsTablet: true,
     // Multitasking-capable iPad apps cannot rotate programmatically, so the
     // showcase capture build requires full screen (see infoPlist below).
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
+    ...(iosBuildNumberOverride ? { buildNumber: iosBuildNumberOverride } : {}),
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements). A Personal Team
@@ -255,7 +266,7 @@ const config: ExpoConfig = {
     },
   },
   android: {
-    icon: variant.assets.appIcon,
+    icon: overriddenAppIcon ?? variant.assets.appIcon,
     package: variant.androidPackage,
     adaptiveIcon: {
       backgroundColor: variant.assets.androidAdaptiveBackgroundColor,
@@ -268,7 +279,7 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: true,
   },
   web: {
-    favicon: variant.assets.appIcon,
+    favicon: overriddenAppIcon ?? variant.assets.appIcon,
   },
   plugins: [
     // FIRST on purpose: same-type mods run last-registered-first, so being
@@ -355,12 +366,12 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        image: variant.assets.splashIcon,
+        image: overriddenAppIcon ?? variant.assets.splashIcon,
         resizeMode: "contain",
         backgroundColor: "#ffffff",
         imageWidth: 220,
         dark: {
-          image: variant.assets.splashIcon,
+          image: overriddenAppIcon ?? variant.assets.splashIcon,
           backgroundColor: "#0a0a0a",
         },
       },
