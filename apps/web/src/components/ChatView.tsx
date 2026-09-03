@@ -1416,6 +1416,9 @@ function ChatViewContent(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
+  const composerSubagentModelByProvider = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.subagentModelByProvider ?? null,
+  );
   const composerHasUnsentContent = useComposerDraftStore((store) =>
     composerDraftHasUserContent(store.getComposerDraft(composerDraftTarget)),
   );
@@ -6093,6 +6096,13 @@ function ChatViewContent(props: ChatViewProps) {
       ctxSelectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL,
       ctxSelectedModelSelection.options,
     );
+    // A draft's subagent choice lives in the composer draft until the thread
+    // exists; creation is where it becomes thread state.
+    const draftSubagentModel =
+      composerSubagentModelByProvider?.[threadCreateModelSelection.instanceId] ?? null;
+    const threadCreateSubagentModelSelection = draftSubagentModel
+      ? createModelSelection(threadCreateModelSelection.instanceId, draftSubagentModel)
+      : null;
 
     let failure: AtomCommandResult<unknown, unknown> | null = null;
     // Auto-title from first message
@@ -6148,6 +6158,7 @@ function ChatViewContent(props: ChatViewProps) {
                       projectId: activeProject.id,
                       title,
                       modelSelection: threadCreateModelSelection,
+                      subagentModelSelection: threadCreateSubagentModelSelection,
                       runtimeMode,
                       interactionMode,
                       branch: activeThreadBranch,
@@ -6910,6 +6921,45 @@ function ChatViewContent(props: ChatViewProps) {
       settings,
     ],
   );
+  /**
+   * Persists the thread's subagent model straight away rather than deferring
+   * to the next send: the provider session is restarted around it, so the
+   * server needs the value before the next turn starts. Null clears the
+   * override back to inherit. Drafts have no thread to write to, so the
+   * composer hides the control until the thread exists.
+   */
+  const onSubagentModelSelect = useCallback(
+    (model: string | null) => {
+      if (!activeThread || !isServerThread) return;
+      const instanceId = activeThread.modelSelection.instanceId;
+      const resolvedModel =
+        model === null
+          ? null
+          : resolveAppModelSelectionForInstance(instanceId, settings, providerStatuses, model);
+      if (model !== null && !resolvedModel) {
+        scheduleComposerFocus();
+        return;
+      }
+      void updateThreadMetadata({
+        environmentId,
+        input: {
+          threadId: activeThread.id,
+          subagentModelSelection:
+            resolvedModel === null ? null : { instanceId, model: resolvedModel },
+        },
+      });
+      scheduleComposerFocus();
+    },
+    [
+      activeThread,
+      environmentId,
+      isServerThread,
+      providerStatuses,
+      scheduleComposerFocus,
+      settings,
+      updateThreadMetadata,
+    ],
+  );
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (canOverrideServerThreadEnvMode) {
@@ -7410,6 +7460,9 @@ function ChatViewContent(props: ChatViewProps) {
                               activeProject?.defaultModelSelection
                             }
                             activeThreadModelSelection={activeThread?.modelSelection}
+                            activeThreadSubagentModelSelection={
+                              activeThread?.subagentModelSelection
+                            }
                             activeContextWindow={activeContextWindow}
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}
@@ -7438,6 +7491,7 @@ function ChatViewContent(props: ChatViewProps) {
                               onChangeActivePendingUserInputCustomAnswer
                             }
                             onProviderModelSelect={onProviderModelSelect}
+                            onSubagentModelSelect={isServerThread ? onSubagentModelSelect : null}
                             getModelDisabledReason={getModelDisabledReason}
                             toggleInteractionMode={toggleInteractionMode}
                             handleRuntimeModeChange={handleRuntimeModeChange}

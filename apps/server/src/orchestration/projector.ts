@@ -293,6 +293,9 @@ export function projectEvent(
             projectId: payload.projectId,
             title: payload.title,
             modelSelection: payload.modelSelection,
+            ...(payload.subagentModelSelection !== undefined
+              ? { subagentModelSelection: payload.subagentModelSelection }
+              : {}),
             runtimeMode: payload.runtimeMode,
             interactionMode: payload.interactionMode,
             branch: payload.branch,
@@ -465,6 +468,9 @@ export function projectEvent(
               : {}),
             ...(payload.modelSelection !== undefined
               ? { modelSelection: payload.modelSelection }
+              : {}),
+            ...(payload.subagentModelSelection !== undefined
+              ? { subagentModelSelection: payload.subagentModelSelection }
               : {}),
             ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
             ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),

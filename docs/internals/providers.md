@@ -137,6 +137,30 @@ Provider output comes back as internal commands such as `thread.message.assistan
 `thread.session.set`, which clients observe through `orchestration.subscribeThread`. See
 [overview.md](./overview.md) for the command/event loop.
 
+## Subagent model overrides
+
+`OrchestrationThread.subagentModelSelection` holds the model a thread's subagents run on; null
+means inherit. Clients set it with `thread.meta.update` on an existing thread, or carry it on
+`thread.turn.start`'s `bootstrap.createThread` when the first message creates the thread (web keeps
+it in the composer draft store, mobile in the composer draft and the offline outbox). The decider
+rejects a selection whose
+`instanceId` differs from the thread's own, then clears a stranded selection when the thread's main
+model moves to another instance. Subagents run inside the session's process, so cross-provider
+selections are unrunnable by construction.
+
+Adapters translate it at session start, which is the only point either CLI reads it:
+
+- Claude sets `CLAUDE_CODE_SUBAGENT_MODEL` in the query environment to the resolved api model id.
+  Unset (or `inherit`) leaves the CLI inheriting the main loop's model. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`
+  is deliberately left unset so a `model` on the agent's own Task call still wins.
+- Codex sends `config: { subagent_model }` on `thread/start` and `thread/resume`, the same session
+  config layer `codex -c` writes.
+
+Neither CLI exposes a control request for changing it on a live session, so
+[`ProviderCommandReactor`][cmd] restarts the session when the thread's selection no longer matches
+`ProviderSession.subagentModel`, alongside the existing runtime-mode and cwd restart triggers. The
+selection is persisted on the session binding so a recovered session opens with the same override.
+
 ## Server-side workers
 
 Provider work flows through three queue-backed workers. All three are built with

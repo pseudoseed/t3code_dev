@@ -1,5 +1,6 @@
 import {
   EventId,
+  type ModelSelection,
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationReadModel,
@@ -29,6 +30,22 @@ import { projectEvent } from "./projector.ts";
 import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+/**
+ * Subagents run inside the provider process the thread is bound to, so a
+ * subagent selection pointing at another instance is unrunnable. Callers use
+ * this to drop a stale override instead of persisting one the adapters would
+ * have to second-guess.
+ */
+function sameInstanceSubagentSelection(
+  subagentModelSelection: ModelSelection | null | undefined,
+  modelSelection: ModelSelection,
+): ModelSelection | null {
+  if (subagentModelSelection == null) return null;
+  return subagentModelSelection.instanceId === modelSelection.instanceId
+    ? subagentModelSelection
+    : null;
+}
 
 /**
  * Blocked-on-you work derived from the thread's retained activities: an
@@ -343,6 +360,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           projectId: command.projectId,
           title: command.title,
           modelSelection: command.modelSelection,
+          subagentModelSelection: sameInstanceSubagentSelection(
+            command.subagentModelSelection,
+            command.modelSelection,
+          ),
           runtimeMode: command.runtimeMode,
           interactionMode: command.interactionMode,
           branch: command.branch,
@@ -780,6 +801,24 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         thread.branch !== command.expectedBranch
           ? thread.branch
           : command.branch;
+      const nextModelSelection = command.modelSelection ?? thread.modelSelection;
+      if (
+        command.subagentModelSelection != null &&
+        command.subagentModelSelection.instanceId !== nextModelSelection.instanceId
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Subagent model selection targets provider instance '${command.subagentModelSelection.instanceId}' but thread '${command.threadId}' runs on '${nextModelSelection.instanceId}'. Subagents run inside the thread's provider.`,
+        });
+      }
+      // A main-model switch to another instance strands the override on a
+      // provider this thread no longer runs; clear it rather than keep an
+      // unrunnable selection around.
+      const clearsStrandedSubagentSelection =
+        command.subagentModelSelection === undefined &&
+        command.modelSelection !== undefined &&
+        thread.subagentModelSelection != null &&
+        thread.subagentModelSelection.instanceId !== command.modelSelection.instanceId;
       const occurredAt = yield* nowIso;
       return {
         ...(yield* withEventBase({
@@ -808,6 +847,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.modelSelection !== undefined
             ? { modelSelection: command.modelSelection }
             : {}),
+          ...(command.subagentModelSelection !== undefined
+            ? { subagentModelSelection: command.subagentModelSelection }
+            : {}),
+          ...(clearsStrandedSubagentSelection ? { subagentModelSelection: null } : {}),
           ...(branch !== undefined ? { branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
           ...(command.linkedPullRequest !== undefined

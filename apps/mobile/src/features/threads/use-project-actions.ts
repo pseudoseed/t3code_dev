@@ -33,6 +33,8 @@ export function useCreateProjectThread() {
     async (input: {
       readonly project: EnvironmentProject;
       readonly modelSelection: ModelSelection;
+      /** Null means the new thread's subagents inherit its model. */
+      readonly subagentModelSelection: ModelSelection | null;
       readonly envMode: "local" | "worktree";
       readonly branch: string | null;
       readonly worktreePath: string | null;
@@ -123,6 +125,7 @@ export function useCreateProjectThread() {
           attachments: input.initialAttachments,
           uploadedAttachments: prepared.attachments,
           modelSelection: input.modelSelection,
+          subagentModelSelection: input.subagentModelSelection,
           runtimeMode: input.runtimeMode,
           interactionMode: input.interactionMode,
           workspaceMode: input.envMode,

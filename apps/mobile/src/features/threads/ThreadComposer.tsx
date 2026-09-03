@@ -126,6 +126,10 @@ export interface ThreadComposerProps {
   readonly onStopThread: () => void;
   readonly onSendMessage: () => Promise<MessageId | null>;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
+  /** Thread's subagent model override; null means subagents inherit its model. */
+  readonly subagentModelSelection: ModelSelection | null;
+  /** Null clears the override. Absent on surfaces without a server thread. */
+  readonly onUpdateSubagentModelSelection: ((model: string | null) => void) | null;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => void;
   readonly onReconnectEnvironment: () => void;
@@ -497,6 +501,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       optionDescriptors: providerOptionDescriptors,
       onUpdateOptionSelections: (options) =>
         props.onUpdateModelSelection({ ...currentModelSelection, options }),
+      subagentModel: props.subagentModelSelection,
+      onSelectSubagentModel: props.onUpdateSubagentModelSelection,
       runtimeMode: currentRuntimeMode,
       onUpdateRuntimeMode: props.onUpdateRuntimeMode,
     }),
@@ -504,7 +510,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       currentModelSelection,
       currentRuntimeMode,
       props.onUpdateModelSelection,
+      props.onUpdateSubagentModelSelection,
       props.onUpdateRuntimeMode,
+      props.subagentModelSelection,
       providerOptionDescriptors,
       settingsOwnerId,
       threadProviderGroups,

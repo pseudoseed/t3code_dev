@@ -117,6 +117,10 @@ Controls how assistant text reaches the thread timeline. In [the contracts][1], 
 
 A point-in-time view of state. The word is used in multiple layers, including orchestration, provider, and checkpointing. See [ProjectionSnapshotQuery.ts][10], [ProviderAdapter.ts][15], and [CheckpointStore.ts][19].
 
+#### Subagent model
+
+The model a thread's subagents run on, held as `subagentModelSelection` on the thread in [the orchestration contracts][1]. Null means inherit, where subagents run the thread's own model. It always names the thread's own provider instance because subagents run inside that session's process, and both CLIs read it only when a session opens, so a change restarts the session. See the [provider architecture][16] subagent model overrides section.
+
 #### Model manifest
 
 The per-driver list of current model slugs that decides which models land in the model picker's legacy section. Bundled at `apps/server/src/provider/model-manifest.json` and refreshed at runtime from the same file on `main`, so classification updates ship as commits instead of releases. See the [provider architecture][16] model manifest section.

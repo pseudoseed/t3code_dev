@@ -137,6 +137,7 @@ import {
 } from "../composerFooterLayout";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { SubagentModelMenuContent, SubagentModelPicker } from "./SubagentModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
@@ -674,6 +675,12 @@ export interface ChatComposerProps {
   providerStatuses: ServerProvider[];
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
+  /**
+   * Thread-level subagent model override. Null/undefined means subagents
+   * inherit the thread's model. Only server threads carry one: a draft has no
+   * thread to persist it on yet.
+   */
+  activeThreadSubagentModelSelection: ModelSelection | null | undefined;
 
   // Context window
   activeContextWindow: ContextWindowSnapshot | null;
@@ -715,6 +722,8 @@ export interface ChatComposerProps {
   ) => void;
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
+  /** Null clears the override so subagents inherit again. */
+  onSubagentModelSelect: ((model: string | null) => void) | null;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -772,6 +781,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerStatuses,
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
+    activeThreadSubagentModelSelection,
     activeContextWindow,
     compactDisabled,
     compactDisabledReason,
@@ -795,6 +805,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onPreviousActivePendingUserInputQuestion,
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
+    onSubagentModelSelect,
     getModelDisabledReason,
     toggleInteractionMode,
     handleRuntimeModeChange,
@@ -861,6 +872,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const isSendDisabled = sendDisabledReason !== null;
 
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
+  const setComposerDraftSubagentModel = useComposerDraftStore((store) => store.setSubagentModel);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const removeComposerDraftImage = useComposerDraftStore((store) => store.removeImage);
@@ -1189,6 +1201,48 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
   );
+
+  // Subagents run inside the session's own provider process, so the override
+  // only reads as set while the thread is still on that instance. A draft
+  // keeps its choice in the composer draft until the thread exists; a server
+  // thread reads the value the server persisted.
+  const draftSubagentModel = composerDraft?.subagentModelByProvider[selectedInstanceId] ?? null;
+  const subagentModelValue =
+    routeKind === "draft"
+      ? draftSubagentModel
+      : activeThreadSubagentModelSelection != null &&
+          activeThreadSubagentModelSelection.instanceId === selectedInstanceId
+        ? activeThreadSubagentModelSelection.model
+        : null;
+  const subagentModelOptions = useMemo(
+    () => modelOptionsByInstance.get(selectedInstanceId) ?? [],
+    [modelOptionsByInstance, selectedInstanceId],
+  );
+  const handleSubagentModelChange = useCallback(
+    (model: string | null) => {
+      if (routeKind === "draft") {
+        setComposerDraftSubagentModel(composerDraftTarget, selectedInstanceId, model);
+        return;
+      }
+      onSubagentModelSelect?.(model);
+    },
+    [
+      composerDraftTarget,
+      onSubagentModelSelect,
+      routeKind,
+      selectedInstanceId,
+      setComposerDraftSubagentModel,
+    ],
+  );
+  const subagentModelControlProps =
+    routeKind === "server" && onSubagentModelSelect === null
+      ? null
+      : {
+          instanceModels: subagentModelOptions,
+          value: subagentModelValue,
+          threadModelLabel: activeThreadModelDisplayName ?? selectedModelForPicker,
+          onChange: handleSubagentModelChange,
+        };
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -4152,6 +4206,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       runtimeMode={runtimeMode}
                       showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                       traitsMenuContent={providerTraitsMenuContent}
+                      subagentMenuContent={
+                        subagentModelControlProps ? (
+                          <SubagentModelMenuContent {...subagentModelControlProps} />
+                        ) : null
+                      }
                       onToggleInteractionMode={toggleInteractionMode}
                       onRuntimeModeChange={handleRuntimeModeChange}
                     />
@@ -4164,6 +4223,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             className="mx-0.5 hidden h-4 sm:block"
                           />
                           {providerTraitsPicker}
+                        </>
+                      ) : null}
+                      {subagentModelControlProps ? (
+                        <>
+                          <Separator
+                            orientation="vertical"
+                            className="mx-0.5 hidden h-4 sm:block"
+                          />
+                          <SubagentModelPicker {...subagentModelControlProps} />
                         </>
                       ) : null}
                       <ComposerFooterModeControls

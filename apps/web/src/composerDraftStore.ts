@@ -218,6 +218,9 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   // signature at runtime (Schema rejects the combination). Absence of
   // an entry already encodes "no selection for this instance".
   modelSelectionByProvider: Schema.optionalKey(Schema.Record(ProviderInstanceId, ModelSelection)),
+  // Subagent model per instance, keyed the same way, because subagents run
+  // inside the instance the thread is bound to. Absence means inherit.
+  subagentModelByProvider: Schema.optionalKey(Schema.Record(ProviderInstanceId, Schema.String)),
   activeProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
   // True only when a human picked this selection in the composer. Seeded
   // selections (project default / sticky) leave it unset so later seeds can
@@ -350,6 +353,13 @@ export interface ComposerThreadDraftState {
    * legacy kind-keyed drafts round-trip unchanged.
    */
   modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>>;
+  /**
+   * Model this draft's subagents run on, per instance. Absent means inherit,
+   * where subagents use the thread's own model. Keyed like
+   * `modelSelectionByProvider` because subagents run inside the instance the
+   * thread is bound to.
+   */
+  subagentModelByProvider: Partial<Record<ProviderInstanceId, string>>;
   /** Routing key of the last picked instance (see `modelSelectionByProvider`). */
   activeProvider: ProviderInstanceId | null;
   /**
@@ -533,6 +543,15 @@ interface ComposerDraftStoreState {
       replaceOptions?: boolean;
     },
   ) => void;
+  /**
+   * Sets the model this draft's subagents run on for one instance. Null
+   * clears it back to inherit.
+   */
+  setSubagentModel: (
+    threadRef: ComposerThreadTarget,
+    instanceId: ProviderInstanceId,
+    model: string | null,
+  ) => void;
   /** Replace the model options for one or more providers in the draft. */
   setModelOptions: (
     threadRef: ComposerThreadTarget,
@@ -689,6 +708,18 @@ function compactModelSelectionByProvider(
   return Object.fromEntries(entries) as DeepMutable<Record<ProviderInstanceId, ModelSelection>>;
 }
 
+function compactSubagentModelByProvider(
+  subagentModels: Partial<Record<ProviderInstanceId, string>>,
+): DeepMutable<Record<ProviderInstanceId, string>> {
+  const entries: Array<[string, string]> = [];
+  for (const [provider, model] of Object.entries(subagentModels)) {
+    if (model !== undefined) {
+      entries.push([provider, model]);
+    }
+  }
+  return Object.fromEntries(entries) as DeepMutable<Record<ProviderInstanceId, string>>;
+}
+
 const EMPTY_PERSISTED_DRAFT_STORE_STATE = Object.freeze<PersistedComposerDraftStoreState>({
   draftsByThreadKey: {},
   draftThreadsByThreadKey: {},
@@ -714,6 +745,9 @@ Object.freeze(EMPTY_PREVIEW_ANNOTATIONS);
 Object.freeze(EMPTY_REVIEW_COMMENTS);
 const EMPTY_MODEL_SELECTION_BY_PROVIDER: Partial<Record<ProviderDriverKind, ModelSelection>> =
   Object.freeze({});
+const EMPTY_SUBAGENT_MODEL_BY_PROVIDER: Partial<Record<ProviderInstanceId, string>> = Object.freeze(
+  {},
+);
 const EMPTY_COMPOSER_DRAFT_MODEL_STATE = Object.freeze<ComposerDraftModelState>({
   activeProvider: null,
   modelSelectionByProvider: EMPTY_MODEL_SELECTION_BY_PROVIDER,
@@ -730,6 +764,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   previewAnnotations: EMPTY_PREVIEW_ANNOTATIONS,
   reviewComments: EMPTY_REVIEW_COMMENTS,
   modelSelectionByProvider: EMPTY_MODEL_SELECTION_BY_PROVIDER,
+  subagentModelByProvider: EMPTY_SUBAGENT_MODEL_BY_PROVIDER,
   activeProvider: null,
   runtimeMode: null,
   interactionMode: null,
@@ -753,6 +788,7 @@ export function createEmptyThreadDraft(): ComposerThreadDraftState {
     previewAnnotations: [],
     reviewComments: [],
     modelSelectionByProvider: {},
+    subagentModelByProvider: {},
     activeProvider: null,
     runtimeMode: null,
     interactionMode: null,
@@ -847,6 +883,7 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     draft.previewAnnotations.length === 0 &&
     draft.reviewComments.length === 0 &&
     Object.keys(draft.modelSelectionByProvider).length === 0 &&
+    Object.keys(draft.subagentModelByProvider).length === 0 &&
     draft.activeProvider === null &&
     draft.runtimeMode === null &&
     draft.interactionMode === null
@@ -1857,6 +1894,7 @@ function normalizePersistedDraftsByThreadId(
     // If the draft already has the v3 shape, use it directly
     const legacyDraftCandidate = draftValue as LegacyPersistedComposerThreadDraftState;
     let modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>> = {};
+    let subagentModelByProvider: Partial<Record<ProviderInstanceId, string>> = {};
     let activeProvider: ProviderInstanceId | null = null;
     let modelSelectionExplicit: true | undefined = undefined;
 
@@ -1868,6 +1906,13 @@ function normalizePersistedDraftsByThreadId(
       modelSelectionByProvider = draftCandidate.modelSelectionByProvider as Partial<
         Record<ProviderInstanceId, ModelSelection>
       >;
+      // Absent on drafts written before subagent overrides existed, which
+      // read as inherit.
+      subagentModelByProvider =
+        draftCandidate.subagentModelByProvider &&
+        typeof draftCandidate.subagentModelByProvider === "object"
+          ? (draftCandidate.subagentModelByProvider as Partial<Record<ProviderInstanceId, string>>)
+          : {};
       activeProvider = normalizeProviderInstanceId(draftCandidate.activeProvider);
       modelSelectionExplicit = draftCandidate.modelSelectionExplicit === true ? true : undefined;
     } else {
@@ -1903,7 +1948,9 @@ function normalizePersistedDraftsByThreadId(
     }
 
     const hasModelData =
-      Object.keys(modelSelectionByProvider).length > 0 || activeProvider !== null;
+      Object.keys(modelSelectionByProvider).length > 0 ||
+      Object.keys(subagentModelByProvider).length > 0 ||
+      activeProvider !== null;
     if (
       promptCandidate.length === 0 &&
       attachments.length === 0 &&
@@ -1939,6 +1986,9 @@ function normalizePersistedDraftsByThreadId(
       ...(hasModelData
         ? {
             modelSelectionByProvider: compactModelSelectionByProvider(modelSelectionByProvider),
+            ...(Object.keys(subagentModelByProvider).length > 0
+              ? { subagentModelByProvider: compactSubagentModelByProvider(subagentModelByProvider) }
+              : {}),
             activeProvider,
             ...(modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
           }
@@ -1980,6 +2030,7 @@ function stripLegacyModelSeedsFromEmptyDraftSessions(
       const {
         activeProvider: _activeProvider,
         modelSelectionByProvider: _modelSelectionByProvider,
+        subagentModelByProvider: _subagentModelByProvider,
         modelSelectionExplicit: _modelSelectionExplicit,
         ...retained
       } = draft;
@@ -2035,7 +2086,9 @@ function partializeComposerDraftStoreState(
       continue;
     }
     const hasModelData =
-      Object.keys(draft.modelSelectionByProvider).length > 0 || draft.activeProvider !== null;
+      Object.keys(draft.modelSelectionByProvider).length > 0 ||
+      Object.keys(draft.subagentModelByProvider).length > 0 ||
+      draft.activeProvider !== null;
     if (
       draft.prompt.length === 0 &&
       draft.persistedAttachments.length === 0 &&
@@ -2119,6 +2172,13 @@ function partializeComposerDraftStoreState(
             modelSelectionByProvider: compactModelSelectionByProvider(
               draft.modelSelectionByProvider,
             ),
+            ...(Object.keys(draft.subagentModelByProvider).length > 0
+              ? {
+                  subagentModelByProvider: compactSubagentModelByProvider(
+                    draft.subagentModelByProvider,
+                  ),
+                }
+              : {}),
             activeProvider: draft.activeProvider,
             ...(draft.modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
           }
@@ -2383,6 +2443,7 @@ function toHydratedThreadDraft(
       persistedDraft.previewAnnotations?.map((annotation) => ({ ...annotation })) ?? [],
     reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
     modelSelectionByProvider,
+    subagentModelByProvider: { ...(persistedDraft.subagentModelByProvider ?? {}) },
     activeProvider,
     ...(persistedDraft.modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
     runtimeMode: persistedDraft.runtimeMode ?? null,
@@ -2954,6 +3015,39 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               modelSelectionByProvider: nextMap,
               activeProvider: nextActiveProvider,
               ...(opts?.explicit === true ? { modelSelectionExplicit: true as const } : {}),
+            };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        setSubagentModel: (threadRef, instanceId, model) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey];
+            if (!existing && model === null) {
+              return state;
+            }
+            const base = existing ?? createEmptyThreadDraft();
+            if ((base.subagentModelByProvider[instanceId] ?? null) === model) {
+              return state;
+            }
+            const nextMap = { ...base.subagentModelByProvider };
+            if (model === null) {
+              delete nextMap[instanceId];
+            } else {
+              nextMap[instanceId] = model;
+            }
+            const nextDraft: ComposerThreadDraftState = {
+              ...base,
+              subagentModelByProvider: nextMap,
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {

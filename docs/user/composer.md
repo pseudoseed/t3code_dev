@@ -52,6 +52,29 @@ On mobile, the model picker shows each OpenCode model's upstream provider, such 
 GitHub Copilot, or OpenCode Zen, beneath its name. Search by that provider name to narrow the list
 when starting a thread or changing an existing thread's model.
 
+## Subagent model
+
+Each thread chooses which model its subagents run on, separately from the model the thread itself
+uses. On web and desktop, the control sits next to the model picker in the composer footer and
+reads **Subagents: inherit** until you change it; when the footer is narrow it moves into the
+overflow menu. On mobile, it is the **Subagents** row in thread settings.
+
+Choices come from the same provider the thread already runs on, because subagents run inside that
+provider's process. A Claude thread cannot spawn a Codex subagent. Switching the thread to a
+different provider clears the choice back to inherit.
+
+**Inherit** means subagents use the thread's own model, which is what T3 Code did before this
+control existed. Any other choice becomes the default that subagents start on. An agent that names
+a model when it spawns a subagent still gets that model, so it can send one piece of work to a
+larger or smaller model when it needs to.
+
+Both Claude Code and Codex read the subagent model when a session starts, so a change applies from
+your next message rather than to work already running. The choice belongs to the thread and stays
+with it until you change it.
+
+New tasks carry the choice too. Pick it before you send the first message and the thread starts with
+it, including tasks queued offline on mobile, which keep it until they send.
+
 ## Images and videos in messages
 
 On web, desktop, and mobile, select a link to an image or video to open it inside T3 Code.

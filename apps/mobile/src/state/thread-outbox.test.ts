@@ -134,6 +134,25 @@ describe("thread outbox", () => {
     });
   });
 
+  it("carries a queued task's subagent model through the persisted schema", () => {
+    const message = {
+      ...queuedMessage({
+        messageId: "message-subagent",
+        createdAt: "2026-06-08T10:00:01.000Z",
+      }),
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5.4",
+      },
+      subagentModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5.4-mini",
+      },
+    } satisfies QueuedThreadMessage;
+
+    expect(decodeQueuedThreadMessage(encodeQueuedThreadMessage(message))).toEqual(message);
+  });
+
   it("compares model options as part of the queued settings change", () => {
     const base = {
       instanceId: ProviderInstanceId.make("codex"),

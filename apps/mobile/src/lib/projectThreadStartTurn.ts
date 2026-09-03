@@ -32,6 +32,8 @@ export interface ProjectThreadStartTurnSpec {
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly uploadedAttachments?: ReadonlyArray<UploadedMobileAttachment>;
   readonly modelSelection: ModelSelection;
+  /** Null means subagents inherit the new thread's model. */
+  readonly subagentModelSelection: ModelSelection | null;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly workspaceMode: "local" | "worktree";
@@ -72,6 +74,7 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
         projectId: spec.projectId,
         title,
         modelSelection: spec.modelSelection,
+        subagentModelSelection: spec.subagentModelSelection,
         runtimeMode: spec.runtimeMode,
         interactionMode: spec.interactionMode,
         branch: spec.branch,

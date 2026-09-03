@@ -82,6 +82,9 @@ export function applyThreadDetailEvent(
           projectId: event.payload.projectId,
           title: event.payload.title,
           modelSelection: event.payload.modelSelection,
+          ...(event.payload.subagentModelSelection !== undefined
+            ? { subagentModelSelection: event.payload.subagentModelSelection }
+            : {}),
           runtimeMode: event.payload.runtimeMode,
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
@@ -221,6 +224,9 @@ export function applyThreadDetailEvent(
             : {}),
           ...(event.payload.modelSelection !== undefined
             ? { modelSelection: event.payload.modelSelection }
+            : {}),
+          ...(event.payload.subagentModelSelection !== undefined
+            ? { subagentModelSelection: event.payload.subagentModelSelection }
             : {}),
           ...(event.payload.branch !== undefined ? { branch: event.payload.branch } : {}),
           ...(event.payload.worktreePath !== undefined

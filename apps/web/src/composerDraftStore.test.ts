@@ -304,6 +304,53 @@ describe("composerDraftStore clearComposerContent", () => {
   });
 });
 
+describe("composerDraftStore subagent model", () => {
+  const threadId = ThreadId.make("thread-subagent");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+  const instanceId = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("keeps a draft's subagent model through a persist and hydrate round trip", () => {
+    const store = useComposerDraftStore.getState();
+    store.setModelSelection(
+      threadRef,
+      modelSelection(ProviderDriverKind.make("claudeAgent"), "claude-opus-5"),
+    );
+    store.setSubagentModel(threadRef, instanceId, "claude-haiku-4-5");
+
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const options = persistApi.getOptions();
+    const persisted = options.partialize(useComposerDraftStore.getState());
+    const hydrated = options.merge(persisted, useComposerDraftStore.getState());
+
+    expect(
+      hydrated.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]
+        ?.subagentModelByProvider[instanceId],
+    ).toBe("claude-haiku-4-5");
+  });
+
+  it("clears the draft's subagent model back to inherit", () => {
+    const store = useComposerDraftStore.getState();
+    store.setSubagentModel(threadRef, instanceId, "claude-haiku-4-5");
+    store.setSubagentModel(threadRef, instanceId, null);
+
+    expect(
+      draftFor(threadId, TEST_ENVIRONMENT_ID)?.subagentModelByProvider[instanceId],
+    ).toBeUndefined();
+  });
+});
+
 describe("composerDraftStore file attachments", () => {
   const threadId = ThreadId.make("thread-files");
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);

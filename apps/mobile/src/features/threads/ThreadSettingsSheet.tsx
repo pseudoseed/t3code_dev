@@ -297,7 +297,8 @@ function SwitchRow(props: {
 
 type ThreadSettingsSubmenuPage =
   | { readonly kind: "descriptor"; readonly id: string }
-  | { readonly kind: "runtime" };
+  | { readonly kind: "runtime" }
+  | { readonly kind: "subagent" };
 
 type ThreadSettingsSessionProps = {
   readonly environmentId: EnvironmentId | null;
@@ -306,6 +307,10 @@ type ThreadSettingsSessionProps = {
   readonly onSelectModel: (option: ModelOption) => void;
   readonly optionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly onUpdateOptionSelections: (selections: ReadonlyArray<ProviderOptionSelection>) => void;
+  /** Thread's subagent model override; null means subagents inherit its model. */
+  readonly subagentModel: ModelSelection | null;
+  /** Null clears the override back to inherit. */
+  readonly onSelectSubagentModel: ((model: string | null) => void) | null;
   readonly runtimeMode: RuntimeMode;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
 };
@@ -356,6 +361,9 @@ type ThreadSettingsSessionValue = {
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly runtimeMode: RuntimeMode;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  readonly subagentModel: ModelSelection | null;
+  readonly subagentModelOptions: ReadonlyArray<ModelOption>;
+  readonly onSelectSubagentModel: ((model: string | null) => void) | null;
   readonly displayedDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly providerExpansionOverrides: ReadonlySet<string>;
   readonly hasLegacyModels: boolean;
@@ -469,12 +477,25 @@ function ThreadSettingsSessionProvider(
     [isApplied],
   );
 
+  // Subagents run inside the thread's own provider process, so the choices
+  // are exactly that instance's models.
+  const subagentModelOptions = useMemo(
+    () =>
+      props.providerGroups
+        .filter((group) => group.providerKey === props.selectedModel?.instanceId)
+        .flatMap((group) => group.models),
+    [props.providerGroups, props.selectedModel?.instanceId],
+  );
+
   const value = useMemo<ThreadSettingsSessionValue>(
     () => ({
       environmentId: props.environmentId,
       providerGroups: props.providerGroups,
       runtimeMode: props.runtimeMode,
       onUpdateRuntimeMode: props.onUpdateRuntimeMode,
+      subagentModel: props.subagentModel,
+      subagentModelOptions,
+      onSelectSubagentModel: props.onSelectSubagentModel,
       displayedDescriptors,
       providerExpansionOverrides,
       hasLegacyModels,
@@ -504,10 +525,13 @@ function ThreadSettingsSessionProvider(
       pendingModel,
       pressModel,
       providerFilter,
+      props.onSelectSubagentModel,
       props.onUpdateRuntimeMode,
       props.providerGroups,
       props.runtimeMode,
+      props.subagentModel,
       searchQuery,
+      subagentModelOptions,
       showLegacyToggle,
       toggleProvider,
     ],
@@ -726,6 +750,15 @@ function ThreadSettingsOptionsItem(props: {
             </Animated.View>
           );
         })}
+        {session.onSelectSubagentModel ? (
+          <Animated.View layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}>
+            <DisclosureRow
+              label="Subagents"
+              value={subagentModelRowValue(session)}
+              onPress={() => props.onOpenSubmenu({ kind: "subagent" })}
+            />
+          </Animated.View>
+        ) : null}
         <Animated.View layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}>
           <DisclosureRow
             isLast
@@ -862,6 +895,18 @@ function ThreadSettingsMainContent(props: {
   );
 }
 
+/** Label for the subagent row: the chosen model, or what inherit resolves to. */
+function subagentModelRowValue(session: {
+  readonly subagentModel: ModelSelection | null;
+  readonly subagentModelOptions: ReadonlyArray<ModelOption>;
+}): string {
+  if (session.subagentModel === null) return "Inherit";
+  const match = session.subagentModelOptions.find(
+    (option) => option.selection.model === session.subagentModel?.model,
+  );
+  return match?.label ?? session.subagentModel.model;
+}
+
 /** Compact choice page pushed by the picker navigator. */
 function ThreadSettingsChoiceContent(props: {
   readonly submenu: ThreadSettingsSubmenuPage;
@@ -878,8 +923,39 @@ function ThreadSettingsChoiceContent(props: {
         )
       : undefined;
 
-  const submenuContent =
-    props.submenu.kind === "runtime"
+  const subagentContent =
+    props.submenu.kind === "subagent" && session.onSelectSubagentModel
+      ? {
+          rows: [
+            {
+              id: "inherit",
+              label: "Inherit",
+              description: "Same model as the thread",
+              selected: session.subagentModel === null,
+              onPress: () => {
+                void Haptics.selectionAsync();
+                session.onSelectSubagentModel?.(null);
+                props.onSelected();
+              },
+            },
+            ...session.subagentModelOptions.map((option) => ({
+              id: option.key,
+              label: option.label,
+              description: undefined as string | undefined,
+              selected: session.subagentModel?.model === option.selection.model,
+              onPress: () => {
+                void Haptics.selectionAsync();
+                session.onSelectSubagentModel?.(option.selection.model);
+                props.onSelected();
+              },
+            })),
+          ],
+        }
+      : null;
+
+  const submenuContent = subagentContent
+    ? subagentContent
+    : props.submenu.kind === "runtime"
       ? {
           rows: RUNTIME_MODE_CHOICES.map((choice) => ({
             id: choice.mode,
@@ -1090,9 +1166,11 @@ function ThreadSettingsModelsScreen() {
           const title =
             submenu.kind === "runtime"
               ? "Runtime"
-              : (session.displayedDescriptors.find(
-                  (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
-                )?.label ?? "Option");
+              : submenu.kind === "subagent"
+                ? "Subagent model"
+                : (session.displayedDescriptors.find(
+                    (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
+                  )?.label ?? "Option");
           navigation.navigate("ThreadSettingsChoice", { ...submenu, title });
         }}
       />
@@ -1277,6 +1355,8 @@ export function NewTaskThreadSettingsRouteScreen() {
       onSelectModel={(option) => flow.setSelectedModelKey(option.key, option.selection.options)}
       optionDescriptors={optionDescriptors}
       onUpdateOptionSelections={flow.setSelectedModelOptions}
+      subagentModel={flow.subagentModelSelection}
+      onSelectSubagentModel={flow.setSubagentModel}
       runtimeMode={flow.runtimeMode}
       onUpdateRuntimeMode={flow.setRuntimeMode}
     >

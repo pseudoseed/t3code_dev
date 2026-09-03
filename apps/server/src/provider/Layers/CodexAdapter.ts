@@ -1699,6 +1699,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(input.modelSelection?.instanceId === boundInstanceId
             ? { model: input.modelSelection.model }
             : {}),
+          // Subagents run inside this session's process, so an override aimed
+          // at another instance is unrunnable and is ignored here.
+          ...(input.subagentModelSelection?.instanceId === boundInstanceId
+            ? { subagentModel: input.subagentModelSelection.model }
+            : {}),
           ...(serviceTier ? { serviceTier } : {}),
           ...(mcpSession
             ? {

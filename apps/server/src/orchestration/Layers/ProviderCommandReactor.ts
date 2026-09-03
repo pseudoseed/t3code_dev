@@ -657,6 +657,14 @@ const make = Effect.gen(function* () {
       projects: project ? [project] : [],
     });
 
+    // Subagents run inside the session's own provider process, so an override
+    // left over from another instance is unrunnable and reads as "inherit".
+    const desiredSubagentModelSelection =
+      thread.subagentModelSelection != null &&
+      thread.subagentModelSelection.instanceId === desiredInstanceId
+        ? thread.subagentModelSelection
+        : null;
+
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
       readonly provider?: ProviderDriverKind;
@@ -668,6 +676,7 @@ const make = Effect.gen(function* () {
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
         ...(thread.title ? { title: thread.title } : {}),
         modelSelection: desiredModelSelection,
+        subagentModelSelection: desiredSubagentModelSelection,
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         runtimeMode: desiredRuntimeMode,
       });
@@ -720,13 +729,19 @@ const make = Effect.gen(function* () {
         preferredProvider === "claudeAgent" &&
         requestedModelSelection !== undefined &&
         !Equal.equals(previousModelSelection, requestedModelSelection);
+      // Both CLIs read the subagent model when the session opens (Claude from
+      // its environment, Codex from session config) and neither exposes a way
+      // to change it on a live session, so the change lands by restarting.
+      const subagentModelChanged =
+        (activeSession?.subagentModel ?? null) !== (desiredSubagentModelSelection?.model ?? null);
 
       if (
         !runtimeModeChanged &&
         !cwdChanged &&
         !instanceChanged &&
         !shouldRestartForModelChange &&
-        !shouldRestartForModelSelectionChange
+        !shouldRestartForModelSelectionChange &&
+        !subagentModelChanged
       ) {
         return existingSessionThreadId;
       }
@@ -751,6 +766,9 @@ const make = Effect.gen(function* () {
         instanceChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
+        subagentModelChanged,
+        currentSubagentModel: activeSession?.subagentModel,
+        desiredSubagentModel: desiredSubagentModelSelection?.model,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(

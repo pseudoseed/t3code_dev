@@ -482,6 +482,33 @@ function selectedClaudeContextWindow(
   return resolveClaudeCatalogContextWindowTokens(catalog, modelSelection);
 }
 
+/**
+ * Claude Code reads the subagent model from the environment when the CLI
+ * starts: unset (or the literal "inherit") means subagents run on the main
+ * loop's model. It stays a default rather than a cap, so a `model` on the
+ * agent's own Task call still wins.
+ */
+const CLAUDE_SUBAGENT_MODEL_ENV = "CLAUDE_CODE_SUBAGENT_MODEL";
+
+/**
+ * Resolves the thread's subagent override to the id the CLI expects, or
+ * undefined for inherit. Selections aimed at another provider instance are
+ * ignored: subagents run inside this session's process, so only this
+ * instance's catalog is reachable.
+ */
+function resolveClaudeSubagentApiModelId(
+  catalog: ClaudeModelCatalog,
+  subagentModelSelection: ModelSelection | null | undefined,
+  boundInstanceId: ProviderInstanceId,
+): string | undefined {
+  if (subagentModelSelection == null) return undefined;
+  if (subagentModelSelection.instanceId !== boundInstanceId) return undefined;
+  return resolveClaudeCatalogApiModelId(catalog, {
+    ...subagentModelSelection,
+    model: resolveClaudeModelSlug(catalog, subagentModelSelection.model),
+  });
+}
+
 function finiteNonNegativeInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? Math.round(value)
@@ -4250,6 +4277,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             model: resolveClaudeModelSlug(modelCatalog, selectedModel.model),
           }
         : undefined;
+      const subagentApiModelId = resolveClaudeSubagentApiModelId(
+        modelCatalog,
+        input.subagentModelSelection,
+        boundInstanceId,
+      );
       const caps = getClaudeCatalogModelCapabilities(modelCatalog, modelSelection?.model);
       const descriptors = getProviderOptionDescriptors({ caps });
       const apiModelId = modelSelection
@@ -4324,7 +4356,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         canUseTool,
         onUserDialog,
         supportedDialogKinds: ["resume_return"],
-        env: claudeEnvironment,
+        env: subagentApiModelId
+          ? { ...claudeEnvironment, [CLAUDE_SUBAGENT_MODEL_ENV]: subagentApiModelId }
+          : claudeEnvironment,
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
         ...(mcpSession
@@ -4390,6 +4424,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         runtimeMode: input.runtimeMode,
         ...(input.cwd ? { cwd: input.cwd } : {}),
         ...(modelSelection?.model ? { model: modelSelection.model } : {}),
+        ...(input.subagentModelSelection?.instanceId === boundInstanceId
+          ? { subagentModel: input.subagentModelSelection.model }
+          : {}),
         ...(threadId ? { threadId } : {}),
         resumeCursor: {
           ...(threadId ? { threadId } : {}),

@@ -107,6 +107,9 @@ export function useThreadComposerState() {
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
+  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -460,6 +463,29 @@ export function useThreadComposerState() {
     [selectedThreadKey],
   );
 
+  /**
+   * Written straight to the thread instead of the composer draft: the server
+   * restarts the provider session around this value, so it has to be there
+   * before the next turn rather than riding along with the send. Null clears
+   * the override back to inherit.
+   */
+  const onUpdateSubagentModelSelection = useCallback(
+    (model: string | null) => {
+      if (!selectedThread || !selectedThreadShell) {
+        return;
+      }
+      const instanceId = selectedThread.modelSelection.instanceId;
+      void updateThreadMetadata({
+        environmentId: selectedThreadShell.environmentId,
+        input: {
+          threadId: selectedThread.id,
+          subagentModelSelection: model === null ? null : { instanceId, model },
+        },
+      });
+    },
+    [selectedThread, selectedThreadShell, updateThreadMetadata],
+  );
+
   const onUpdateRuntimeMode = useCallback(
     (value: RuntimeMode) => {
       if (!selectedThreadKey) {
@@ -497,6 +523,8 @@ export function useThreadComposerState() {
     onRemoveDraftImage,
     onSendMessage,
     onUpdateModelSelection,
+    onUpdateSubagentModelSelection,
+    subagentModelSelection: selectedThread?.subagentModelSelection ?? null,
     onUpdateRuntimeMode,
     onUpdateInteractionMode,
   };

@@ -822,6 +822,7 @@ export function useThreadOutboxDrain(): void {
           attachments: queuedMessage.attachments,
           uploadedAttachments: prepared.attachments,
           modelSelection,
+          subagentModelSelection: queuedMessage.subagentModelSelection ?? null,
           runtimeMode: queuedMessage.runtimeMode ?? DEFAULT_RUNTIME_MODE,
           interactionMode: queuedMessage.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
           workspaceMode: creation.workspaceMode,

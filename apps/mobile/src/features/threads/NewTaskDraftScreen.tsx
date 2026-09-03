@@ -959,6 +959,11 @@ export function NewTaskDraftScreen(props: {
     const result = await createProjectThread({
       project: selectedProject,
       modelSelection,
+      // Only carry a choice that still belongs to the model being sent.
+      subagentModelSelection:
+        draft.subagentModelSelection?.instanceId === modelSelection.instanceId
+          ? draft.subagentModelSelection
+          : null,
       envMode: workspaceMode,
       branch: creationBranch,
       worktreePath: workspaceMode === "worktree" ? null : selectedWorktreePath,

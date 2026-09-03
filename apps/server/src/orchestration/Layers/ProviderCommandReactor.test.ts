@@ -187,6 +187,12 @@ describe("ProviderCommandReactor", () => {
         typeof input === "object" && input !== null && "modelSelection" in input
           ? (input.modelSelection as ModelSelection | undefined)
           : undefined;
+      // Mirrors both real adapters: the session records the subagent model it
+      // opened with, which is what the reactor diffs to decide on a restart.
+      const inputSubagentModelSelection =
+        typeof input === "object" && input !== null && "subagentModelSelection" in input
+          ? (input.subagentModelSelection as ModelSelection | null | undefined)
+          : undefined;
       const providerInstanceId =
         typeof input === "object" && input !== null && "providerInstanceId" in input
           ? (input.providerInstanceId as ProviderInstanceId | undefined)
@@ -218,6 +224,9 @@ describe("ProviderCommandReactor", () => {
         ...((inputModelSelection?.model ?? modelSelection.model)
           ? { model: inputModelSelection?.model ?? modelSelection.model }
           : {}),
+        ...(inputSubagentModelSelection
+          ? { subagentModel: inputSubagentModelSelection.model }
+          : {}),
         threadId,
         resumeCursor: resumeCursor ?? { opaque: `resume-${sessionIndex}` },
         createdAt: now,
@@ -226,6 +235,15 @@ describe("ProviderCommandReactor", () => {
       return (startSessionEffect?.(session) ?? Effect.succeed(session)).pipe(
         Effect.tap((startedSession) =>
           Effect.sync(() => {
+            // Real adapters key sessions by thread, so a restart replaces the
+            // thread's session rather than leaving the old one listed.
+            const existingIndex = runtimeSessions.findIndex(
+              (candidate) => candidate.threadId === startedSession.threadId,
+            );
+            if (existingIndex >= 0) {
+              runtimeSessions.splice(existingIndex, 1, startedSession);
+              return;
+            }
             runtimeSessions.push(startedSession);
           }),
         ),
@@ -2184,6 +2202,62 @@ describe("ProviderCommandReactor", () => {
         [{ id: "effort", value: "max" }],
       ),
     });
+  });
+
+  it("restarts the session when the thread's subagent model changes, and only then", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const dispatch = (command: Parameters<typeof harness.engine.dispatch>[0]) =>
+      harness.runEffect(harness.engine.dispatch(command));
+    const turnStart = (index: number) =>
+      ({
+        type: "thread.turn.start",
+        commandId: CommandId.make(`cmd-turn-start-subagent-${index}`),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId(`user-message-subagent-${index}`),
+          role: "user",
+          text: `turn ${index}`,
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "full-access",
+        createdAt: now,
+      }) as const;
+
+    await dispatch(turnStart(1));
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      subagentModelSelection: null,
+    });
+
+    await dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-set-subagent-model"),
+      threadId: ThreadId.make("thread-1"),
+      subagentModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5-codex-mini",
+      },
+    });
+    await dispatch(turnStart(2));
+
+    await waitFor(() => harness.startSession.mock.calls.length === 2);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+    expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+      subagentModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5-codex-mini",
+      },
+    });
+
+    // The restarted session carries the override, so a further turn reuses it.
+    await dispatch(turnStart(3));
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 3);
+    expect(harness.startSession.mock.calls.length).toBe(2);
   });
 
   it("restarts the provider session when runtime mode is updated on the thread", async () => {

@@ -160,6 +160,9 @@ type NewTaskFlowContextValue = {
   readonly modelOptions: ReadonlyArray<ModelOption>;
   readonly selectedModel: ModelSelection | null;
   readonly selectedModelOption: ModelOption | null;
+  /** Null means the new thread's subagents inherit its model. */
+  readonly subagentModelSelection: ModelSelection | null;
+  readonly setSubagentModel: (model: string | null) => void;
   readonly selectedProviderStatus: ServerProvider | null;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly filteredBranches: ReadonlyArray<VcsRef>;
@@ -490,6 +493,26 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       setStickyComposerModelSelection(selection);
     },
     [modelOptions, selectedProjectDraftKey],
+  );
+  // Subagents run inside the instance the thread is bound to, so a stored
+  // choice only counts while the draft is still on that instance.
+  const draftSubagentModelSelection = selectedProjectDraft.subagentModelSelection ?? null;
+  const subagentModelSelection =
+    draftSubagentModelSelection &&
+    draftSubagentModelSelection.instanceId === selectedModel?.instanceId
+      ? draftSubagentModelSelection
+      : null;
+  const setSubagentModel = useCallback(
+    (model: string | null) => {
+      if (!selectedProjectDraftKey || !selectedModel) {
+        return;
+      }
+      updateComposerDraftSettings(selectedProjectDraftKey, {
+        subagentModelSelection:
+          model === null ? undefined : { instanceId: selectedModel.instanceId, model },
+      });
+    },
+    [selectedModel, selectedProjectDraftKey],
   );
   const setSelectedModelOptions = useCallback(
     (options: ReadonlyArray<ProviderOptionSelection> | undefined) => {
@@ -892,6 +915,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         text,
         attachments: draft.attachments,
         modelSelection: draftModelSelection,
+        // Same instance gate as the model itself: a choice left over from
+        // another provider cannot run.
+        ...(draft.subagentModelSelection?.instanceId === draftModelSelection.instanceId
+          ? { subagentModelSelection: draft.subagentModelSelection }
+          : {}),
         runtimeMode: draft.runtimeMode ?? DEFAULT_RUNTIME_MODE,
         interactionMode: resolvePendingTaskInteractionMode({
           preferenceLoaded: planModePreferenceLoaded,
@@ -1042,6 +1070,8 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedEnvironmentId,
       selectedProjectKey,
       selectedModelKey,
+      subagentModelSelection,
+      setSubagentModel,
       workspaceMode,
       selectedBranchName,
       selectedWorktreePath,
@@ -1128,6 +1158,8 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedModel,
       selectedModelKey,
       selectedModelOption,
+      setSubagentModel,
+      subagentModelSelection,
       selectedProjectDraftKey,
       selectedProviderStatus,
       setSelectedModelOptions,

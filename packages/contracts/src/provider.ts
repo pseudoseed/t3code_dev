@@ -41,6 +41,13 @@ export const ProviderSession = Schema.Struct({
   runtimeMode: RuntimeMode,
   cwd: Schema.optional(TrimmedNonEmptyString),
   model: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * Model the running session spawns subagents on. Absent means the session
+   * inherits, which is what every adapter does without an override. Fixed for
+   * the life of the process: both CLIs read it when the session opens, so a
+   * change restarts the session (ProviderCommandReactor).
+   */
+  subagentModel: Schema.optional(TrimmedNonEmptyString),
   threadId: ThreadId,
   resumeCursor: Schema.optional(Schema.Unknown),
   activeTurnId: Schema.optional(TurnId),
@@ -58,6 +65,7 @@ export const ProviderSessionStartInput = Schema.Struct({
   cwd: Schema.optional(TrimmedNonEmptyString),
   title: Schema.optional(TrimmedNonEmptyString),
   modelSelection: Schema.optional(ModelSelection),
+  subagentModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   resumeCursor: Schema.optional(Schema.Unknown),
   approvalPolicy: Schema.optional(ProviderApprovalPolicy),
   sandboxMode: Schema.optional(ProviderSandboxMode),
