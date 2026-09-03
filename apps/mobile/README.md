@@ -75,6 +75,59 @@ T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
 vp run ios:release
 ```
 
+### Installing a Personal Team build on your own iPad
+
+`expo run:ios` targets a simulator by default. Pass `--device` with the device's hardware UDID from
+`xcrun xctrace list devices` (not the CoreDevice identifier `devicectl` prints). The iPad must be
+unlocked, trusted, and in Developer Mode (**Settings → Privacy & Security → Developer Mode**).
+
+The first build on a new bundle identifier needs a provisioning profile that does not exist yet.
+`expo run:ios` cannot pass `-allowProvisioningUpdates`, so create the profile once with xcodebuild
+after prebuilding:
+
+```bash
+T3CODE_IOS_PERSONAL_TEAM=1 \
+T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
+APP_VARIANT=production EXPO_NO_GIT_STATUS=1 \
+vp exec expo prebuild --clean --platform ios
+
+xcodebuild -workspace ios/T3Code.xcworkspace -scheme T3Code \
+  -configuration Release -destination "id=<hardware-udid>" \
+  -allowProvisioningUpdates build
+```
+
+Set `T3CODE_IOS_PERSONAL_TEAM_ID` to your team id (`security find-identity -v -p codesigning`
+prints it) when Xcode holds more than one team. With a single team, leave it unset and automatic
+signing picks it.
+
+Later builds reuse that profile, so the short command works:
+
+```bash
+T3CODE_IOS_PERSONAL_TEAM=1 \
+T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
+vp run ios:release --device <hardware-udid>
+```
+
+The first install of a given certificate will not launch until you trust it on the device:
+**Settings → General → VPN & Device Management → Developer App → trust your name**. Until you do,
+iOS reports "invalid code signature, inadequate entitlements or its profile has not been explicitly
+trusted by the user".
+
+Personal Team constraints that decide how often you repeat that command:
+
+- Provisioning profiles last 7 days. After that the app refuses to launch until you rebuild and
+  reinstall; nothing on the device is lost, and the app's data survives the reinstall. Renewing the
+  profile needs the `-allowProvisioningUpdates` build above again.
+- Apple allows 10 App IDs per 7 days and 3 apps installed per device at a time on a free account.
+  Keep one bundle identifier rather than minting a new one per build.
+- The stripped entitlements mean no push notifications, no Home Screen widget, no system share
+  target, no native Sign in with Apple, and no Associated Domains (so no universal links and no
+  shared web credentials). Everything else, including pairing to a T3 Code server over the local
+  network or a tailnet, works normally.
+
+A paid Apple Developer Program membership removes all of the above: profiles last a year, the
+entitlements sign, and TestFlight can distribute the build instead of a cable.
+
 Build and run the local iOS preview app:
 
 ```bash

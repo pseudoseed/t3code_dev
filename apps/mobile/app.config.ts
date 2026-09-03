@@ -15,6 +15,9 @@ const runtimeVersionPolicy =
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
 
 const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+// Optional. Xcode's automatic signing picks the sole available team when this
+// is unset, which is the common case for a free account.
+const personalTeamId = repoEnv.T3CODE_IOS_PERSONAL_TEAM_ID?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
@@ -194,12 +197,26 @@ const config: ExpoConfig = {
     bundleIdentifier: iosBundleIdentifier,
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
-    // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    // Sign in with Apple, or push notification entitlements). A Personal Team
+    // build cannot use that pin at all — it signs with the developer's own
+    // team, so it supplies its own id or leaves the choice to Xcode's
+    // automatic signing.
+    ...(isIosPersonalTeamBuild
+      ? personalTeamId
+        ? { appleTeamId: personalTeamId }
+        : {}
+      : { appleTeamId: "ARK85ZXQ4Z" }),
+    // Associated Domains is a paid-membership capability, so a Personal Team
+    // build cannot sign it. Universal links and shared web credentials are the
+    // cost; everything else in the app still works.
+    ...(isIosPersonalTeamBuild
+      ? {}
+      : {
+          associatedDomains: [
+            `applinks:${variant.relyingParty}`,
+            `webcredentials:${variant.relyingParty}`,
+          ],
+        }),
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
@@ -242,6 +259,12 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    // FIRST on purpose: same-type mods run last-registered-first, so being
+    // first here makes this plugin's entitlements mod run LAST — after
+    // expo-notifications and Clerk have written theirs. Registered last it
+    // ran first, and expo-notifications simply put aps-environment back,
+    // which a Personal Team cannot sign.
+    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
     "expo-asset",
     [
       "expo-font",
@@ -280,8 +303,9 @@ const config: ExpoConfig = {
         mode: APP_VARIANT === "development" ? "development" : "production",
       },
     ],
-    // appleSignIn must be gated here: withoutIosPersonalTeamCapabilities.cjs runs before
-    // plugins earlier in this array, so it cannot strip the entitlement Clerk would add.
+    // appleSignIn stays gated here rather than relying on the entitlements
+    // stripper: Clerk's plugin also writes native sign-in configuration that a
+    // deleted entitlement key would leave behind.
     ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
     "expo-web-browser",
     [
@@ -356,7 +380,6 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
