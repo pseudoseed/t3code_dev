@@ -3133,10 +3133,17 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
+  // Passkey signing is opt-in through its provisioning profile. A signed build
+  // without one is an ordinary Developer ID build: it still gets a hardened,
+  // notarizable app, just no passkey entitlement, which a fork that does not
+  // use T3 Connect has no profile or relying-party domain for.
+  const repoEnvForSigning = loadRepoEnv({ repoRoot });
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    options.platform === "mac" &&
+    options.signed &&
+    (repoEnvForSigning.T3CODE_MACOS_PROVISIONING_PROFILE?.trim() ?? "").length > 0
       ? yield* Effect.try({
-          try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
+          try: () => resolveMacPasskeySigningConfiguration(repoEnvForSigning),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
         })
       : undefined;
