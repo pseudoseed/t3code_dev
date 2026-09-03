@@ -17,7 +17,7 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -65,7 +65,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -95,7 +95,7 @@ jobs:
   test_server:
     name: Test Server ${{ matrix.shard }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -162,7 +162,7 @@ jobs:
   rust:
     name: Rust
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -190,7 +190,7 @@ jobs:
   mobile_native_changes:
     name: Mobile Native Changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -268,7 +268,7 @@ jobs:
     # output empty, and that must run the lint rather than silently skip it.
     if: ${{ !cancelled() && needs.mobile_native_changes.outputs.changed != 'false' }}
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -296,7 +296,7 @@ jobs:
   release_smoke:
     name: Release Smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
