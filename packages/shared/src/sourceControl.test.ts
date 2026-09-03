@@ -174,9 +174,9 @@ describe("forgejo support", () => {
   });
 
   it("detects codeberg.org as forgejo", () => {
-    expect(
-      detectSourceControlProviderFromRemoteUrl("git@codeberg.org:owner/repo.git")?.kind,
-    ).toBe("forgejo");
+    expect(detectSourceControlProviderFromRemoteUrl("git@codeberg.org:owner/repo.git")?.kind).toBe(
+      "forgejo",
+    );
   });
 
   it("detects a host containing 'forgejo' as forgejo", () => {
