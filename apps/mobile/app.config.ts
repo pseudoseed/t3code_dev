@@ -14,10 +14,18 @@ const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
 
-const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+// Identity for a local build on a team other than T3 Tools. Any membership
+// can set these; T3CODE_IOS_PERSONAL_TEAM is separate and controls only the
+// capability stripping a free Personal Team needs. The PERSONAL_TEAM-suffixed
+// names stay accepted so existing local setups keep working.
+const iosBundleIdentifierOverride = (
+  repoEnv.T3CODE_IOS_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
+)?.trim();
 // Optional. Xcode's automatic signing picks the sole available team when this
 // is unset, which is the common case for a free account.
-const personalTeamId = repoEnv.T3CODE_IOS_PERSONAL_TEAM_ID?.trim();
+const iosTeamIdOverride = (
+  repoEnv.T3CODE_IOS_TEAM_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_ID
+)?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
@@ -27,11 +35,17 @@ const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (
   isIosPersonalTeamBuild &&
-  (!personalTeamBundleIdentifier ||
-    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
+  (!iosBundleIdentifierOverride ||
+    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride))
 ) {
   throw new Error(
-    "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
+    "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
+  );
+}
+
+if (iosBundleIdentifierOverride && !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride)) {
+  throw new Error(
+    "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code.",
   );
 }
 
@@ -107,9 +121,7 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
-const iosBundleIdentifier = isIosPersonalTeamBuild
-  ? personalTeamBundleIdentifier!
-  : variant.iosBundleIdentifier;
+const iosBundleIdentifier = iosBundleIdentifierOverride ?? variant.iosBundleIdentifier;
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -201,11 +213,11 @@ const config: ExpoConfig = {
     // build cannot use that pin at all — it signs with the developer's own
     // team, so it supplies its own id or leaves the choice to Xcode's
     // automatic signing.
-    ...(isIosPersonalTeamBuild
-      ? personalTeamId
-        ? { appleTeamId: personalTeamId }
-        : {}
-      : { appleTeamId: "ARK85ZXQ4Z" }),
+    ...(iosTeamIdOverride
+      ? { appleTeamId: iosTeamIdOverride }
+      : isIosPersonalTeamBuild
+        ? {}
+        : { appleTeamId: "ARK85ZXQ4Z" }),
     // Associated Domains is a paid-membership capability, so a Personal Team
     // build cannot sign it. Universal links and shared web credentials are the
     // cost; everything else in the app still works.

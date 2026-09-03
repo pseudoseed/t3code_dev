@@ -75,6 +75,22 @@ T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
 vp run ios:release
 ```
 
+### Building on your own paid team
+
+A paid Apple Developer Program membership signs every capability, so leave
+`T3CODE_IOS_PERSONAL_TEAM` unset and supply the two identifiers instead. Signing lasts as long as
+the certificate rather than 7 days, and push, associated domains, widgets, and the share extension
+all stay in the build.
+
+```bash
+T3CODE_IOS_BUNDLE_ID=com.example.t3code \
+T3CODE_IOS_TEAM_ID=YOURTEAMID \
+vp run ios:release --device <hardware-udid>
+```
+
+Your team id is on developer.apple.com under Account, Membership details. The first build on a new
+bundle identifier still needs the one-time xcodebuild step below to create the profile.
+
 ### Installing a Personal Team build on your own iPad
 
 `expo run:ios` targets a simulator by default. Pass `--device` with the device's hardware UDID from
@@ -156,6 +172,59 @@ node ../../scripts/mobile-native-static-check.ts
 ```
 
 The native lint task runs SwiftLint for Swift plus ktlint and detekt for Kotlin. Missing native tools are reported as warnings and skipped locally. CI installs the default toolset from `apps/mobile/Brewfile` before running the native checks.
+
+## TestFlight from this machine
+
+An alternative to EAS for a team that owns its own App Store Connect record: archive locally and
+upload with an App Store Connect API key. Nothing here needs an Expo account.
+
+One-time setup:
+
+1. Register the bundle identifier as an App ID on developer.apple.com, or let a signed device build
+   create it.
+2. Create the app in App Store Connect with that bundle identifier.
+3. Create an API key under Users and Access, Integrations, App Store Connect API with the App
+   Manager role. Keep the issuer id, the key id, and the downloaded `.p8`, which is offered once.
+   `xcrun altool` and `notarytool` read it from `~/.appstoreconnect/private_keys`.
+
+Every upload needs a build number no earlier upload used. `ios.buildNumber` in `app.config.ts`
+carries it.
+
+```bash
+T3CODE_IOS_BUNDLE_ID=com.example.t3code \
+T3CODE_IOS_TEAM_ID=YOURTEAMID \
+APP_VARIANT=production EXPO_NO_GIT_STATUS=1 \
+vp exec expo prebuild --clean --platform ios
+
+xcodebuild -workspace ios/T3Code.xcworkspace -scheme T3Code \
+  -configuration Release -destination "generic/platform=iOS" \
+  -archivePath build/T3Code.xcarchive \
+  -allowProvisioningUpdates archive
+
+xcodebuild -exportArchive -archivePath build/T3Code.xcarchive \
+  -exportOptionsPlist ExportOptions.plist -exportPath build/export \
+  -allowProvisioningUpdates
+
+xcrun altool --upload-app -f build/export/T3Code.ipa -t ios \
+  --apiKey YOURKEYID --apiIssuer YOURISSUERID
+```
+
+`ExportOptions.plist` selects the store distribution method:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>method</key><string>app-store-connect</string>
+    <key>teamID</key><string>YOURTEAMID</string>
+    <key>uploadSymbols</key><true/>
+  </dict>
+</plist>
+```
+
+Processing in App Store Connect takes a few minutes, after which the build appears in TestFlight and
+installs on any device signed in with an invited tester's Apple Account.
 
 ## EAS Builds
 
