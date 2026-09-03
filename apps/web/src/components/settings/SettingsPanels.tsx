@@ -1860,6 +1860,19 @@ function LegacyFeaturesSection() {
               }
             />
             <SettingsRow
+              {...searchableSetting("sidebar-project-sections")}
+              description="Gives every project its own container in the sidebar, with a larger name in the project's own color. Threads keep their active, snoozed, and settled order inside each project."
+              control={
+                <Switch
+                  checked={settings.sidebarProjectSectionsEnabled}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ sidebarProjectSectionsEnabled: Boolean(checked) })
+                  }
+                  aria-label="Group sidebar by project"
+                />
+              }
+            />
+            <SettingsRow
               {...searchableSetting("legacy-sidebar")}
               description="Brings back the original sidebar with per-project thread trees. The default sidebar shows one flat list: active work as rich cards, settled threads as compact rows."
               control={

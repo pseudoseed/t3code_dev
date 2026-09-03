@@ -127,6 +127,10 @@
       "types": "./src/state/pullRequests.ts",
       "default": "./src/state/pullRequests.ts"
     },
+    "./state/project-accent": {
+      "types": "./src/state/projectAccent.ts",
+      "default": "./src/state/projectAccent.ts"
+    },
     "./state/project-grouping": {
       "types": "./src/state/projectGrouping.ts",
       "default": "./src/state/projectGrouping.ts"

@@ -45,6 +45,15 @@ export interface Preferences {
   readonly threadListV2SettledShelfExpanded?: boolean;
   /** Undefined preserves the default collapsed Snoozed shelf. */
   readonly threadListV2SnoozedShelfExpanded?: boolean;
+  /**
+   * Groups the sidebar thread list into per-project sections. Device-local
+   * mirror of the web `sidebarProjectSectionsEnabled` client setting.
+   * Undefined keeps sections on, matching the web default.
+   */
+  readonly sidebarProjectSectionsEnabled?: boolean;
+  /** Project keys whose sidebar section is folded. Only meaningful with
+      `sidebarProjectSectionsEnabled`; the legacy list has its own key. */
+  readonly collapsedSidebarProjectSections?: readonly string[];
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -104,6 +113,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     planModeEnabled?: boolean;
     threadListV2SettledShelfExpanded?: boolean;
     threadListV2SnoozedShelfExpanded?: boolean;
+    sidebarProjectSectionsEnabled?: boolean;
+    collapsedSidebarProjectSections?: readonly string[];
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -176,6 +187,14 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.threadListV2SnoozedShelfExpanded === "boolean") {
     preferences.threadListV2SnoozedShelfExpanded = parsed.threadListV2SnoozedShelfExpanded;
+  }
+  if (typeof parsed.sidebarProjectSectionsEnabled === "boolean") {
+    preferences.sidebarProjectSectionsEnabled = parsed.sidebarProjectSectionsEnabled;
+  }
+  if (Array.isArray(parsed.collapsedSidebarProjectSections)) {
+    preferences.collapsedSidebarProjectSections = parsed.collapsedSidebarProjectSections.filter(
+      (key): key is string => typeof key === "string",
+    );
   }
   return preferences;
 }

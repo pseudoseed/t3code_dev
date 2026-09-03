@@ -3,6 +3,7 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
+import { projectAccent } from "@t3tools/client-runtime/state/project-accent";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
@@ -106,6 +107,99 @@ export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivid
 
 const SNOOZE_ACCENT_LIGHT = "#2563eb";
 const SNOOZE_ACCENT_DARK = "#60a5fa";
+
+/**
+ * Project-sections header: the project's identity at the top of its own
+ * container. Larger than a thread title and tinted with the project's derived
+ * accent (see projectAccent) so the project you are in is findable at a
+ * glance in a long sidebar.
+ */
+export const ThreadListV2ProjectHeader = memo(function ThreadListV2ProjectHeader(props: {
+  readonly projectKey: string;
+  readonly title: string;
+  readonly threadCount: number;
+  readonly collapsed: boolean;
+  readonly project: EnvironmentProject | null;
+  readonly onToggle: (projectKey: string) => void;
+  /** Null hides the button: aggregated groups have no single target project. */
+  readonly newThreadTarget: EnvironmentProject | null;
+  readonly onNewThread?: (project: EnvironmentProject) => void;
+}) {
+  const { themeAppearance: colorScheme } = useAppearancePreferences();
+  const accent = useMemo(() => projectAccent(props.projectKey), [props.projectKey]);
+  const colors = colorScheme === "dark" ? accent.dark : accent.light;
+  const { onToggle, onNewThread, projectKey, newThreadTarget } = props;
+  const handleToggle = useCallback(() => onToggle(projectKey), [onToggle, projectKey]);
+  const handleNewThread = useCallback(() => {
+    if (newThreadTarget) onNewThread?.(newThreadTarget);
+  }, [newThreadTarget, onNewThread]);
+
+  return (
+    <View
+      className="mx-2 mb-1 mt-3 flex-row items-center gap-1 rounded-xl px-2 py-2"
+      style={{ backgroundColor: colors.tint, borderColor: colors.line, borderWidth: 1 }}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: !props.collapsed }}
+        accessibilityLabel={`${props.title}, ${props.threadCount} threads`}
+        accessibilityHint={props.collapsed ? "Expands the project" : "Collapses the project"}
+        className="min-w-0 flex-1 flex-row items-center gap-2.5"
+        hitSlop={{ top: 8, bottom: 8, left: 12 }}
+        onPress={handleToggle}
+        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+      >
+        {props.project ? (
+          <ProjectFavicon
+            environmentId={props.project.environmentId}
+            faviconPath={props.project.faviconPath}
+            open={!props.collapsed}
+            size={20}
+            projectTitle={props.title}
+            workspaceRoot={props.project.workspaceRoot}
+          />
+        ) : (
+          <SymbolView name="folder" size={17} tintColor={colors.text} type="monochrome" />
+        )}
+        <Text
+          className="min-w-0 flex-shrink text-[17px] font-t3-bold tracking-[0.2px]"
+          numberOfLines={1}
+          style={{ color: colors.text }}
+        >
+          {props.title}
+        </Text>
+        <Text className="text-xs font-t3-medium" style={{ color: colors.text, opacity: 0.6 }}>
+          {props.threadCount}
+        </Text>
+        <View className="flex-1" />
+        <SymbolView
+          name="chevron.down"
+          size={11}
+          tintColor={colors.text}
+          type="monochrome"
+          style={{ transform: [{ rotate: props.collapsed ? "-90deg" : "0deg" }] }}
+        />
+      </Pressable>
+      {onNewThread !== undefined && newThreadTarget !== null ? (
+        <Pressable
+          accessibilityLabel={`Create new thread in ${props.title}`}
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 10, right: 12 }}
+          onPress={handleNewThread}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 10 })}
+        >
+          <SymbolView
+            name="plus"
+            size={17}
+            tintColor={colors.text}
+            type="monochrome"
+            weight="medium"
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+});
 
 export const ThreadListV2SnoozedShelfHeader = memo(function ThreadListV2SnoozedShelfHeader(props: {
   readonly count: number;

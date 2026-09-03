@@ -142,7 +142,9 @@ function useMarkdownPreviewStyles(): MarkdownPreviewStyles {
         codeColor: codeText,
         codeBackgroundColor: codeBackground,
         codeBlockBackgroundColor: codeBackground,
-        fileTextColor: codeText,
+        // Same reasoning as the thread feed: a file link's only affordance is
+        // its colour, so it shares the link colour rather than the code colour.
+        fileTextColor: link,
         skillTextColor: codeText,
         quoteMarkerColor: blockquoteBorder,
         dividerColor: horizontalRule,

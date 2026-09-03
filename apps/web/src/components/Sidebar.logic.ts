@@ -652,6 +652,63 @@ export function sidebarProjectFilterLabel(input: {
   return `${input.visibleCount} of ${input.totalCount} projects`;
 }
 
+/**
+ * One project's slice of the sidebar list. Sections are the outer structure in
+ * project-sections mode; the status buckets (active / snoozed / settled) keep
+ * their ordering inside each one.
+ */
+export interface SidebarProjectSection<TThread> {
+  readonly projectKey: string;
+  readonly active: readonly TThread[];
+  readonly snoozed: readonly TThread[];
+  readonly settled: readonly TThread[];
+}
+
+/**
+ * Splits the status buckets into per-project sections.
+ *
+ * Section order follows `projectOrder` (already sorted by the sidebar's
+ * project sort setting) so the section list matches the project filter menu.
+ * A thread whose project is not in that order — its environment dropped while
+ * the shell is still on screen — still gets a section, appended in the order
+ * the threads themselves arrive, rather than disappearing. Sections with no
+ * threads at all are dropped.
+ */
+export function buildSidebarProjectSections<TThread>(input: {
+  active: readonly TThread[];
+  snoozed: readonly TThread[];
+  settled: readonly TThread[];
+  projectKeyOf: (thread: TThread) => string;
+  projectOrder: readonly string[];
+}): SidebarProjectSection<TThread>[] {
+  const buckets = new Map<string, { active: TThread[]; snoozed: TThread[]; settled: TThread[] }>();
+  const bucketFor = (projectKey: string) => {
+    const existing = buckets.get(projectKey);
+    if (existing) return existing;
+    const created = { active: [], snoozed: [], settled: [] };
+    buckets.set(projectKey, created);
+    return created;
+  };
+
+  for (const thread of input.active) bucketFor(input.projectKeyOf(thread)).active.push(thread);
+  for (const thread of input.snoozed) bucketFor(input.projectKeyOf(thread)).snoozed.push(thread);
+  for (const thread of input.settled) bucketFor(input.projectKeyOf(thread)).settled.push(thread);
+
+  const ordered = [
+    ...input.projectOrder.filter((key) => buckets.has(key)),
+    ...[...buckets.keys()].filter((key) => !input.projectOrder.includes(key)),
+  ];
+  return ordered.map((projectKey) => {
+    const bucket = buckets.get(projectKey)!;
+    return {
+      projectKey,
+      active: bucket.active,
+      snoozed: bucket.snoozed,
+      settled: bucket.settled,
+    };
+  });
+}
+
 export interface SidebarProjectScopeMenuState {
   readonly open: boolean;
   readonly query: string;

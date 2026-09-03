@@ -38,6 +38,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useThreadListV2Enabled } from "../threads/use-thread-list-v2-enabled";
+import { useThreadListV2ProjectSections } from "../threads/use-thread-list-v2-project-sections";
 import {
   type AppUpdateCheckState,
   isAppUpdateCheckAvailable,
@@ -538,6 +539,7 @@ function GeneralSettingsSection() {
   return (
     <SettingsSection title="General">
       <SettingsRow icon="folder" label="Project Grouping" target="SettingsProjectGrouping" />
+      <SidebarProjectSectionsSwitch />
       {connections.map((connection) => (
         <EnvironmentAutoSettleSwitch
           key={connection.environmentId}
@@ -547,6 +549,24 @@ function GeneralSettingsSection() {
       ))}
       <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
     </SettingsSection>
+  );
+}
+
+/**
+ * Gives every project its own container in the iPad sidebar, with a larger
+ * name in the project's own color. Device-local mirror of web's
+ * `sidebarProjectSectionsEnabled`.
+ */
+function SidebarProjectSectionsSwitch() {
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const { enabled } = useThreadListV2ProjectSections();
+  return (
+    <SettingsSwitchRow
+      icon="rectangle.grid.1x2"
+      label="Group Sidebar by Project"
+      value={enabled}
+      onValueChange={(value) => savePreferences({ sidebarProjectSectionsEnabled: value })}
+    />
   );
 }
 

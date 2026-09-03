@@ -62,6 +62,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -105,6 +106,7 @@ import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { projectAccent } from "@t3tools/client-runtime/state/project-accent";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells } from "../state/entities";
@@ -125,6 +127,7 @@ import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
   animatePinnedLayoutChanges,
   buildBulkTitleRegenerationContextMenuItem,
+  buildSidebarProjectSections,
   ALL_PROJECTS_SCOPE_VALUE,
   filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
@@ -214,6 +217,49 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 // Keep the v2 key so existing preferences survive the v2-to-default rename.
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar-v2:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar-v2:snoozed-expanded";
+// Per-project section state, keyed by logical project key. One record rather
+// than a key per project so a fifty-project sidebar does not write fifty
+// localStorage entries.
+const PROJECT_SECTION_STATE_KEY = "t3code:sidebar:project-sections";
+// Settled rows shown inside a project section before its own Show more. Lower
+// than the flat list's tail: a section is one project's history, and several
+// sections share the scroll.
+const PROJECT_SECTION_SETTLED_INITIAL_COUNT = 5;
+
+const ProjectSectionStateSchema = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    collapsed: Schema.Boolean,
+    snoozed: Schema.Boolean,
+    settled: Schema.Boolean,
+  }),
+);
+type ProjectSectionState = (typeof ProjectSectionStateSchema.Type)[string];
+const DEFAULT_PROJECT_SECTION_STATE: ProjectSectionState = {
+  collapsed: false,
+  // A project section is already a small container, so its shelves start
+  // folded: the section header's count is the whole footprint until asked.
+  snoozed: false,
+  settled: false,
+};
+const EMPTY_PROJECT_SECTION_STATE: typeof ProjectSectionStateSchema.Type = {};
+
+/** One project section as rendered: buckets already trimmed by the section's
+    own collapse, shelf, and paging state. */
+interface RenderedProjectSection {
+  readonly projectKey: string;
+  readonly project: SidebarProjectSnapshot | null;
+  readonly collapsed: boolean;
+  readonly threadCount: number;
+  readonly activeThreads: readonly EnvironmentThreadShell[];
+  readonly snoozedTotal: number;
+  readonly snoozedExpanded: boolean;
+  readonly visibleSnoozed: readonly EnvironmentThreadShell[];
+  readonly settledTotal: number;
+  readonly settledExpanded: boolean;
+  readonly visibleSettled: readonly EnvironmentThreadShell[];
+  readonly hiddenSettledCount: number;
+}
 
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
@@ -1640,6 +1686,192 @@ function latestTurnDiff(
   return null;
 }
 
+/**
+ * One project's section of the thread list.
+ *
+ * The header is the project's identity in the sidebar: favicon, name in the
+ * project's own accent color, thread count, and a collapse toggle. The accent
+ * is derived from the project key (see projectAccent) and published as CSS
+ * variables once, so the rule and the container tint follow the name without
+ * re-deriving per element.
+ */
+const SidebarProjectSection = memo(function SidebarProjectSection(props: {
+  section: RenderedProjectSection;
+  onToggleFlag: (projectKey: string, flag: "collapsed" | "snoozed" | "settled") => void;
+  onShowMoreSettled: (projectKey: string) => void;
+  onNewThread: (section: RenderedProjectSection) => void;
+  renderThreadRow: (
+    thread: EnvironmentThreadShell,
+    section: "pinned" | "active" | "snoozed" | "settled",
+  ) => ReactNode;
+}) {
+  const { section, onToggleFlag, onShowMoreSettled, onNewThread, renderThreadRow } = props;
+  const accent = useMemo(() => projectAccent(section.projectKey), [section.projectKey]);
+  const displayName = section.project?.displayName ?? "Unknown project";
+  const handleToggleCollapsed = useCallback(
+    () => onToggleFlag(section.projectKey, "collapsed"),
+    [onToggleFlag, section.projectKey],
+  );
+  const handleToggleSnoozed = useCallback(
+    () => onToggleFlag(section.projectKey, "snoozed"),
+    [onToggleFlag, section.projectKey],
+  );
+  const handleToggleSettled = useCallback(
+    () => onToggleFlag(section.projectKey, "settled"),
+    [onToggleFlag, section.projectKey],
+  );
+  const handleShowMoreSettled = useCallback(
+    () => onShowMoreSettled(section.projectKey),
+    [onShowMoreSettled, section.projectKey],
+  );
+  const handleNewThread = useCallback(() => onNewThread(section), [onNewThread, section]);
+
+  return (
+    <li className="list-none" data-thread-selection-safe>
+      <section
+        aria-label={displayName}
+        data-testid="sidebar-project-section"
+        data-project-key={section.projectKey}
+        // Both schemes are published up front; the dark variants win under
+        // .dark without a second render or a theme subscription here.
+        style={
+          {
+            "--project-accent-text-light": accent.light.text,
+            "--project-accent-line-light": accent.light.line,
+            "--project-accent-tint-light": accent.light.tint,
+            "--project-accent-text-dark": accent.dark.text,
+            "--project-accent-line-dark": accent.dark.line,
+            "--project-accent-tint-dark": accent.dark.tint,
+          } as CSSProperties
+        }
+        className={cn(
+          "[--project-accent-text:var(--project-accent-text-light)] [--project-accent-line:var(--project-accent-line-light)] [--project-accent-tint:var(--project-accent-tint-light)]",
+          "dark:[--project-accent-text:var(--project-accent-text-dark)] dark:[--project-accent-line:var(--project-accent-line-dark)] dark:[--project-accent-tint:var(--project-accent-tint-dark)]",
+          "mt-2 rounded-lg border border-(--project-accent-line) bg-(--project-accent-tint) px-1 pb-1 pt-0.5 first:mt-0",
+        )}
+      >
+        <div className="flex items-center gap-1 px-1.5 pb-1 pt-1">
+          <button
+            type="button"
+            onClick={handleToggleCollapsed}
+            aria-expanded={!section.collapsed}
+            data-testid="sidebar-project-section-toggle"
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-0.5 text-left"
+          >
+            {section.project ? (
+              <ProjectFavicon
+                environmentId={section.project.environmentId}
+                cwd={section.project.workspaceRoot}
+                faviconPath={section.project.faviconPath}
+                className="size-4 shrink-0"
+              />
+            ) : (
+              <FolderIcon className="size-4 shrink-0 text-(--project-accent-text)" />
+            )}
+            {/* Bigger than a thread title on purpose: the project is the
+                thing you are working in, the threads are its contents. */}
+            <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold leading-6 tracking-tight text-(--project-accent-text)">
+              {displayName}
+            </span>
+            <span className="shrink-0 text-xs tabular-nums text-(--project-accent-text) opacity-60">
+              {section.threadCount}
+            </span>
+            <ChevronDownIcon
+              aria-hidden
+              className={cn(
+                "size-3.5 shrink-0 text-(--project-accent-text) opacity-70 transition-transform",
+                section.collapsed && "-rotate-90",
+              )}
+            />
+          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={handleNewThread}
+                  disabled={section.project === null}
+                  aria-label={`New thread in ${displayName}`}
+                  className="shrink-0 cursor-pointer rounded-md p-1 text-(--project-accent-text) opacity-70 hover:bg-sidebar-row-hover hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+                />
+              }
+            >
+              <PlusIcon aria-hidden className="size-4" />
+            </TooltipTrigger>
+            <TooltipPopup side="right">New thread</TooltipPopup>
+          </Tooltip>
+        </div>
+        {section.collapsed &&
+        section.activeThreads.length === 0 &&
+        section.visibleSnoozed.length === 0 &&
+        section.visibleSettled.length === 0 ? null : (
+          <ul role="list" className="flex flex-col gap-px">
+            {section.activeThreads.map((thread) => renderThreadRow(thread, "active"))}
+            {section.snoozedTotal > 0 && !section.collapsed ? (
+              <li className="list-none" data-thread-selection-safe>
+                <button
+                  type="button"
+                  onClick={handleToggleSnoozed}
+                  aria-expanded={section.snoozedExpanded}
+                  className="mb-1 mt-2 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
+                >
+                  <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                    {section.snoozedExpanded ? "Snoozed" : `Snoozed (${section.snoozedTotal})`}
+                  </span>
+                  <span className="h-px flex-1 bg-blue-500/20 dark:bg-blue-400/15" />
+                  <ChevronDownIcon
+                    aria-hidden
+                    className={cn(
+                      "size-3 text-blue-600 transition-transform dark:text-blue-400",
+                      section.snoozedExpanded && "rotate-180",
+                    )}
+                  />
+                </button>
+              </li>
+            ) : null}
+            {section.visibleSnoozed.map((thread) => renderThreadRow(thread, "snoozed"))}
+            {section.settledTotal > 0 && !section.collapsed ? (
+              <li className="list-none" data-thread-selection-safe>
+                <button
+                  type="button"
+                  onClick={handleToggleSettled}
+                  aria-expanded={section.settledExpanded}
+                  className="mb-1 mt-2 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
+                >
+                  <span className="text-xs font-medium text-muted-foreground/50">
+                    {section.settledExpanded ? "Settled" : `Settled (${section.settledTotal})`}
+                  </span>
+                  <span className="h-px flex-1 bg-sidebar-border/60" />
+                  <ChevronDownIcon
+                    aria-hidden
+                    className={cn(
+                      "size-3 text-muted-foreground/50 transition-transform",
+                      section.settledExpanded && "rotate-180",
+                    )}
+                  />
+                </button>
+              </li>
+            ) : null}
+            {section.visibleSettled.map((thread) => renderThreadRow(thread, "settled"))}
+            {section.settledExpanded && !section.collapsed && section.hiddenSettledCount > 0 ? (
+              <li className="list-none">
+                <button
+                  type="button"
+                  onClick={handleShowMoreSettled}
+                  className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-xs text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                >
+                  <PlusIcon aria-hidden className="size-3.5 shrink-0" />
+                  Show {Math.min(section.hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
+                </button>
+              </li>
+            ) : null}
+          </ul>
+        )}
+      </section>
+    </li>
+  );
+});
+
 const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   thread: SidebarThreadSummary;
   projectCwd: string | null;
@@ -2322,10 +2554,157 @@ export default function Sidebar() {
     return routeThread === undefined ? [] : [routeThread];
   }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
 
-  const orderedThreads = useMemo(
-    () => [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
-    [pinnedThreads, activeThreads, visibleSnoozedThreads, renderedSettledThreads],
+  // ── Project sections ───────────────────────────────────────────────
+  // Project outer, status inner: each project owns a collapsible section and
+  // keeps the active / snoozed / settled ordering inside it. The flat list
+  // above stays the fallback, so everything below reads the same buckets.
+  const projectSectionsEnabled = useClientSettings((s) => s.sidebarProjectSectionsEnabled);
+  // Threads carry a physical project ref; sections are keyed by the LOGICAL
+  // group key so the same project across environments lands in one section,
+  // matching the project filter menu.
+  const projectKeyByScopedProject = useMemo(
+    () =>
+      new Map(
+        projectGroups.flatMap((group) =>
+          group.memberProjects.map(
+            (project) => [`${project.environmentId}:${project.id}`, group.projectKey] as const,
+          ),
+        ),
+      ),
+    [projectGroups],
   );
+  const projectKeyOfThread = useCallback(
+    (thread: EnvironmentThreadShell) => {
+      const scopedKey = `${thread.environmentId}:${thread.projectId}` as const;
+      return projectKeyByScopedProject.get(scopedKey) ?? (scopedKey as string);
+    },
+    [projectKeyByScopedProject],
+  );
+  const [projectSectionState, setProjectSectionState] = useLocalStorage(
+    PROJECT_SECTION_STATE_KEY,
+    EMPTY_PROJECT_SECTION_STATE,
+    ProjectSectionStateSchema,
+  );
+  const toggleProjectSectionFlag = useCallback(
+    (projectKey: string, flag: keyof ProjectSectionState) => {
+      setProjectSectionState((current) => {
+        const existing = current[projectKey] ?? DEFAULT_PROJECT_SECTION_STATE;
+        return { ...current, [projectKey]: { ...existing, [flag]: !existing[flag] } };
+      });
+    },
+    [setProjectSectionState],
+  );
+  // Settled paging is per section and deliberately NOT persisted: a deep page
+  // is a momentary "let me look further back", not a preference.
+  const [settledPageByProject, setSettledPageByProject] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const showMoreSettledInProject = useCallback((projectKey: string) => {
+    setSettledPageByProject((current) => {
+      const next = new Map(current);
+      next.set(
+        projectKey,
+        (current.get(projectKey) ?? PROJECT_SECTION_SETTLED_INITIAL_COUNT) +
+          SETTLED_TAIL_PAGE_COUNT,
+      );
+      return next;
+    });
+  }, []);
+  const projectSections = useMemo((): RenderedProjectSection[] => {
+    if (!projectSectionsEnabled) return [];
+    const sections = buildSidebarProjectSections({
+      active: activeThreads,
+      snoozed: snoozedThreads,
+      settled: settledThreads,
+      projectKeyOf: projectKeyOfThread,
+      projectOrder: allProjectKeys,
+    });
+    return sections.map((section) => {
+      const state = projectSectionState[section.projectKey] ?? DEFAULT_PROJECT_SECTION_STATE;
+      const settledLimit =
+        settledPageByProject.get(section.projectKey) ?? PROJECT_SECTION_SETTLED_INITIAL_COUNT;
+      // The open thread outranks every collapse in this block, exactly as it
+      // does in the flat list: a row you are looking at must not hide behind
+      // a shelf, a paged tail, or a folded section.
+      const keepsRouteThread = (thread: EnvironmentThreadShell) =>
+        routeThreadKey !== null &&
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey;
+      const holdsRouteThread =
+        section.active.some(keepsRouteThread) ||
+        section.snoozed.some(keepsRouteThread) ||
+        section.settled.some(keepsRouteThread);
+      const collapsed = state.collapsed && !holdsRouteThread;
+      // One pass keeps the tail in its own order: everything inside the page,
+      // plus the open thread wherever it sits below it.
+      const settledWithRoute = section.settled.filter(
+        (thread, index) => index < settledLimit || keepsRouteThread(thread),
+      );
+      const visibleSnoozed = collapsed
+        ? section.snoozed.filter(keepsRouteThread)
+        : state.snoozed
+          ? section.snoozed
+          : section.snoozed.filter(keepsRouteThread);
+      const visibleSettled = collapsed
+        ? settledWithRoute.filter(keepsRouteThread)
+        : state.settled
+          ? settledWithRoute
+          : settledWithRoute.filter(keepsRouteThread);
+      return {
+        projectKey: section.projectKey,
+        project: projectGroupByScopeKey.get(section.projectKey) ?? null,
+        collapsed,
+        threadCount: section.active.length + section.snoozed.length + section.settled.length,
+        activeThreads: collapsed ? section.active.filter(keepsRouteThread) : section.active,
+        snoozedTotal: section.snoozed.length,
+        snoozedExpanded: state.snoozed,
+        visibleSnoozed,
+        settledTotal: section.settled.length,
+        settledExpanded: state.settled,
+        visibleSettled,
+        hiddenSettledCount: section.settled.length - settledWithRoute.length,
+      };
+    });
+  }, [
+    activeThreads,
+    allProjectKeys,
+    projectGroupByScopeKey,
+    projectKeyOfThread,
+    projectSectionState,
+    projectSectionsEnabled,
+    routeThreadKey,
+    settledPageByProject,
+    settledThreads,
+    snoozedThreads,
+  ]);
+
+  const orderedThreads = useMemo(() => {
+    if (projectSectionsEnabled) {
+      // Jump shortcuts, shift-range select, and prewarming all read this
+      // list, so in section mode it must walk the sections in render order
+      // rather than the flat status order.
+      return [
+        ...pinnedThreads,
+        ...projectSections.flatMap((section) => [
+          ...section.activeThreads,
+          ...section.visibleSnoozed,
+          ...section.visibleSettled,
+        ]),
+      ];
+    }
+    return [
+      ...pinnedThreads,
+      ...activeThreads,
+      ...visibleSnoozedThreads,
+      ...renderedSettledThreads,
+    ];
+  }, [
+    activeThreads,
+    pinnedThreads,
+    projectSections,
+    projectSectionsEnabled,
+    renderedSettledThreads,
+    visibleSnoozedThreads,
+  ]);
   const orderedThreadKeys = useMemo(
     () =>
       orderedThreads.map((thread) =>
@@ -3448,6 +3827,16 @@ export default function Sidebar() {
   // falling back to the top project) — same resolution the command palette
   // uses. The command palette already offers a "New thread in..." submenu
   // for multi-project setups.
+  const handleSectionNewThread = useCallback(
+    (section: RenderedProjectSection) => {
+      const project = section.project;
+      if (!project) return;
+      if (isMobile) setOpenMobile(false);
+      void handleNewThreadRef.current(scopeProjectRef(project.environmentId, project.id));
+    },
+    [isMobile, setOpenMobile],
+  );
+
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
       // One project: nothing to pick, create immediately. Shift+click creates
@@ -3984,6 +4373,21 @@ export default function Sidebar() {
                         className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
                       />,
                     );
+                  }
+                  if (projectSectionsEnabled) {
+                    for (const section of projectSections) {
+                      items.push(
+                        <SidebarProjectSection
+                          key={`project-section:${section.projectKey}`}
+                          section={section}
+                          onToggleFlag={toggleProjectSectionFlag}
+                          onShowMoreSettled={showMoreSettledInProject}
+                          onNewThread={handleSectionNewThread}
+                          renderThreadRow={renderThreadRow}
+                        />,
+                      );
+                    }
+                    return items;
                   }
                   for (const thread of activeThreads) {
                     items.push(renderThreadRow(thread, "active"));

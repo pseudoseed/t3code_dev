@@ -5,6 +5,7 @@ import {
   archiveSelectedThreadEntries,
   buildBulkTitleRegenerationContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
+  buildSidebarProjectSections,
   createThreadJumpHintVisibilityController,
   filterSidebarProjectScopeItems,
   getSidebarThreadIdsToPrewarm,
@@ -1805,5 +1806,57 @@ describe("sortLogicalProjectsForSidebar", () => {
         (project) => project.projectKey,
       ),
     ).toEqual(["logical-newer", "logical-older"]);
+  });
+});
+
+describe("buildSidebarProjectSections", () => {
+  const thread = (id: string, projectKey: string) => ({ id, projectKey });
+  const projectKeyOf = (item: { projectKey: string }) => item.projectKey;
+
+  it("keeps sections in the project sort order and drops empty ones", () => {
+    const sections = buildSidebarProjectSections({
+      active: [thread("a", "beta"), thread("b", "alpha")],
+      snoozed: [],
+      settled: [],
+      projectKeyOf,
+      projectOrder: ["alpha", "beta", "gamma"],
+    });
+    expect(sections.map((section) => section.projectKey)).toEqual(["alpha", "beta"]);
+  });
+
+  it("preserves bucket ordering inside a section", () => {
+    const [section] = buildSidebarProjectSections({
+      active: [thread("a1", "alpha"), thread("a2", "alpha")],
+      snoozed: [thread("s1", "alpha")],
+      settled: [thread("t1", "alpha")],
+      projectKeyOf,
+      projectOrder: ["alpha"],
+    });
+    expect(section?.active.map((item) => item.id)).toEqual(["a1", "a2"]);
+    expect(section?.snoozed.map((item) => item.id)).toEqual(["s1"]);
+    expect(section?.settled.map((item) => item.id)).toEqual(["t1"]);
+  });
+
+  it("still sections threads whose project fell out of the sort order", () => {
+    const sections = buildSidebarProjectSections({
+      active: [thread("a", "alpha"), thread("o", "orphan")],
+      snoozed: [],
+      settled: [],
+      projectKeyOf,
+      projectOrder: ["alpha"],
+    });
+    expect(sections.map((section) => section.projectKey)).toEqual(["alpha", "orphan"]);
+  });
+
+  it("gives a project with only settled threads its own section", () => {
+    const sections = buildSidebarProjectSections({
+      active: [],
+      snoozed: [],
+      settled: [thread("t1", "alpha")],
+      projectKeyOf,
+      projectOrder: ["alpha"],
+    });
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.settled).toHaveLength(1);
   });
 });

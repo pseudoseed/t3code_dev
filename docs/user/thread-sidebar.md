@@ -36,6 +36,26 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+## Project sections
+
+**Settings → General → Group sidebar by project** gives every project its own container in the
+sidebar. The project name sits at the top in a larger size and in a color of its own, with the
+number of threads beside it and a **+** button to start a new thread there. Threads keep their
+usual order inside the container: active work first, then Snoozed, then Settled.
+
+The color comes from the project itself, so a project keeps the same color every time you open T3
+Code and on every device. There is nothing to choose and nothing to configure.
+
+Tap or click the project name to fold the container. A folded project takes one row no matter how
+much work is in it, and the count stays visible so you can still see what is waiting. The thread
+you have open is never hidden by a fold, a shelf, or a **Show more**.
+
+Each project has its own Snoozed and Settled shelves and its own **Show more**, so looking further
+back in one project leaves the others alone.
+
+Turn the setting off to go back to one flat list. On iPad and Android the same switch is
+**Settings → General → Group Sidebar by Project**; folded projects are remembered per device.
+
 ## Filtering by project
 
 The menu above the thread list controls which projects the sidebar shows. Open it and tick the

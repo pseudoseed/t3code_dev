@@ -767,6 +767,9 @@ export function HomeScreen(props: HomeScreenProps) {
           />
         );
       }
+      // The compact Home list never builds project sections; those item types
+      // exist only for the iPad sidebar.
+      if (item.type !== "v2-thread") return null;
       const thread = item.item.thread;
       return (
         <ThreadListV2Row

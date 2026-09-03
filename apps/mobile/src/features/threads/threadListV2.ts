@@ -231,23 +231,47 @@ export interface ThreadListV2PendingListItem {
 
 export interface ThreadListV2SnoozedShelfListItem {
   readonly type: "v2-snoozed-shelf";
-  readonly key: "v2-snoozed-shelf";
+  readonly key: string;
   readonly count: number;
   readonly expanded: boolean;
+  /** Set in project-sections mode: the shelf belongs to one project. */
+  readonly projectKey: string | null;
 }
 
 export interface ThreadListV2SettledShelfListItem {
   readonly type: "v2-settled-shelf";
-  readonly key: "v2-settled-shelf";
+  readonly key: string;
   readonly count: number;
   readonly expanded: boolean;
+  readonly projectKey: string | null;
+}
+
+/** Project-sections mode only: the container header a project's rows sit under. */
+export interface ThreadListV2ProjectHeaderListItem {
+  readonly type: "v2-project-header";
+  readonly key: string;
+  readonly projectKey: string;
+  readonly projectTitle: string;
+  /** Threads plus queued tasks in the project, whatever the collapse state. */
+  readonly threadCount: number;
+  readonly collapsed: boolean;
+}
+
+/** Project-sections mode only: pages one project's settled tail. */
+export interface ThreadListV2SectionShowMoreListItem {
+  readonly type: "v2-section-show-more";
+  readonly key: string;
+  readonly projectKey: string;
+  readonly hiddenCount: number;
 }
 
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2SnoozedShelfListItem
-  | ThreadListV2SettledShelfListItem;
+  | ThreadListV2SettledShelfListItem
+  | ThreadListV2ProjectHeaderListItem
+  | ThreadListV2SectionShowMoreListItem;
 
 /**
  * Builds the shared mobile order: active → pending → snoozed shelf → settled.
@@ -264,11 +288,16 @@ export function buildThreadListV2ListItems(input: {
   readonly settledShelfExpanded?: boolean;
   readonly settledShelfHeaderIndex?: number | null;
   readonly snoozeLabelNow?: string;
+  /** Set in project-sections mode so each project's shelf headers and rows
+      get their own list keys instead of colliding on the flat singletons. */
+  readonly projectKey?: string;
 }): ThreadListV2ListItem[] {
+  const projectKey = input.projectKey ?? null;
+  const scopedKey = (base: string) => (projectKey === null ? base : `${base}:${projectKey}`);
   const threadItems = input.items.map(
     (item): ThreadListV2ListItem => ({
       type: "v2-thread",
-      key: `v2-thread:${item.thread.environmentId}:${item.thread.id}`,
+      key: scopedKey(`v2-thread:${item.thread.environmentId}:${item.thread.id}`),
       item,
       snoozeWakeLabelText:
         item.snoozed && item.thread.snoozedUntil != null && input.snoozeLabelNow !== undefined
@@ -279,7 +308,7 @@ export function buildThreadListV2ListItems(input: {
   const pendingItems = input.pendingTasks.map(
     (pendingTask, index): ThreadListV2ListItem => ({
       type: "v2-pending",
-      key: `v2-pending:${pendingTask.message.messageId}`,
+      key: scopedKey(`v2-pending:${pendingTask.message.messageId}`),
       pendingTask,
       showPendingDivider: index === 0,
     }),
@@ -294,22 +323,88 @@ export function buildThreadListV2ListItems(input: {
   if (snoozedShelfHeaderIndex !== null && snoozedCount > 0) {
     result.push({
       type: "v2-snoozed-shelf",
-      key: "v2-snoozed-shelf",
+      key: scopedKey("v2-snoozed-shelf"),
       count: snoozedCount,
       expanded: input.snoozedShelfExpanded === true,
+      projectKey,
     });
     result.push(...threadItems.slice(snoozedShelfHeaderIndex, snoozedEnd));
   }
   if (settledShelfHeaderIndex !== null && settledCount > 0) {
     result.push({
       type: "v2-settled-shelf",
-      key: "v2-settled-shelf",
+      key: scopedKey("v2-settled-shelf"),
       count: settledCount,
       expanded: input.settledShelfExpanded !== false,
+      projectKey,
     });
     result.push(...threadItems.slice(settledShelfHeaderIndex));
   }
   return result;
+}
+
+/** One project's already-partitioned slice, ready to flatten into list items. */
+export interface ThreadListV2ProjectSection {
+  readonly projectKey: string;
+  readonly projectTitle: string;
+  readonly layout: ThreadListV2Layout;
+  readonly pendingTasks: ReadonlyArray<PendingNewTask>;
+  readonly collapsed: boolean;
+  readonly snoozedShelfExpanded: boolean;
+  readonly settledShelfExpanded: boolean;
+}
+
+/**
+ * Flattens per-project layouts into the sectioned list: project outer, status
+ * inner. Each project contributes a header, then its own active / snoozed /
+ * settled run with project-scoped shelf keys, then its own settled pager.
+ *
+ * A collapsed project contributes only its header, so folding a project costs
+ * one row no matter how much work is in it. Projects with nothing to show are
+ * dropped rather than rendered as empty containers.
+ */
+export function buildThreadListV2ProjectSectionItems(input: {
+  readonly sections: ReadonlyArray<ThreadListV2ProjectSection>;
+  readonly snoozeLabelNow?: string;
+}): ThreadListV2ListItem[] {
+  const items: ThreadListV2ListItem[] = [];
+  for (const section of input.sections) {
+    const threadCount =
+      section.layout.items.length + section.layout.hiddenSettledCount + section.pendingTasks.length;
+    if (threadCount === 0) continue;
+    items.push({
+      type: "v2-project-header",
+      key: `v2-project-header:${section.projectKey}`,
+      projectKey: section.projectKey,
+      projectTitle: section.projectTitle,
+      threadCount,
+      collapsed: section.collapsed,
+    });
+    if (section.collapsed) continue;
+    items.push(
+      ...buildThreadListV2ListItems({
+        items: section.layout.items,
+        pendingTasks: section.pendingTasks,
+        snoozedCount: section.layout.snoozedCount,
+        snoozedShelfExpanded: section.snoozedShelfExpanded,
+        snoozedShelfHeaderIndex: section.layout.snoozedShelfHeaderIndex,
+        settledCount: section.layout.settledCount,
+        settledShelfExpanded: section.settledShelfExpanded,
+        settledShelfHeaderIndex: section.layout.settledShelfHeaderIndex,
+        snoozeLabelNow: input.snoozeLabelNow,
+        projectKey: section.projectKey,
+      }),
+    );
+    if (section.settledShelfExpanded && section.layout.hiddenSettledCount > 0) {
+      items.push({
+        type: "v2-section-show-more",
+        key: `v2-section-show-more:${section.projectKey}`,
+        projectKey: section.projectKey,
+        hiddenCount: section.layout.hiddenSettledCount,
+      });
+    }
+  }
+  return items;
 }
 
 /**

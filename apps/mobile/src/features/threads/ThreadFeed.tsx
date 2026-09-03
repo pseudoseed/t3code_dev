@@ -774,7 +774,8 @@ const MarkdownExternalLink = memo(function MarkdownExternalLink(props: {
 
 function MarkdownInlineCode(props: {
   readonly content: string;
-  readonly textColor: string;
+  /** Applied only when the span resolves to a file link. */
+  readonly fileLinkColor: string;
   readonly codeColor: string;
   readonly fontSize: number;
   readonly lineHeight: number;
@@ -787,7 +788,7 @@ function MarkdownInlineCode(props: {
       className={presentation ? "font-t3-bold" : "font-mono"}
       onPress={presentation ? () => props.onLinkPress(presentation.href) : undefined}
       style={{
-        color: presentation ? props.textColor : props.codeColor,
+        color: presentation ? props.fileLinkColor : props.codeColor,
         fontSize: props.fontSize,
         lineHeight: props.lineHeight,
       }}
@@ -1175,6 +1176,7 @@ function useMarkdownStyles(
       copyTintColor: ColorValue,
       preserveSoftBreaks: boolean,
       highlightCode: boolean,
+      fileLinkColor: string,
     ): CustomRenderers => ({
       link: ({ children, href = "" }) => {
         const presentation = resolveMarkdownLinkPresentation(href);
@@ -1183,7 +1185,7 @@ function useMarkdownStyles(
             <NativeText
               className="font-t3-bold"
               onPress={() => onLinkPress(href)}
-              style={{ color: inlineTextColor }}
+              style={{ color: fileLinkColor }}
             >
               <Image
                 source={markdownFileIconSource(presentation.icon)}
@@ -1269,7 +1271,7 @@ function useMarkdownStyles(
       code_inline: ({ content }) => (
         <MarkdownInlineCode
           content={content ?? ""}
-          textColor={inlineTextColor}
+          fileLinkColor={fileLinkColor}
           codeColor={inlineCodeTextColor}
           fontSize={markdownFontSizes.codeBlockFontSize}
           lineHeight={markdownFontSizes.bodyLineHeight}
@@ -1355,6 +1357,7 @@ function useMarkdownStyles(
           userBubbleForegroundMuted,
           true,
           false,
+          markdownUserBodyColor,
         ),
         nativeTextStyle: {
           color: markdownUserBodyColor,
@@ -1388,6 +1391,7 @@ function useMarkdownStyles(
           iconSubtleColor,
           false,
           true,
+          markdownLinkColor,
         ),
         nativeTextStyle: {
           color: markdownBodyColor,
@@ -1398,7 +1402,10 @@ function useMarkdownStyles(
           codeColor: markdownCodeText,
           codeBackgroundColor: markdownCodeBg,
           codeBlockBackgroundColor: markdownCodeBg,
-          fileTextColor: markdownCodeText,
+          // File links carry an icon instead of an underline, so colour is the
+          // only thing marking them as tappable. Sharing the link colour is
+          // what makes them read as links rather than as inline code.
+          fileTextColor: markdownLinkColor,
           skillTextColor: inlineSkillForeground,
           quoteMarkerColor: markdownBlockquoteBorder,
           dividerColor: markdownHrColor,

@@ -16,6 +16,7 @@ import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
+  buildThreadListV2ProjectSectionItems,
   resolveThreadListV2Enabled,
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozeGateExpiryMs,
@@ -909,5 +910,73 @@ describe("buildThreadListV2ListItems", () => {
       "v2-settled-shelf",
       "v2-thread",
     ]);
+  });
+});
+
+describe("buildThreadListV2ProjectSectionItems", () => {
+  const sectionLayout = (ids: readonly string[]) =>
+    buildThreadListV2Items({
+      threads: ids.map((id) => makeThread({ id: ThreadId.make(id), title: id })),
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+    });
+  const section = (projectKey: string, ids: readonly string[], collapsed = false) => ({
+    projectKey,
+    projectTitle: projectKey,
+    layout: sectionLayout(ids),
+    pendingTasks: [],
+    collapsed,
+    snoozedShelfExpanded: false,
+    settledShelfExpanded: true,
+  });
+
+  it("puts every project's rows under its own header, in section order", () => {
+    const items = buildThreadListV2ProjectSectionItems({
+      sections: [section("alpha", ["a1"]), section("beta", ["b1", "b2"])],
+    });
+
+    expect(
+      items.map((item) => (item.type === "v2-project-header" ? item.projectKey : item.key)),
+    ).toEqual([
+      "alpha",
+      `v2-thread:${environmentId}:a1:alpha`,
+      "beta",
+      `v2-thread:${environmentId}:b1:beta`,
+      `v2-thread:${environmentId}:b2:beta`,
+    ]);
+  });
+
+  it("costs one row for a collapsed project, whatever it holds", () => {
+    const items = buildThreadListV2ProjectSectionItems({
+      sections: [section("alpha", ["a1", "a2", "a3"], true)],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.type).toBe("v2-project-header");
+    // The header still reports everything folded underneath it.
+    expect(items[0]?.type === "v2-project-header" ? items[0].threadCount : 0).toBe(3);
+  });
+
+  it("drops a project with nothing to show instead of rendering an empty container", () => {
+    const items = buildThreadListV2ProjectSectionItems({
+      sections: [section("empty", []), section("alpha", ["a1"])],
+    });
+
+    expect(
+      items.filter((item) => item.type === "v2-project-header").map((item) => item.key),
+    ).toEqual(["v2-project-header:alpha"]);
+  });
+
+  it("gives each project its own settled pager", () => {
+    const withHidden = {
+      ...section("alpha", ["a1"]),
+      layout: { ...sectionLayout(["a1"]), hiddenSettledCount: 4 },
+    };
+    const items = buildThreadListV2ProjectSectionItems({ sections: [withHidden] });
+
+    const pager = items.find((item) => item.type === "v2-section-show-more");
+    expect(pager?.type === "v2-section-show-more" ? pager.projectKey : null).toBe("alpha");
+    expect(pager?.type === "v2-section-show-more" ? pager.hiddenCount : 0).toBe(4);
   });
 });

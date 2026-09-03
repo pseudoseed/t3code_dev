@@ -29,9 +29,10 @@ import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2Enabled } from "./use-thread-list-v2-enabled";
+import { useThreadListV2ProjectSections } from "./use-thread-list-v2-project-sections";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 import { environmentServerConfigsAtom } from "../../state/server";
-import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
+import { usePendingNewTasks, type PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
@@ -71,6 +72,7 @@ import {
 } from "./thread-list-items";
 import {
   ThreadListV2PendingRow,
+  ThreadListV2ProjectHeader,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
   ThreadListV2SnoozedShelfHeader,
@@ -78,9 +80,11 @@ import {
 import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
+  buildThreadListV2ProjectSectionItems,
   THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   type ThreadListV2ListItem,
+  type ThreadListV2ProjectSection,
 } from "./threadListV2";
 
 /** The sidebar list serves both lists: v1 grouped items or, when the Thread
@@ -374,6 +378,27 @@ function ThreadNavigationSidebarPane(
     [],
   );
   const {
+    enabled: projectSectionsEnabled,
+    collapsedKeys: collapsedProjectSectionKeys,
+    toggleProjectSection,
+  } = useThreadListV2ProjectSections();
+  // Per-project settled paging. Not persisted: a deep page is a momentary
+  // "let me look further back", not a preference.
+  const [sectionSettledCounts, setSectionSettledCounts] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const showMoreSettledInSection = useCallback((projectKey: string) => {
+    setSectionSettledCounts((current) => {
+      const next = new Map(current);
+      next.set(
+        projectKey,
+        (current.get(projectKey) ?? THREAD_LIST_V2_SETTLED_INITIAL_COUNT) +
+          THREAD_LIST_V2_SETTLED_PAGE_COUNT,
+      );
+      return next;
+    });
+  }, []);
+  const {
     loaded: shelfPreferencesLoaded,
     settledShelfExpanded,
     snoozedShelfExpanded,
@@ -509,8 +534,105 @@ function ThreadNavigationSidebarPane(
     // unchanged: after a clamped fire (wake beyond the 32-bit setTimeout
     // range) the boundary string is identical and the chain would die.
   }, [nextSnoozeWakeAt, snoozeWakeTick]);
+  // Project sections: partition threads by project ONCE, then run the same v2
+  // partition per project. Calling the builder with a project filter per scope
+  // would rescan every thread per project instead.
+  const threadListV2Sections = useMemo<ReadonlyArray<ThreadListV2ProjectSection>>(() => {
+    if (!threadListV2Enabled || !projectSectionsEnabled) return [];
+    void nowMinute;
+    void snoozeWakeTick;
+    const now = new Date().toISOString();
+    const scopeKeyByProjectRef = new Map(
+      projectScopes.flatMap((scope) =>
+        scope.projectRefs.map(
+          (projectRef) =>
+            [scopedProjectKey(projectRef.environmentId, projectRef.projectId), scope.key] as const,
+        ),
+      ),
+    );
+    const threadsByScope = new Map<string, EnvironmentThreadShell[]>();
+    for (const thread of scopedThreads) {
+      if (thread.archivedAt !== null) continue;
+      const scopeKey = scopeKeyByProjectRef.get(
+        scopedProjectKey(thread.environmentId, thread.projectId),
+      );
+      if (scopeKey === undefined) continue;
+      const bucket = threadsByScope.get(scopeKey);
+      if (bucket) bucket.push(thread);
+      else threadsByScope.set(scopeKey, [thread]);
+    }
+    const v2SearchQuery = props.searchQuery.trim().toLocaleLowerCase();
+    const pendingByScope = new Map<string, PendingNewTask[]>();
+    for (const pendingTask of scopedPendingTasks) {
+      if (
+        options.selectedEnvironmentId !== null &&
+        pendingTask.message.environmentId !== options.selectedEnvironmentId
+      ) {
+        continue;
+      }
+      if (
+        v2SearchQuery.length > 0 &&
+        !pendingTask.title.toLocaleLowerCase().includes(v2SearchQuery)
+      ) {
+        continue;
+      }
+      const scopeKey = scopeKeyByProjectRef.get(
+        scopedProjectKey(pendingTask.message.environmentId, pendingTask.creation.projectId),
+      );
+      if (scopeKey === undefined) continue;
+      const bucket = pendingByScope.get(scopeKey);
+      if (bucket) bucket.push(pendingTask);
+      else pendingByScope.set(scopeKey, [pendingTask]);
+    }
+    return projectScopes.map((scope) => ({
+      projectKey: scope.key,
+      projectTitle: scope.title,
+      pendingTasks: pendingByScope.get(scope.key) ?? [],
+      collapsed: collapsedProjectSectionKeys.has(scope.key),
+      snoozedShelfExpanded,
+      settledShelfExpanded,
+      layout: buildThreadListV2Items({
+        threads: threadsByScope.get(scope.key) ?? [],
+        environmentId: options.selectedEnvironmentId,
+        searchQuery: props.searchQuery,
+        matchedThreadKeys,
+        settlementEnvironmentIds,
+        snoozeEnvironmentIds,
+        settledLimit: sectionSettledCounts.get(scope.key) ?? THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
+        now,
+        snoozedShelfExpanded,
+        settledShelfExpanded,
+        selectedThreadKey: props.selectedThreadKey ?? null,
+      }),
+    }));
+  }, [
+    collapsedProjectSectionKeys,
+    matchedThreadKeys,
+    nowMinute,
+    options.selectedEnvironmentId,
+    projectScopes,
+    projectSectionsEnabled,
+    props.searchQuery,
+    props.selectedThreadKey,
+    scopedPendingTasks,
+    scopedThreads,
+    sectionSettledCounts,
+    settledShelfExpanded,
+    settlementEnvironmentIds,
+    snoozeEnvironmentIds,
+    snoozedShelfExpanded,
+    snoozeWakeTick,
+    threadListV2Enabled,
+  ]);
+
   const listItems = useMemo<readonly SidebarListItem[]>(() => {
     if (!threadListV2Enabled) return listLayout.items;
+    if (projectSectionsEnabled) {
+      return buildThreadListV2ProjectSectionItems({
+        sections: threadListV2Sections,
+        snoozeLabelNow: `${nowMinute}:00.000Z`,
+      });
+    }
     // Queued offline tasks are not thread shells, so the v2 item builder
     // never sees them; the shared splice puts them below the active block
     // (mirrors the compact Home v2 list) where they stay visible and
@@ -553,11 +675,13 @@ function ThreadNavigationSidebarPane(
     options.selectedEnvironmentId,
     pendingTasks,
     props.searchQuery,
+    projectSectionsEnabled,
     selectedProjectRefs,
     settledShelfExpanded,
     snoozedShelfExpanded,
     threadListV2Enabled,
     threadListV2Layout,
+    threadListV2Sections,
   ]);
   const listMenuActions = useMemo<MenuAction[]>(
     () => [
@@ -775,7 +899,11 @@ function ThreadNavigationSidebarPane(
         item.type === "v2-show-more" ||
         item.type === "v2-pending" ||
         item.type === "v2-snoozed-shelf" ||
-        item.type === "v2-settled-shelf"
+        item.type === "v2-settled-shelf" ||
+        previous.type === "v2-project-header" ||
+        previous.type === "v2-section-show-more" ||
+        item.type === "v2-project-header" ||
+        item.type === "v2-section-show-more"
       ) {
         return false;
       }
@@ -895,6 +1023,39 @@ function ThreadNavigationSidebarPane(
             />
           );
         }
+        case "v2-project-header": {
+          const scope = projectScopes.find((candidate) => candidate.key === item.projectKey);
+          return (
+            <ThreadListV2ProjectHeader
+              projectKey={item.projectKey}
+              title={item.projectTitle}
+              threadCount={item.threadCount}
+              collapsed={item.collapsed}
+              project={scope?.representative ?? null}
+              onToggle={toggleProjectSection}
+              // Same gating as the legacy grouped header: an aggregated scope
+              // spanning several environments has no single target project.
+              newThreadTarget={
+                scope !== undefined && scope.projects.length === 1 ? scope.representative : null
+              }
+              onNewThread={props.onNewThreadInProject}
+            />
+          );
+        }
+        case "v2-section-show-more":
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Show ${Math.min(item.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
+              onPress={() => showMoreSettledInSection(item.projectKey)}
+              className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2"
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <Text className="text-xs font-t3-medium text-foreground-muted">
+                Show more ({item.hiddenCount} settled hidden)
+              </Text>
+            </Pressable>
+          );
         case "v2-snoozed-shelf":
           return (
             <ThreadListV2SnoozedShelfHeader

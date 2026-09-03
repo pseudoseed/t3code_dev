@@ -285,6 +285,11 @@ export const ClientSettingsSchema = Schema.Struct({
     TrimmedNonEmptyString,
     SidebarProjectGroupingMode,
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Groups the sidebar thread list into per-project sections (project outer,
+  // status inner) instead of one flat status-ordered list.
+  sidebarProjectSectionsEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   // Projects the sidebar filter hides, by project key. Stored as the hidden
   // set rather than the shown set so a project added later is visible by
   // default: a user who filtered down to two projects months ago should not
@@ -1014,6 +1019,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),
   ),
+  sidebarProjectSectionsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarHiddenProjectKeys: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
