@@ -41,10 +41,9 @@ export interface Preferences {
   readonly legacyThreadListEnabled?: boolean;
   /** Device-local counterpart of desktop's `planModeEnabled` legacy flag. */
   readonly planModeEnabled?: boolean;
-  /** Undefined preserves the default expanded Settled shelf. */
-  readonly threadListV2SettledShelfExpanded?: boolean;
-  /** Undefined preserves the default collapsed Snoozed shelf. */
-  readonly threadListV2SnoozedShelfExpanded?: boolean;
+  /** Fresh keys reset both shelves to collapsed when users update. */
+  readonly threadListSettledShelfExpanded?: boolean;
+  readonly threadListSnoozedShelfExpanded?: boolean;
   /**
    * Groups the sidebar thread list into per-project sections. Device-local
    * mirror of the web `sidebarProjectSectionsEnabled` client setting.
@@ -111,8 +110,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     projectGroupingMode?: SidebarProjectGroupingMode;
     legacyThreadListEnabled?: boolean;
     planModeEnabled?: boolean;
-    threadListV2SettledShelfExpanded?: boolean;
-    threadListV2SnoozedShelfExpanded?: boolean;
+    threadListSettledShelfExpanded?: boolean;
+    threadListSnoozedShelfExpanded?: boolean;
     sidebarProjectSectionsEnabled?: boolean;
     collapsedSidebarProjectSections?: readonly string[];
   } = {};
@@ -182,11 +181,11 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (typeof parsed.planModeEnabled === "boolean") {
     preferences.planModeEnabled = parsed.planModeEnabled;
   }
-  if (typeof parsed.threadListV2SettledShelfExpanded === "boolean") {
-    preferences.threadListV2SettledShelfExpanded = parsed.threadListV2SettledShelfExpanded;
+  if (typeof parsed.threadListSettledShelfExpanded === "boolean") {
+    preferences.threadListSettledShelfExpanded = parsed.threadListSettledShelfExpanded;
   }
-  if (typeof parsed.threadListV2SnoozedShelfExpanded === "boolean") {
-    preferences.threadListV2SnoozedShelfExpanded = parsed.threadListV2SnoozedShelfExpanded;
+  if (typeof parsed.threadListSnoozedShelfExpanded === "boolean") {
+    preferences.threadListSnoozedShelfExpanded = parsed.threadListSnoozedShelfExpanded;
   }
   if (typeof parsed.sidebarProjectSectionsEnabled === "boolean") {
     preferences.sidebarProjectSectionsEnabled = parsed.sidebarProjectSectionsEnabled;
