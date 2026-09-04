@@ -225,7 +225,7 @@ network connection at all, including the first time you use it.
 
 Recording starts right away. The first dictation after opening the app may still be loading its
 speech model when you finish talking; if so the composer says so, and the wait is only ever once
-per model. With a hardware keyboard, press `Cmd+Shift+D` to start and again to finish.
+per model. With a hardware keyboard, hold `Option+D` to talk. **Settings, Voice Input** switches that to press once to start and again to finish, or turns it off.
 
 A recording can be up to five minutes long. Canceling voice input, leaving the screen, or an audio
 interruption discards the new recording and keeps your existing draft and attachments. T3 Code

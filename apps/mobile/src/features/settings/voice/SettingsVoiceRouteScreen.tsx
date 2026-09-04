@@ -37,6 +37,22 @@ import {
   type VoiceModelRow,
 } from "./voiceSettings";
 
+/** What Cmd+Option+D does. Hold is the default, because a dictation usually
+ *  lasts exactly as long as someone is willing to hold a key. */
+const DICTATION_SHORTCUTS = [
+  {
+    mode: "hold" as const,
+    label: "Hold to talk",
+    description: "Recording lasts as long as you hold Option and D.",
+  },
+  {
+    mode: "toggle" as const,
+    label: "Press to start and stop",
+    description: "Option and D starts a recording, and again finishes it.",
+  },
+  { mode: "off" as const, label: "Off", description: "No keyboard shortcut for dictation." },
+];
+
 export function SettingsVoiceRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -57,6 +73,7 @@ export function SettingsVoiceRouteScreen() {
   });
 
   const cleanupEnabled = preferences?.voiceCleanupEnabled ?? false;
+  const dictationShortcut = preferences?.voiceDictationShortcut ?? "hold";
 
   const confirmDelete = (row: VoiceModelRow) => {
     Alert.alert(
@@ -128,6 +145,38 @@ export function SettingsVoiceRouteScreen() {
               onPress={() => void models.startDownload(DIARIZER_MODEL_ID)}
             />
           ) : null}
+        </SettingsSection>
+
+        <SettingsSection title="Keyboard shortcut">
+          {DICTATION_SHORTCUTS.map((option, index) => (
+            <Pressable
+              key={option.mode}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: dictationShortcut === option.mode }}
+              onPress={() => savePreferences({ voiceDictationShortcut: option.mode })}
+              className={
+                index === 0
+                  ? "flex-row items-center gap-4 p-4"
+                  : "flex-row items-center gap-4 border-t border-border-subtle p-4"
+              }
+            >
+              <View className="min-w-0 flex-1 gap-1">
+                <Text className="text-lg text-foreground">{option.label}</Text>
+                <Text className="text-sm leading-normal text-foreground-muted">
+                  {option.description}
+                </Text>
+              </View>
+              {dictationShortcut === option.mode ? (
+                <SymbolView
+                  name="checkmark"
+                  size={18}
+                  tintColorClassName={"accent-icon"}
+                  type="monochrome"
+                  weight="semibold"
+                />
+              ) : null}
+            </Pressable>
+          ))}
         </SettingsSection>
 
         <SettingsSection title="Cleanup">

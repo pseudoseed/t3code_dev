@@ -179,9 +179,12 @@ stays off rather than reporting a fallback nobody can act on.
 
 ## Client boundaries
 
-`Cmd+Shift+D` on a hardware keyboard starts a dictation and finishes one, through the existing
-[hardware keyboard commands][keyboard]. The handler declines the key when the composer is disabled
-or a dictation is already past recording, so another screen can take it.
+`Option+D` on a hardware keyboard drives dictation, through the existing
+[hardware keyboard commands][keyboard]. It defaults to hold-to-talk and is switchable to
+tap-to-toggle or off. The two cannot share a chord: a matching `UIKeyCommand` consumes the key
+before `pressesBegan` sees it, and hold-to-talk needs the release, which a key command never
+reports. Which mode is registered decides which mechanism the native view installs. Command is not
+part of the chord because iPadOS binds `Cmd+Option+D` to showing the dock.
 
 Mobile's [presentation module][presentation] maps shared state to toolbar labels and actions.
 Waveform and toolbar rendering stay in mobile. Recording captures the draft owner, revision, text,

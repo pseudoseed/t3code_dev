@@ -10,7 +10,9 @@ export type HardwareKeyboardCommand =
   | "review"
   | "copyThreadReference"
   | "toggleSidebar"
-  | "toggleDictation";
+  | "toggleDictation"
+  | "dictationHoldStart"
+  | "dictationHoldEnd";
 
 type CommandHandler = () => boolean | void;
 
@@ -25,8 +27,15 @@ let registrationVersion = 0;
 export function useHardwareKeyboardCommand(
   command: HardwareKeyboardCommand,
   handler: CommandHandler,
+  /**
+   * Skips registration entirely when false. Registering a handler that always
+   * declines is not the same thing: the set of registered commands is what the
+   * native view uses to decide which key bindings to install.
+   */
+  enabled = true,
 ): void {
   useEffect(() => {
+    if (!enabled) return;
     const commandHandlers = handlers.get(command) ?? new Set<CommandHandler>();
     commandHandlers.add(handler);
     handlers.set(command, commandHandlers);
@@ -38,7 +47,7 @@ export function useHardwareKeyboardCommand(
       registrationVersion += 1;
       registrationListeners.forEach((listener) => listener());
     };
-  }, [command, handler]);
+  }, [command, enabled, handler]);
 }
 
 export function getRegisteredHardwareKeyboardCommands(): ReadonlySet<HardwareKeyboardCommand> {

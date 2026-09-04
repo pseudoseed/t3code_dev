@@ -80,6 +80,11 @@ export interface Preferences {
   readonly voiceSpeakerFilteringEnabled?: boolean;
   /** Off keeps multi-hundred-megabyte downloads off a metered connection. */
   readonly voiceDownloadOnCellular?: boolean;
+  /**
+   * How the hardware-keyboard shortcut behaves. Undefined means hold-to-talk,
+   * where the recording lasts exactly as long as the keys are down.
+   */
+  readonly voiceDictationShortcut?: "hold" | "toggle" | "off";
   readonly voiceCleanupEnabled?: boolean;
   readonly voiceCleanupModelId?: string;
   /** Undefined means the shipped default prompt, which can change per release. */
@@ -175,6 +180,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     voiceSpeechModelId?: string;
     voiceSpeakerFilteringEnabled?: boolean;
     voiceDownloadOnCellular?: boolean;
+    voiceDictationShortcut?: "hold" | "toggle" | "off";
     voiceCleanupEnabled?: boolean;
     voiceCleanupModelId?: string;
     voiceCleanupPrompt?: string;
@@ -279,6 +285,13 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.voiceDownloadOnCellular === "boolean") {
     preferences.voiceDownloadOnCellular = parsed.voiceDownloadOnCellular;
+  }
+  if (
+    parsed.voiceDictationShortcut === "hold" ||
+    parsed.voiceDictationShortcut === "toggle" ||
+    parsed.voiceDictationShortcut === "off"
+  ) {
+    preferences.voiceDictationShortcut = parsed.voiceDictationShortcut;
   }
   if (typeof parsed.voiceCleanupEnabled === "boolean") {
     preferences.voiceCleanupEnabled = parsed.voiceCleanupEnabled;

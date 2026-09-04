@@ -37,8 +37,56 @@ public final class T3KeyboardCommandsView: ExpoView {
         title: "Copy PR Link or Thread ID"
       ),
       enabledCommand("toggleSidebar", input: "\\", modifiers: .command, action: #selector(handleToggleSidebar), title: "Toggle Sidebar"),
-      enabledCommand("toggleDictation", input: "d", modifiers: [.command, .shift], action: #selector(handleToggleDictation), title: "Dictate"),
+      enabledCommand("toggleDictation", input: "d", modifiers: .alternate, action: #selector(handleToggleDictation), title: "Dictate"),
     ].compactMap { $0 }
+  }
+
+  /// Whether dictation is bound to hold-to-talk rather than tap-to-toggle.
+  ///
+  /// The two cannot both be live on the same chord: a matching `UIKeyCommand`
+  /// consumes the key before `pressesBegan` sees it, and hold-to-talk needs the
+  /// release, which a key command never reports.
+  private var holdsToTalk: Bool { enabledCommands.contains("dictationHoldStart") }
+
+  public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+    if holdsToTalk, Self.isDictationChord(presses) {
+      onCommand(["command": "dictationHoldStart"])
+      return
+    }
+
+    super.pressesBegan(presses, with: event)
+  }
+
+  public override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+    if holdsToTalk, Self.isDictationChord(presses) {
+      onCommand(["command": "dictationHoldEnd"])
+      return
+    }
+
+    super.pressesEnded(presses, with: event)
+  }
+
+  public override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+    // A cancelled press still has to stop the recording, or releasing the key
+    // outside the app leaves the microphone running.
+    if holdsToTalk, Self.isDictationChord(presses) {
+      onCommand(["command": "dictationHoldEnd"])
+      return
+    }
+
+    super.pressesCancelled(presses, with: event)
+  }
+
+  /// Option plus D, matched on the unmodified character so a layout that puts
+  /// something else on that key still works. Command is deliberately not part
+  /// of it: iPadOS binds Command plus Option plus D to showing the dock.
+  private static func isDictationChord(_ presses: Set<UIPress>) -> Bool {
+    presses.contains { press in
+      guard let key = press.key else { return false }
+      return key.charactersIgnoringModifiers.lowercased() == "d"
+        && key.modifierFlags.contains(.alternate)
+        && !key.modifierFlags.contains(.command)
+    }
   }
 
   func setEnabledCommands(_ commands: [String]) {

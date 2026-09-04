@@ -287,23 +287,45 @@ export function useVoiceInputController(input: {
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
-  // One key starts and finishes a dictation, so a hardware keyboard never has
-  // to reach for the screen mid-sentence. Declined when the composer is
-  // disabled or transcription is unavailable, which lets another screen's
-  // handler take the key instead.
+  // Cmd+Option+D on a hardware keyboard, so a dictation never needs the screen.
+  // Every handler declines when the composer is disabled or a dictation is
+  // already past recording, which lets another screen take the key.
+  const shortcut = preferences?.voiceDictationShortcut ?? "hold";
+
+  const canStart = useCallback(() => {
+    if (latestInputRef.current.disabled) return false;
+    const { phase } = controller.currentState;
+    return phase === "idle" || phase === "error";
+  }, [controller]);
+
   const toggleDictation = useCallback(() => {
     if (latestInputRef.current.disabled) return false;
     if (controller.currentState.phase === "recording") {
       void controller.stop();
       return true;
     }
-    if (controller.currentState.phase !== "idle" && controller.currentState.phase !== "error") {
-      return false;
-    }
+    if (!canStart()) return false;
     void controller.start();
     return true;
+  }, [canStart, controller]);
+
+  const startHold = useCallback(() => {
+    if (!canStart()) return false;
+    void controller.start();
+    return true;
+  }, [canStart, controller]);
+
+  // Releasing the keys ends the recording. Holding through a phase that is not
+  // recording is not an error; there is simply nothing to stop.
+  const endHold = useCallback(() => {
+    if (controller.currentState.phase !== "recording") return false;
+    void controller.stop();
+    return true;
   }, [controller]);
-  useHardwareKeyboardCommand("toggleDictation", toggleDictation);
+
+  useHardwareKeyboardCommand("toggleDictation", toggleDictation, shortcut === "toggle");
+  useHardwareKeyboardCommand("dictationHoldStart", startHold, shortcut === "hold");
+  useHardwareKeyboardCommand("dictationHoldEnd", endHold, shortcut === "hold");
 
   const recoverableTranscript = preferences
     ? resolveRecoverableTranscript(
