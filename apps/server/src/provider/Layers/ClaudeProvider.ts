@@ -135,6 +135,31 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
   return `Claude ${subscriptionLabel} Subscription`;
 }
 
+/**
+ * Whether a capabilities probe found a signed-in account.
+ *
+ * Only first-party (Anthropic OAuth / API key) auth is decided here. An
+ * `apiProvider` of anything else means the runtime authenticates against a
+ * cloud backend whose credentials live outside Claude's config directory, and
+ * the account fields are empty by design.
+ */
+export function hasClaudeAccountEvidence(capabilities: {
+  readonly email: string | undefined;
+  readonly subscriptionType: string | undefined;
+  readonly tokenSource: string | undefined;
+  readonly apiProvider: string | undefined;
+}): boolean {
+  const apiProvider = capabilities.apiProvider?.trim().toLowerCase();
+  if (apiProvider !== undefined && apiProvider !== "" && apiProvider !== "firstparty") {
+    return true;
+  }
+  return Boolean(
+    capabilities.email?.trim() ||
+    capabilities.subscriptionType?.trim() ||
+    capabilities.tokenSource?.trim(),
+  );
+}
+
 function claudeAuthMetadata(input: {
   readonly subscriptionType: string | undefined;
   readonly authMethod: string | undefined;
@@ -556,6 +581,30 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
     }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
+
+  // A successful probe only proves the runtime started. On first-party auth it
+  // reports an account — an email, a subscription, or a token source — once
+  // credentials exist, and reports none when the config directory has never
+  // been signed in to. Third-party backends (Bedrock, Vertex) authenticate with
+  // external cloud credentials and carry no account fields, so they are not
+  // held to this.
+  if (!hasClaudeAccountEvidence(capabilities)) {
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models,
+      slashCommands: dedupedSlashCommands,
+      skills,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status: "warning",
+        auth: { status: "unauthenticated" },
+        message: "Claude is not signed in for this provider. Sign in to use it.",
+      },
+    });
+  }
   const usageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames

@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 import {
   buildClaudeCapabilitiesProbeQueryOptions,
   CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES,
+  hasClaudeAccountEvidence,
   probeClaudeCapabilities,
 } from "./ClaudeProvider.ts";
 
@@ -160,5 +161,57 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
       };
       assert.equal(flagSettings.disableAllHooks, true);
     }).pipe(Effect.scoped),
+  );
+});
+
+// A capabilities probe succeeds whenever the runtime starts, which is not the
+// same as the config directory holding a sign-in. Instances get their own
+// `CLAUDE_CONFIG_DIR`, so a fresh one probes clean and must not read as
+// authenticated.
+it("treats a probe with no account fields as signed out", () => {
+  assert.equal(
+    hasClaudeAccountEvidence({
+      email: undefined,
+      subscriptionType: undefined,
+      tokenSource: undefined,
+      apiProvider: "firstParty",
+    }),
+    false,
+  );
+  assert.equal(
+    hasClaudeAccountEvidence({
+      email: "   ",
+      subscriptionType: "",
+      tokenSource: undefined,
+      apiProvider: undefined,
+    }),
+    false,
+  );
+});
+
+it("treats any first-party account field as a sign-in", () => {
+  const base = {
+    email: undefined,
+    subscriptionType: undefined,
+    tokenSource: undefined,
+    apiProvider: "firstParty",
+  };
+
+  assert.equal(hasClaudeAccountEvidence({ ...base, email: "user@example.com" }), true);
+  assert.equal(hasClaudeAccountEvidence({ ...base, subscriptionType: "max" }), true);
+  assert.equal(hasClaudeAccountEvidence({ ...base, tokenSource: "anthropicApiKey" }), true);
+});
+
+it("treats a third-party backend as authenticated without account fields", () => {
+  // Bedrock and Vertex authenticate with external cloud credentials, so they
+  // report no email or subscription by design.
+  assert.equal(
+    hasClaudeAccountEvidence({
+      email: undefined,
+      subscriptionType: undefined,
+      tokenSource: undefined,
+      apiProvider: "bedrock",
+    }),
+    true,
   );
 });
