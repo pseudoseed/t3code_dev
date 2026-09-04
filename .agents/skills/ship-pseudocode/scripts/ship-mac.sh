@@ -16,7 +16,7 @@ ROOT="$(repo_root)"
 cd "$ROOT"
 setup_path "$ROOT"
 load_env_local "$ROOT"
-require_vars T3CODE_APP_NAME T3CODE_APP_ICON
+require_vars T3CODE_APP_NAME T3CODE_APP_ICON T3CODE_DESKTOP_UPDATE_REPOSITORY
 
 PROFILE="${APPLE_KEYCHAIN_PROFILE:-pseudocode}"
 export APPLE_KEYCHAIN_PROFILE="$PROFILE"
@@ -38,7 +38,15 @@ if grep -q "skipped macOS notarization" "$LOG"; then
   exit 1
 fi
 
-DMG="$(ls -t release/*.dmg | head -1)"
+# electron-builder stamps artifacts with the *server* package version, so the
+# tag and the filenames both come from that file or they disagree.
+VERSION="$(node -p "require('./apps/server/package.json').version")"
+TAG="pseudocode-v$VERSION"
+
+# Name each artifact by version rather than picking the newest match: release/
+# is not cleaned between runs and an older build's files are still sitting there.
+DMG="release/$T3CODE_APP_NAME-$VERSION-$ARCH.dmg"
+ZIP="release/$T3CODE_APP_NAME-$VERSION-$ARCH.zip"
 MOUNT="$(mktemp -d)"
 cleanup() { hdiutil detach "$MOUNT" -quiet 2>/dev/null || true; }
 trap cleanup EXIT
@@ -58,24 +66,33 @@ trap - EXIT
 # Publish after verification, never before: an unnotarized DMG on a release page
 # is worse than no DMG, because macOS refuses to open it and the download looks
 # like the product is broken.
-# electron-builder stamps the artifact with the *server* package version, so the
-# tag has to come from the same file or the tag and the DMG disagree.
-VERSION="$(node -p "require('./apps/server/package.json').version")"
-TAG="pseudocode-v$VERSION"
 
-# This repo has an `upstream` remote, and `gh` resolves to it by default, so
-# every release command has to name the fork explicitly.
-REPO="$(git config --get remote.origin.url | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
+# Publish to the same repo the shipped app polls, and name it explicitly: this
+# worktree has an `upstream` remote and `gh` resolves to it by default.
+REPO="$T3CODE_DESKTOP_UPDATE_REPOSITORY"
+
+# "Check for updates" needs more than the DMG. electron-updater reads
+# `latest-mac.yml` to learn the version, then downloads the zip, so a release
+# holding only a DMG looks to the app like no release at all.
+ASSETS=(release/latest-mac.yml "$DMG" "$DMG.blockmap" "$ZIP" "$ZIP.blockmap")
+for asset in "${ASSETS[@]}"; do
+  if [ ! -f "$asset" ]; then
+    echo "Missing update artifact: $asset" >&2
+    echo "The build produced no update metadata, which means" >&2
+    echo "T3CODE_DESKTOP_UPDATE_REPOSITORY was not set when electron-builder ran." >&2
+    exit 1
+  fi
+done
 
 # Deliberately not `v$VERSION`. The release workflow triggers on `v*.*.*` and
 # cannot produce a usable artifact for this fork, so a tag in that shape starts
 # a run that is guaranteed to fail. See the skill's CI section.
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  echo "Adding $(basename "$DMG") to $TAG"
-  gh release upload "$TAG" "$DMG" --repo "$REPO" --clobber
+  echo "Adding $VERSION $ARCH artifacts to $TAG"
+  gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
 else
   echo "Creating release $TAG"
-  gh release create "$TAG" "$DMG" \
+  gh release create "$TAG" "${ASSETS[@]}" \
     --repo "$REPO" \
     --title "PseudoCode $VERSION" \
     --notes "Desktop build for macOS. Signed and notarized."
