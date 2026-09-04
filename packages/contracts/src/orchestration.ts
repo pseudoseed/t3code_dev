@@ -530,6 +530,12 @@ export const OrchestrationThread = Schema.Struct({
   // servers never need each other's threads to agree on the merged list.
   // Optional so payloads from pre-reorder servers still decode.
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  // When a client last had this thread open. Read state lives on the server
+  // so every surface agrees on what has been seen: reading on the desktop
+  // clears the unread indicator on the phone. Null means never opened, which
+  // reads as "seen" — adopting the feature must not light up all of history.
+  // Optional so payloads from pre-read-state servers still decode.
+  lastViewedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -602,6 +608,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   snoozedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   pinnedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** See OrchestrationThread.lastViewedAt: server-side read state. */
+  lastViewedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
@@ -898,6 +906,18 @@ const ThreadUnpinCommand = Schema.Struct({
   threadId: ThreadId,
 });
 
+const ThreadViewCommand = Schema.Struct({
+  type: Schema.Literal("thread.view"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  // Absent means "a client has this thread on screen now": the server stamps
+  // its own clock, so a device running fast cannot park a thread as read
+  // forever and read state only moves forward. Present is an explicit "mark
+  // as unread" — the one case where the user is deliberately rewinding read
+  // state, and therefore the only case where a client timestamp is honoured.
+  viewedAt: Schema.optional(IsoDateTime),
+});
+
 const ThreadPinReorderCommand = Schema.Struct({
   type: Schema.Literal("thread.pin.reorder"),
   commandId: CommandId,
@@ -1075,6 +1095,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadPinCommand,
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
+  ThreadViewCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -1103,6 +1124,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadPinCommand,
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
+  ThreadViewCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -1222,6 +1244,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.pinned",
   "thread.unpinned",
   "thread.pin-reordered",
+  "thread.viewed",
   "thread.meta-updated",
   "thread.runtime-mode-set",
   "thread.interaction-mode-set",
@@ -1355,6 +1378,14 @@ export const ThreadUnpinnedPayload = Schema.Struct({
 export const ThreadPinReorderedPayload = Schema.Struct({
   threadId: ThreadId,
   orderKey: TrimmedNonEmptyString,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadViewedPayload = Schema.Struct({
+  threadId: ThreadId,
+  lastViewedAt: IsoDateTime,
+  // Viewing never reorders a list, so this always carries the thread's
+  // existing updatedAt — reading is not activity.
   updatedAt: IsoDateTime,
 });
 
@@ -1581,6 +1612,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.pin-reordered"),
     payload: ThreadPinReorderedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.viewed"),
+    payload: ThreadViewedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

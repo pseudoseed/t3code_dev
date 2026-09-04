@@ -44,6 +44,10 @@ A single user-to-assistant work cycle inside a thread. It starts with user input
 
 A user-visible log item attached to a thread. In [the contracts][1], activities cover important non-message events like approvals, tool actions, and failures. They are projected into thread state in [projector.ts][4].
 
+#### Read state
+
+When a thread was last open on any client, recorded on the server as `lastViewedAt` by the `thread.view` command. A thread reads as unread when its latest turn completed after that stamp, so opening it on one device clears the indicator on the others. A thread nobody has ever opened reads as seen. Viewing never moves `updatedAt`, so read state cannot reorder a list.
+
 ### Orchestration
 
 Orchestration is the server-side domain layer that turns runtime activity into stable app state. The main entry point is [OrchestrationEngine.ts][7], with core logic in [decider.ts][8] and [projector.ts][4].

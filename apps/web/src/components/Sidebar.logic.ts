@@ -14,6 +14,7 @@ import {
 import type { SidebarThreadSummary, Thread } from "../types";
 import type { ThreadRouteTarget } from "../threadRoutes";
 import { cn } from "../lib/utils";
+import { threadHasUnreadCompletion } from "@t3tools/client-runtime/state/thread-read-state";
 import { isLatestTurnSettled } from "../session-logic";
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
@@ -210,10 +211,13 @@ type ThreadStatusInput = Pick<
   | "hasPendingApprovals"
   | "hasPendingUserInput"
   | "interactionMode"
+  | "lastViewedAt"
   | "latestTurn"
   | "session"
   | "backgroundLiveness"
 > & {
+  /** This browser's own record, used only against servers that predate
+      server-side read state (see threadHasUnreadCompletion). */
   lastVisitedAt?: string | undefined;
 };
 
@@ -302,15 +306,13 @@ export function useThreadJumpHintVisibility(): {
   };
 }
 
+/**
+ * Read state is the server's when the server has it, and this browser's local
+ * record only against servers that predate the field — so a thread read on
+ * the phone stops reading as Done here.
+ */
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
-  if (!thread.latestTurn?.completedAt) return false;
-  const completedAt = Date.parse(thread.latestTurn.completedAt);
-  if (Number.isNaN(completedAt)) return false;
-  if (!thread.lastVisitedAt) return false;
-
-  const lastVisitedAt = Date.parse(thread.lastVisitedAt);
-  if (Number.isNaN(lastVisitedAt)) return true;
-  return completedAt > lastVisitedAt;
+  return threadHasUnreadCompletion(thread, { localLastViewedAt: thread.lastVisitedAt });
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {

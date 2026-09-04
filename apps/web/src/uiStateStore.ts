@@ -245,19 +245,33 @@ export function markThreadVisited(state: UiState, threadId: string, visitedAt: s
   };
 }
 
+/**
+ * The visit timestamp that leaves a completion looking unseen: one tick before
+ * it landed. Shared with the server-side rewind so both records agree on what
+ * "unread" means for the same thread.
+ */
+export function unreadVisitedAtFor(
+  latestTurnCompletedAt: string | null | undefined,
+): string | null {
+  if (!latestTurnCompletedAt) {
+    return null;
+  }
+  const latestTurnCompletedAtMs = Date.parse(latestTurnCompletedAt);
+  if (Number.isNaN(latestTurnCompletedAtMs)) {
+    return null;
+  }
+  return new Date(latestTurnCompletedAtMs - 1).toISOString();
+}
+
 export function markThreadUnread(
   state: UiState,
   threadId: string,
   latestTurnCompletedAt: string | null | undefined,
 ): UiState {
-  if (!latestTurnCompletedAt) {
+  const unreadVisitedAt = unreadVisitedAtFor(latestTurnCompletedAt);
+  if (unreadVisitedAt === null) {
     return state;
   }
-  const latestTurnCompletedAtMs = Date.parse(latestTurnCompletedAt);
-  if (Number.isNaN(latestTurnCompletedAtMs)) {
-    return state;
-  }
-  const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
   if (state.threadLastVisitedAtById[threadId] === unreadVisitedAt) {
     return state;
   }

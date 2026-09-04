@@ -804,6 +804,47 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.view": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      // A plain receipt is stamped by the server's own clock, so read state
+      // only moves forward and a device with a fast clock cannot park a thread
+      // as read forever. An explicit viewedAt is "mark as unread": a
+      // deliberate rewind, and the only case a client timestamp decides.
+      const occurredAt = yield* nowIso;
+      const isRewind = command.viewedAt !== undefined;
+      const requestedViewedAt = command.viewedAt ?? occurredAt;
+      const existingViewedAt = thread.lastViewedAt ?? null;
+      const existingViewedAtMs =
+        existingViewedAt === null ? Number.NaN : Date.parse(existingViewedAt);
+      // A receipt from a second client, or a re-focus, can arrive out of
+      // order: re-emit the recorded value so the projection is a no-op.
+      // Unparseable stored state always loses to the new stamp.
+      const advances =
+        isRewind ||
+        Number.isNaN(existingViewedAtMs) ||
+        Date.parse(requestedViewedAt) > existingViewedAtMs;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.viewed",
+        payload: {
+          threadId: command.threadId,
+          lastViewedAt: advances ? requestedViewedAt : (existingViewedAt ?? occurredAt),
+          // Reading is not activity: a view must never reorder a list, so the
+          // thread keeps the updatedAt it already had.
+          updatedAt: thread.updatedAt,
+        },
+      };
+    }
+
     case "thread.meta.update": {
       const thread = yield* requireThread({
         readModel,
