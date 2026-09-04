@@ -1,10 +1,16 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { UsersIcon } from "lucide-react";
 import { buttonVariants } from "../ui/button";
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { cn } from "~/lib/utils";
-import { ComposerControl, ComposerControlChevron, ComposerControlIcon } from "./ComposerControl";
+import {
+  ComposerControl,
+  ComposerControlChevron,
+  ComposerControlIcon,
+  type ComposerControlSize,
+} from "./ComposerControl";
+import { useComposerMenuState } from "./useComposerMenuState";
 import { ModelEsque, getTriggerDisplayModelName } from "./providerIconUtils";
 
 /** Menu value standing in for "no override": subagents run the thread's model. */
@@ -79,11 +85,19 @@ export const SubagentModelMenuContent = memo(function SubagentModelMenuContent(
 export const SubagentModelPicker = memo(function SubagentModelPicker(
   props: SubagentModelControlProps & {
     compact?: boolean;
+    size?: ComposerControlSize;
+    /**
+     * The resting strip keeps this control mounted out of flow while every
+     * block fits inline. Its portaled popup would outlive that transition, so
+     * an open menu closes when its trigger hides.
+     */
+    hidden?: boolean;
     triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
     triggerClassName?: string;
   },
 ) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const size = props.size ?? "sm";
+  const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(props.hidden);
   const label = subagentModelTriggerLabel({
     value: props.value,
     instanceModels: props.instanceModels,
@@ -94,6 +108,7 @@ export const SubagentModelPicker = memo(function SubagentModelPicker(
       <MenuTrigger
         render={
           <ComposerControl
+            size={size}
             variant={props.triggerVariant ?? "ghost"}
             aria-label="Subagent model"
             data-chat-subagent-model-picker="true"
@@ -106,9 +121,9 @@ export const SubagentModelPicker = memo(function SubagentModelPicker(
         }
       >
         <span className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden">
-          <ComposerControlIcon icon={UsersIcon} />
+          <ComposerControlIcon icon={UsersIcon} size={size} />
           <span className="min-w-0 truncate">{label}</span>
-          <ComposerControlChevron />
+          <ComposerControlChevron size={size} />
         </span>
       </MenuTrigger>
       <MenuPopup align="start">
