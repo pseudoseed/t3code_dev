@@ -7,7 +7,7 @@ public class T3TerminalModule: Module {
     // Bumped when native hardware-keyboard handling changes; surfaced in the JS debug
     // logs so a stale native binary is distinguishable from a broken key pipeline.
     Constants([
-      "hardwareKeyRevision": 3,
+      "hardwareKeyRevision": 4,
     ])
 
     View(T3TerminalView.self) {
@@ -15,8 +15,8 @@ public class T3TerminalModule: Module {
         view.terminalKey = terminalKey
       }
 
-      Prop("initialBuffer") { (view: T3TerminalView, initialBuffer: String) in
-        view.initialBuffer = initialBuffer
+      Prop("append") { (view: T3TerminalView, append: TerminalAppend) in
+        view.applyAppend(append)
       }
 
       Prop("fontSize") { (view: T3TerminalView, fontSize: Double) in
@@ -51,7 +51,7 @@ public class T3TerminalModule: Module {
         view.mutedForegroundColorHex = mutedForegroundColor
       }
 
-      Events("onInput", "onResize")
+      Events("onInput", "onResize", "onSurfaceReady")
     }
   }
 }

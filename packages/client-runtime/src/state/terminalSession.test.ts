@@ -8,6 +8,7 @@ import {
   combineTerminalSessionState,
   EMPTY_TERMINAL_BUFFER_STATE,
   selectRunningSubprocessTerminalIds,
+  terminalBufferDelta,
 } from "./terminalSession.ts";
 
 const TARGET = {
@@ -125,12 +126,15 @@ describe("terminal session reducers", () => {
       8,
     );
 
+    // Trimming drops to a fraction of the cap so it runs once per many chunks
+    // instead of shaving every chunk off the front.
     expect(output).toMatchObject({
-      buffer: "lo world",
+      buffer: " world",
       status: "running",
       error: null,
       version: 2,
     });
+    expect(output.buffer.length).toBe(output.cursor - output.trimmed);
   });
 
   it("reduces terminal metadata snapshots, upserts, and removals", () => {
@@ -183,5 +187,71 @@ describe("terminal session reducers", () => {
     );
 
     expect(state.buffer).toBe("🙂");
+  });
+});
+
+describe("terminalBufferDelta", () => {
+  const output = (state: typeof EMPTY_TERMINAL_BUFFER_STATE, data: string, cap?: number) =>
+    applyTerminalAttachStreamEvent(
+      state,
+      { type: "output", threadId: TARGET.threadId, terminalId: TARGET.terminalId, data },
+      cap,
+    );
+
+  it("hands a caught-up renderer only what arrived since it last wrote", () => {
+    const first = output(EMPTY_TERMINAL_BUFFER_STATE, "hello");
+    const second = output(first, " world");
+
+    expect(terminalBufferDelta(second, first)).toMatchObject({
+      reset: false,
+      chunk: " world",
+      cursor: second.cursor,
+    });
+  });
+
+  it("hands a renderer at the head nothing", () => {
+    const state = output(EMPTY_TERMINAL_BUFFER_STATE, "hello");
+
+    expect(terminalBufferDelta(state, state)).toMatchObject({ reset: false, chunk: "" });
+  });
+
+  it("keeps appending after trimming drops the front of the buffer", () => {
+    // Trimming used to break the prefix comparison both renderers relied on, so
+    // every later chunk replayed the whole buffer into a fresh surface.
+    let state = output(EMPTY_TERMINAL_BUFFER_STATE, "0123456789", 8);
+    expect(state.trimmed).toBeGreaterThan(0);
+
+    const caughtUp = state;
+    state = output(state, "abc", 8);
+
+    expect(terminalBufferDelta(state, caughtUp)).toMatchObject({ reset: false, chunk: "abc" });
+  });
+
+  it("resets a renderer that fell behind the trim point", () => {
+    const stale = output(EMPTY_TERMINAL_BUFFER_STATE, "0123", 8);
+    const state = output(output(stale, "456789", 8), "abcdef", 8);
+
+    expect(terminalBufferDelta(state, stale)).toMatchObject({
+      reset: true,
+      chunk: state.buffer,
+    });
+  });
+
+  it("resets a renderer across a clear", () => {
+    const before = output(EMPTY_TERMINAL_BUFFER_STATE, "hello");
+    const cleared = applyTerminalAttachStreamEvent(before, {
+      type: "cleared",
+      threadId: TARGET.threadId,
+      terminalId: TARGET.terminalId,
+    });
+
+    expect(cleared.epoch).not.toBe(before.epoch);
+    expect(terminalBufferDelta(cleared, before)).toMatchObject({ reset: true, chunk: "" });
+  });
+
+  it("resets a renderer that has written nothing yet", () => {
+    const state = output(EMPTY_TERMINAL_BUFFER_STATE, "hello");
+
+    expect(terminalBufferDelta(state, null)).toMatchObject({ reset: true, chunk: "hello" });
   });
 });

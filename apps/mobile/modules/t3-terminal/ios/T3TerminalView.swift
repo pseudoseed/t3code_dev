@@ -22,34 +22,72 @@ private enum GhosttyRuntime {
   }
 }
 
-/// Encodes hardware-keyboard combos that UITextField never surfaces through its
-/// text-editing delegate (control combos, Escape, Tab, arrow keys) into the byte
-/// sequences a terminal expects.
+/// Bridges hardware-keyboard combos that UITextField never surfaces through its
+/// text-editing delegate (control combos, Escape, Tab, arrows, Home/End, paging)
+/// into terminal input.
 ///
 /// Capture uses UIKeyCommand with `wantsPriorityOverSystemBehavior` rather than
 /// `pressesBegan`: while a text field is first responder, iPadOS routes hardware key
 /// events through the text-input system, which can consume presses before they reach
 /// responder press callbacks. Registered key commands are matched deterministically
 /// before that happens.
-private enum TerminalHardwareKeyEncoder {
+///
+/// Encoding itself belongs to Ghostty, which knows the modes the running program
+/// set — cursor keys change meaning under DECCKM. `fallbackSequence` only covers
+/// the window before a surface exists.
+enum TerminalHardwareKeyEncoder {
   /// Characters that produce a control byte when combined with Ctrl.
   private static let controlInputs = "abcdefghijklmnopqrstuvwxyz@[\\]^_-? "
+
+  static let backspace = "\u{8}"
+
+  /// Line editing chords, matching what the web client sends. Terminals encode
+  /// these as modified cursor keys, which stock zsh and readline do not bind, so
+  /// the readline control codes are what actually move the cursor.
+  private static let wordBackward = "\u{1B}b"
+  private static let wordForward = "\u{1B}f"
+  private static let lineStart = "\u{01}"
+  private static let lineEnd = "\u{05}"
+  private static let deleteWordBackward = "\u{1B}\u{7F}"
+  private static let deleteToLineStart = "\u{15}"
+
+  private static let modifiedInputs: [String] = [
+    UIKeyCommand.inputUpArrow,
+    UIKeyCommand.inputDownArrow,
+    UIKeyCommand.inputLeftArrow,
+    UIKeyCommand.inputRightArrow,
+    backspace,
+  ]
 
   static func makeKeyCommands(action: Selector) -> [UIKeyCommand] {
     var commands: [UIKeyCommand] = []
 
-    let specialInputs = [
+    let bareInputs = [
       UIKeyCommand.inputEscape,
       UIKeyCommand.inputUpArrow,
       UIKeyCommand.inputDownArrow,
       UIKeyCommand.inputLeftArrow,
       UIKeyCommand.inputRightArrow,
+      UIKeyCommand.inputHome,
+      UIKeyCommand.inputEnd,
+      UIKeyCommand.inputPageUp,
+      UIKeyCommand.inputPageDown,
+      UIKeyCommand.inputDelete,
       "\t",
     ]
-    for input in specialInputs {
+    for input in bareInputs {
       commands.append(makeCommand(input: input, modifierFlags: [], action: action))
     }
     commands.append(makeCommand(input: "\t", modifierFlags: .shift, action: action))
+
+    // Plain Backspace reaches deleteBackward, but every modified chord is
+    // swallowed by the text-input system unless it is registered here.
+    let modifiers: [UIKeyModifierFlags] = [.shift, .control, .alternate, .command]
+    for input in modifiedInputs {
+      for modifier in modifiers {
+        commands.append(makeCommand(input: input, modifierFlags: modifier, action: action))
+      }
+    }
 
     for character in controlInputs {
       commands.append(makeCommand(input: String(character), modifierFlags: .control, action: action))
@@ -57,6 +95,9 @@ private enum TerminalHardwareKeyEncoder {
         makeCommand(input: String(character), modifierFlags: [.control, .shift], action: action)
       )
     }
+
+    commands.append(makeCommand(input: "c", modifierFlags: .command, action: action))
+    commands.append(makeCommand(input: "v", modifierFlags: .command, action: action))
 
     return commands
   }
@@ -71,26 +112,103 @@ private enum TerminalHardwareKeyEncoder {
     return command
   }
 
-  static func sequence(input: String, modifiers: UIKeyModifierFlags) -> String? {
+  static func isCopy(input: String, modifiers: UIKeyModifierFlags) -> Bool {
+    input == "c" && modifiers.contains(.command) && !modifiers.contains(.control)
+  }
+
+  static func isPaste(input: String, modifiers: UIKeyModifierFlags) -> Bool {
+    input == "v" && modifiers.contains(.command) && !modifiers.contains(.control)
+  }
+
+  static func editingSequence(input: String, modifiers: UIKeyModifierFlags) -> String? {
+    guard !modifiers.contains(.control), !modifiers.contains(.shift) else { return nil }
+    let byWord = modifiers.contains(.alternate) && !modifiers.contains(.command)
+    let byLine = modifiers.contains(.command) && !modifiers.contains(.alternate)
+    guard byWord || byLine else { return nil }
+
     switch input {
-    case UIKeyCommand.inputEscape:
-      return "\u{1B}"
-    case UIKeyCommand.inputUpArrow:
-      return "\u{1B}[A"
-    case UIKeyCommand.inputDownArrow:
-      return "\u{1B}[B"
-    case UIKeyCommand.inputRightArrow:
-      return "\u{1B}[C"
     case UIKeyCommand.inputLeftArrow:
-      return "\u{1B}[D"
-    case "\t":
-      return modifiers.contains(.shift) ? "\u{1B}[Z" : "\t"
+      return byWord ? wordBackward : lineStart
+    case UIKeyCommand.inputRightArrow:
+      return byWord ? wordForward : lineEnd
+    case backspace:
+      return byWord ? deleteWordBackward : deleteToLineStart
     default:
-      break
+      return nil
+    }
+  }
+
+  private static let ghosttyKeys: [String: ghostty_input_key_e] = [
+    UIKeyCommand.inputEscape: GHOSTTY_KEY_ESCAPE,
+    UIKeyCommand.inputUpArrow: GHOSTTY_KEY_ARROW_UP,
+    UIKeyCommand.inputDownArrow: GHOSTTY_KEY_ARROW_DOWN,
+    UIKeyCommand.inputLeftArrow: GHOSTTY_KEY_ARROW_LEFT,
+    UIKeyCommand.inputRightArrow: GHOSTTY_KEY_ARROW_RIGHT,
+    UIKeyCommand.inputHome: GHOSTTY_KEY_HOME,
+    UIKeyCommand.inputEnd: GHOSTTY_KEY_END,
+    UIKeyCommand.inputPageUp: GHOSTTY_KEY_PAGE_UP,
+    UIKeyCommand.inputPageDown: GHOSTTY_KEY_PAGE_DOWN,
+    UIKeyCommand.inputDelete: GHOSTTY_KEY_DELETE,
+    backspace: GHOSTTY_KEY_BACKSPACE,
+    "\t": GHOSTTY_KEY_TAB,
+  ]
+
+  static func ghosttyKey(for input: String) -> ghostty_input_key_e? {
+    if let key = ghosttyKeys[input] {
+      return key
+    }
+    guard input.unicodeScalars.count == 1,
+          let scalar = input.lowercased().unicodeScalars.first,
+          scalar >= "a", scalar <= "z"
+    else { return nil }
+    let offset = scalar.value - ("a" as Unicode.Scalar).value
+    return ghostty_input_key_e(GHOSTTY_KEY_A.rawValue + offset)
+  }
+
+  static func ghosttyMods(_ modifiers: UIKeyModifierFlags) -> ghostty_input_mods_e {
+    var raw = GHOSTTY_MODS_NONE.rawValue
+    if modifiers.contains(.shift) { raw |= GHOSTTY_MODS_SHIFT.rawValue }
+    if modifiers.contains(.control) { raw |= GHOSTTY_MODS_CTRL.rawValue }
+    if modifiers.contains(.alternate) { raw |= GHOSTTY_MODS_ALT.rawValue }
+    if modifiers.contains(.command) { raw |= GHOSTTY_MODS_SUPER.rawValue }
+    if modifiers.contains(.alphaShift) { raw |= GHOSTTY_MODS_CAPS.rawValue }
+    return ghostty_input_mods_e(raw)
+  }
+
+  static func unshiftedCodepoint(for input: String) -> UInt32 {
+    guard input.unicodeScalars.count == 1,
+          let scalar = input.lowercased().unicodeScalars.first
+    else { return 0 }
+    return scalar.value
+  }
+
+  /// Used only when no Ghostty surface exists yet, so mode-dependent keys fall
+  /// back to their default-mode encoding.
+  private static let fallbackSequences: [String: String] = [
+    UIKeyCommand.inputEscape: "\u{1B}",
+    UIKeyCommand.inputUpArrow: "\u{1B}[A",
+    UIKeyCommand.inputDownArrow: "\u{1B}[B",
+    UIKeyCommand.inputRightArrow: "\u{1B}[C",
+    UIKeyCommand.inputLeftArrow: "\u{1B}[D",
+    UIKeyCommand.inputHome: "\u{1B}[H",
+    UIKeyCommand.inputEnd: "\u{1B}[F",
+    UIKeyCommand.inputPageUp: "\u{1B}[5~",
+    UIKeyCommand.inputPageDown: "\u{1B}[6~",
+    UIKeyCommand.inputDelete: "\u{1B}[3~",
+    backspace: "\u{7F}",
+  ]
+
+  static func fallbackSequence(input: String, modifiers: UIKeyModifierFlags) -> String? {
+    if input == "\t" {
+      return modifiers.contains(.shift) ? "\u{1B}[Z" : "\t"
+    }
+    if let sequence = fallbackSequences[input] {
+      return sequence
     }
 
-    guard modifiers.contains(.control) else { return nil }
-    guard let scalar = input.lowercased().unicodeScalars.first else { return nil }
+    guard modifiers.contains(.control),
+          let scalar = input.lowercased().unicodeScalars.first
+    else { return nil }
     return controlSequence(for: scalar)
   }
 
@@ -137,6 +255,7 @@ private enum TerminalInputSequence {
 private final class TerminalInputField: UITextField {
   var onDeleteBackward: (() -> Void)?
   var onInsert: ((String) -> Void)?
+  var onHardwareKey: ((String, UIKeyModifierFlags) -> Void)?
 
   private static let hardwareKeyCommands = TerminalHardwareKeyEncoder.makeKeyCommands(
     action: #selector(handleHardwareKeyCommand(_:))
@@ -154,12 +273,19 @@ private final class TerminalInputField: UITextField {
   @objc
   private func handleHardwareKeyCommand(_ command: UIKeyCommand) {
     guard let input = command.input else { return }
-    guard let sequence = TerminalHardwareKeyEncoder.sequence(
-      input: input,
-      modifiers: command.modifierFlags
-    ) else { return }
-    onInsert?(sequence)
+    onHardwareKey?(input, command.modifierFlags)
   }
+}
+
+/// One delivery from JS: the slice appended since `cursor` last advanced, or a
+/// full replay that replaces whatever the surface currently holds.
+public struct TerminalAppend: Record {
+  @Field public var reset: Bool = false
+  @Field public var chunk: String = ""
+  @Field public var cursor: Double = -1
+  @Field public var epoch: Double = -1
+
+  public init() {}
 }
 
 private enum TerminalAppearanceScheme: String {
@@ -201,10 +327,13 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   private let inputField = TerminalInputField()
   private let focusTapGesture = UITapGestureRecognizer()
   private let scrollPanGesture = UIPanGestureRecognizer()
+  private let selectionLongPress = UILongPressGestureRecognizer()
   private var lastViewportSize: CGSize = .zero
   private var lastContentScale: CGFloat = 0
   private var lastReportedGrid: (cols: Int, rows: Int)?
-  private var lastAppliedBuffer = ""
+  private var appliedCursor: Double = -1
+  private var appliedEpoch: Double = -1
+  private var isSelecting = false
   private var pendingVerticalScrollPoints: CGFloat = 0
   private var app: ghostty_app_t?
   private var surface: ghostty_surface_t?
@@ -215,6 +344,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
 
   let onInput = EventDispatcher()
   let onResize = EventDispatcher()
+  let onSurfaceReady = EventDispatcher()
 
   var terminalKey: String = "" {
     didSet {
@@ -222,12 +352,6 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
       if oldValue != terminalKey {
         resetSurface()
       }
-    }
-  }
-
-  var initialBuffer: String = "" {
-    didSet {
-      applyRemoteBuffer(initialBuffer)
     }
   }
 
@@ -321,6 +445,9 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     inputField.onInsert = { [weak self] data in
       self?.emitInput(data)
     }
+    inputField.onHardwareKey = { [weak self] input, modifiers in
+      self?.handleHardwareKey(input: input, modifiers: modifiers)
+    }
 
     focusTapGesture.addTarget(self, action: #selector(handleViewportTap))
     terminalViewport.addGestureRecognizer(focusTapGesture)
@@ -328,6 +455,11 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     scrollPanGesture.maximumNumberOfTouches = 1
     scrollPanGesture.cancelsTouchesInView = false
     terminalViewport.addGestureRecognizer(scrollPanGesture)
+    selectionLongPress.addTarget(self, action: #selector(handleSelectionLongPress(_:)))
+    selectionLongPress.minimumPressDuration = 0.35
+    selectionLongPress.allowableMovement = 12
+    selectionLongPress.cancelsTouchesInView = false
+    terminalViewport.addGestureRecognizer(selectionLongPress)
 
     addSubview(terminalViewport)
     addSubview(inputField)
@@ -400,7 +532,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
 
   @objc
   private func handleViewportPan(_ gesture: UIPanGestureRecognizer) {
-    guard let surface else { return }
+    guard let surface, !isSelecting else { return }
 
     let location = gesture.location(in: terminalViewport)
     ghostty_surface_mouse_pos(
@@ -459,9 +591,17 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
       supports_selection_clipboard: false,
       wakeup_cb: { _ in },
       action_cb: { _, _, _ in false },
-      read_clipboard_cb: { _, _, _, _, _, _ in GHOSTTY_CLIPBOARD_READ_UNSUPPORTED },
+      read_clipboard_cb: { userdata, _, state, _, _, _ in
+        guard let userdata else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
+        let view = Unmanaged<T3TerminalView>.fromOpaque(userdata).takeUnretainedValue()
+        return view.completeClipboardRead(state: state)
+      },
       confirm_read_clipboard_cb: { _, _, _, _ in },
-      write_clipboard_cb: { _, _, _, _, _ in },
+      write_clipboard_cb: { userdata, _, contents, contentsLen, _ in
+        guard let userdata else { return }
+        let view = Unmanaged<T3TerminalView>.fromOpaque(userdata).takeUnretainedValue()
+        view.writeClipboard(contents: contents, count: contentsLen)
+      },
       close_surface_cb: { _, _ in }
     )
 
@@ -499,12 +639,20 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     ghostty_surface_set_color_scheme(createdSurface, appearance.ghosttyColorScheme)
     setupWriteCallback()
     resizeSurface()
-    feedBuffer(initialBuffer)
+
+    // A fresh surface holds nothing. Announcing it is what makes JS resend the
+    // history, so the view never has to keep a second copy of the scrollback.
+    appliedCursor = -1
+    appliedEpoch = -1
+    DispatchQueue.main.async { [weak self] in
+      self?.onSurfaceReady([:])
+    }
   }
 
   private func resetSurface() {
     destroySurface()
-    lastAppliedBuffer = ""
+    appliedCursor = -1
+    appliedEpoch = -1
     lastViewportSize = .zero
     lastContentScale = 0
     lastReportedGrid = nil
@@ -529,33 +677,27 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     app = nil
   }
 
-  private func applyRemoteBuffer(_ buffer: String) {
+  func applyAppend(_ append: TerminalAppend) {
     guard surface != nil else {
+      // Nothing to write into yet. Surface creation announces itself and JS
+      // answers with a replay, so dropping this delivery loses nothing.
       createSurfaceIfPossible()
       return
     }
 
-    if buffer.isEmpty {
-      feedData(Data("\u{1B}[3J\u{1B}[H\u{1B}[2J".utf8))
-      lastAppliedBuffer = ""
+    if append.reset {
+      appliedEpoch = append.epoch
+      appliedCursor = append.cursor
+      // RIS clears the modes a previous session left behind; the screen and
+      // scrollback have to go with them before the replay lands.
+      feedData(Data("\u{1B}c\u{1B}[3J".utf8))
+      feedData(Data(append.chunk.utf8))
       return
     }
 
-    if buffer.hasPrefix(lastAppliedBuffer) {
-      let suffix = String(buffer.dropFirst(lastAppliedBuffer.count))
-      feedData(Data(suffix.utf8))
-      lastAppliedBuffer = buffer
-      return
-    }
-
-    resetSurface()
-    createSurfaceIfPossible()
-  }
-
-  private func feedBuffer(_ buffer: String) {
-    guard !buffer.isEmpty else { return }
-    feedData(Data(buffer.utf8))
-    lastAppliedBuffer = buffer
+    guard append.epoch == appliedEpoch, append.cursor > appliedCursor else { return }
+    appliedCursor = append.cursor
+    feedData(Data(append.chunk.utf8))
   }
 
   private func feedData(_ data: Data) {
@@ -665,6 +807,175 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   private func emitInput(_ data: String) {
     guard !data.isEmpty else { return }
     onInput(["data": data])
+  }
+
+  // MARK: - Hardware keys
+
+  private func handleHardwareKey(input: String, modifiers: UIKeyModifierFlags) {
+    if TerminalHardwareKeyEncoder.isCopy(input: input, modifiers: modifiers) {
+      copySelectionToPasteboard()
+      return
+    }
+    if TerminalHardwareKeyEncoder.isPaste(input: input, modifiers: modifiers) {
+      pasteFromPasteboard()
+      return
+    }
+    if let editing = TerminalHardwareKeyEncoder.editingSequence(
+      input: input,
+      modifiers: modifiers
+    ) {
+      emitInput(editing)
+      return
+    }
+    // Ghostty owns encoding whenever it can: it knows the modes the running
+    // program set, and its output reaches JS through the surface write callback.
+    // Falling back after handing it the key would risk sending the key twice,
+    // so the fallback only covers what Ghostty was never given.
+    if sendKeyThroughGhostty(input: input, modifiers: modifiers) {
+      return
+    }
+    if let fallback = TerminalHardwareKeyEncoder.fallbackSequence(
+      input: input,
+      modifiers: modifiers
+    ) {
+      emitInput(fallback)
+    }
+  }
+
+  /// Returns whether the key was handed to Ghostty, which happens whenever a
+  /// surface exists and the key has a physical keycode.
+  private func sendKeyThroughGhostty(input: String, modifiers: UIKeyModifierFlags) -> Bool {
+    guard let surface, let key = TerminalHardwareKeyEncoder.ghosttyKey(for: input) else {
+      return false
+    }
+
+    var event = ghostty_input_key_s()
+    event.action = GHOSTTY_ACTION_PRESS
+    event.mods = TerminalHardwareKeyEncoder.ghosttyMods(modifiers)
+    event.consumed_mods = GHOSTTY_MODS_NONE
+    event.keycode = key.rawValue
+    event.text = nil
+    event.unshifted_codepoint = TerminalHardwareKeyEncoder.unshiftedCodepoint(for: input)
+    event.composing = false
+
+    _ = ghostty_surface_key(surface, event)
+    return true
+  }
+
+  // MARK: - Selection and clipboard
+
+  @objc
+  private func handleSelectionLongPress(_ gesture: UILongPressGestureRecognizer) {
+    guard let surface else { return }
+
+    let location = gesture.location(in: terminalViewport)
+    ghostty_surface_mouse_pos(
+      surface,
+      Double(location.x * contentScaleFactor),
+      Double(location.y * contentScaleFactor),
+      GHOSTTY_MODS_NONE
+    )
+
+    switch gesture.state {
+    case .began:
+      isSelecting = true
+      requestKeyboardFocus()
+      _ = ghostty_surface_mouse_button(
+        surface,
+        GHOSTTY_MOUSE_PRESS,
+        GHOSTTY_MOUSE_LEFT,
+        GHOSTTY_MODS_NONE
+      )
+      redrawSurface()
+    case .changed:
+      redrawSurface()
+    case .ended, .cancelled, .failed:
+      _ = ghostty_surface_mouse_button(
+        surface,
+        GHOSTTY_MOUSE_RELEASE,
+        GHOSTTY_MOUSE_LEFT,
+        GHOSTTY_MODS_NONE
+      )
+      isSelecting = false
+      redrawSurface()
+      // There is no selection toolbar on this surface, so releasing the drag is
+      // the only moment the user can act on what they highlighted.
+      copySelectionToPasteboard()
+    default:
+      break
+    }
+  }
+
+  private func copySelectionToPasteboard() {
+    guard let surface, ghostty_surface_has_selection(surface) else { return }
+
+    var text = ghostty_text_s()
+    guard ghostty_surface_read_selection(surface, &text) else { return }
+    defer { ghostty_surface_free_text(surface, &text) }
+
+    guard let pointer = text.text, text.text_len > 0 else { return }
+    let data = Data(bytes: pointer, count: Int(text.text_len))
+    guard let selection = String(data: data, encoding: .utf8), !selection.isEmpty else { return }
+    UIPasteboard.general.string = selection
+  }
+
+  private func pasteFromPasteboard() {
+    guard let surface else { return }
+    // Route through Ghostty so the paste is bracketed when the program asked for
+    // it; the read callback below is what hands over the pasteboard contents.
+    let action = "paste_from_clipboard"
+    _ = action.withCString { pointer in
+      ghostty_surface_binding_action(surface, pointer, UInt(action.utf8.count))
+    }
+  }
+
+  fileprivate func completeClipboardRead(state: UnsafeMutableRawPointer?) -> ghostty_clipboard_read_result_e {
+    guard let surface else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
+    guard let pasted = UIPasteboard.general.string, !pasted.isEmpty else {
+      ghostty_surface_deny_clipboard_request(surface, state)
+      return GHOSTTY_CLIPBOARD_READ_STARTED
+    }
+
+    var bytes = Array(pasted.utf8)
+    let mime = "text/plain;charset=utf-8"
+    mime.withCString { mimePointer in
+      bytes.withUnsafeMutableBufferPointer { buffer in
+        var content = ghostty_clipboard_content_s(
+          mime: mimePointer,
+          data: buffer.baseAddress.map { UnsafeRawPointer($0).assumingMemoryBound(to: CChar.self) },
+          len: buffer.count
+        )
+        withUnsafePointer(to: &content) { contentPointer in
+          var complete = ghostty_clipboard_complete_s(
+            contents: contentPointer,
+            contents_len: 1,
+            available: nil,
+            available_len: 0,
+            confirmed: true,
+            remember: false
+          )
+          ghostty_surface_complete_clipboard_request(surface, &complete, state)
+        }
+      }
+    }
+
+    return GHOSTTY_CLIPBOARD_READ_STARTED
+  }
+
+  fileprivate func writeClipboard(
+    contents: UnsafePointer<ghostty_clipboard_content_s>?,
+    count: Int
+  ) {
+    guard let contents, count > 0 else { return }
+
+    for index in 0..<count {
+      let content = contents[index]
+      guard let data = content.data, content.len > 0 else { continue }
+      let bytes = Data(bytes: data, count: content.len)
+      guard let text = String(data: bytes, encoding: .utf8), !text.isEmpty else { continue }
+      UIPasteboard.general.string = text
+      return
+    }
   }
 
   private func textInputModeDidChange() {

@@ -9,6 +9,19 @@ The terminal opens as its own screen. The terminal menu in the header switches b
 thread's shells, opens another one, and changes the text size. Use the back button to return to
 the chat.
 
+## With a hardware keyboard
+
+Line editing works the way it does on a Mac. **Option+Left** and **Option+Right** move by word,
+**Option+Delete** deletes the word behind the cursor, and **Command+Left**, **Command+Right** and
+**Command+Delete** jump to or clear back to the start of the line. Arrows, Escape, Tab, Home, End
+and the page keys reach the shell as themselves, so command history and full-screen programs
+behave normally.
+
+## Selecting and copying
+
+Press and hold on the terminal, then drag to highlight text. Letting go copies the highlight to
+the clipboard. **Command+C** copies the current highlight and **Command+V** pastes.
+
 ## On a tablet
 
 The terminal opens beside the chat instead of covering it. A tab strip across the top of the pane

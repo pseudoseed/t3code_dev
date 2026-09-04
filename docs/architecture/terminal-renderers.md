@@ -4,6 +4,19 @@ Terminal sessions remain server-owned PTYs. Clients receive the existing raw byt
 input and resize events over the existing terminal contracts; renderer choices never cross the
 wire.
 
+## Delivering output
+
+`packages/client-runtime` accumulates the stream into one buffer per session, capped in bytes, and
+tags it with a cursor (units appended) and a trim count (units dropped off the front). A renderer
+records the cursor it last wrote and asks `terminalBufferDelta` for the rest, so catching up costs
+the size of the new output rather than the size of the session. Trimming drops well under the cap
+so it happens once per many chunks, and it does not force a replay: only a cleared or restarted
+session bumps the epoch, and only a renderer that fell behind the trim point has to start over.
+
+Renderers hold no second copy of the scrollback. The native mobile surfaces are recreated on font,
+theme and identity changes, and each new one emits `onSurfaceReady`, which is what makes the client
+resend history into it.
+
 ## Ghostty alignment
 
 Android and web use the official `libghostty-vt` C ABI for parsing, terminal state, grapheme

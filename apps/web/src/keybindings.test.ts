@@ -900,11 +900,28 @@ describe("terminalDeleteShortcutData", () => {
     );
   });
 
-  it("ignores non-macOS platforms and modified variants", () => {
+  it("maps the platform word chord on Backspace to delete-word-backward", () => {
+    assert.strictEqual(
+      terminalDeleteShortcutData(event({ key: "Backspace", altKey: true }), "MacIntel"),
+      "\u001b\u007f",
+    );
+    assert.strictEqual(
+      terminalDeleteShortcutData(event({ key: "Backspace", ctrlKey: true }), "Linux"),
+      "\u001b\u007f",
+    );
+  });
+
+  it("ignores unmapped and combined modifiers", () => {
     assert.isNull(terminalDeleteShortcutData(event({ key: "Backspace", metaKey: true }), "Linux"));
     assert.isNull(
       terminalDeleteShortcutData(
         event({ key: "Backspace", metaKey: true, altKey: true }),
+        "MacIntel",
+      ),
+    );
+    assert.isNull(
+      terminalDeleteShortcutData(
+        event({ key: "Backspace", altKey: true, shiftKey: true }),
         "MacIntel",
       ),
     );

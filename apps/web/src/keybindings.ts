@@ -49,6 +49,7 @@ const TERMINAL_WORD_FORWARD = "\u001bf";
 const TERMINAL_LINE_START = "\u0001";
 const TERMINAL_LINE_END = "\u0005";
 const TERMINAL_DELETE_TO_LINE_START = "\u0015";
+const TERMINAL_DELETE_WORD_BACKWARD = "\u001b\u007f";
 const EVENT_CODE_KEY_ALIASES: Readonly<Record<string, readonly string[]>> = {
   BracketLeft: ["["],
   BracketRight: ["]"],
@@ -475,18 +476,32 @@ export function terminalDeleteShortcutData(
     return null;
   }
 
-  if (!isMacPlatform(platform)) {
-    return null;
-  }
-
   const key = normalizeEventKey(event.key);
-  if (key !== "backspace") {
+  if (key !== "backspace" || event.shiftKey) {
     return null;
   }
 
-  return event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
-    ? TERMINAL_DELETE_TO_LINE_START
-    : null;
+  // Word delete is the same chord that moves by word on each platform, so it
+  // follows terminalNavigationShortcutData rather than the terminal's own
+  // encoding, which stock zsh and readline do not bind.
+  if (isMacPlatform(platform)) {
+    if (event.metaKey && !event.ctrlKey && !event.altKey) {
+      return TERMINAL_DELETE_TO_LINE_START;
+    }
+    if (event.altKey && !event.metaKey && !event.ctrlKey) {
+      return TERMINAL_DELETE_WORD_BACKWARD;
+    }
+    return null;
+  }
+
+  if (event.ctrlKey && !event.metaKey && !event.altKey) {
+    return TERMINAL_DELETE_WORD_BACKWARD;
+  }
+  if (event.altKey && !event.metaKey && !event.ctrlKey) {
+    return TERMINAL_DELETE_WORD_BACKWARD;
+  }
+
+  return null;
 }
 
 export function terminalNavigationShortcutData(

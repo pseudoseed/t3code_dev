@@ -344,11 +344,11 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   useEffect(() => {
     terminalDebugLog("surface:props", {
       terminalKey,
-      surfaceBufferLen: session.surfaceBuffer.length,
+      surfaceBufferLen: session.surfaceContent.buffer.length,
       status: terminal.status,
       version: terminal.version,
     });
-  }, [session.surfaceBuffer.length, terminal.status, terminal.version, terminalKey]);
+  }, [session.surfaceContent.buffer.length, terminal.status, terminal.version, terminalKey]);
 
   const terminalTheme = getMobileTerminalTheme(themeId, appearanceScheme);
   const usesNativeHeaderGlass = Platform.OS === "ios";
@@ -531,7 +531,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
           />
         ) : (
           <TerminalSurfacePanel
-            buffer={session.surfaceBuffer}
+            content={session.surfaceContent}
             environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
             fontSize={fontSize}
             isRunning={session.isRunning}

@@ -15,6 +15,7 @@ import {
 } from "../../components/ComposerToolbar";
 import { GlassSurface } from "../../components/GlassSurface";
 import { TerminalSurface } from "./NativeTerminalSurface";
+import type { TerminalSurfaceContent } from "./terminalBufferReplay";
 import type { TerminalTheme } from "./terminalTheme";
 import type { TerminalPendingModifier } from "./useThreadTerminalSession";
 
@@ -77,7 +78,7 @@ function AccessoryContainer(props: { readonly children: ReactNode; readonly host
  */
 export function TerminalSurfacePanel(props: {
   readonly autoFocus?: boolean;
-  readonly buffer: string;
+  readonly content: TerminalSurfaceContent;
   /**
    * "inset" pads the surface above the software keyboard and pins the key
    * accessory to it — the full-screen route. "hosted" leaves both to the
@@ -184,7 +185,7 @@ export function TerminalSurfacePanel(props: {
       <View className="flex-1" style={{ paddingBottom: bottomInset }}>
         <TerminalSurface
           autoFocus={(props.autoFocus ?? true) && !SHOWCASE_ENABLED}
-          buffer={props.buffer}
+          content={props.content}
           fontSize={props.fontSize}
           isRunning={props.isRunning}
           keyboardFocusRequest={keyboardFocusRequest}
