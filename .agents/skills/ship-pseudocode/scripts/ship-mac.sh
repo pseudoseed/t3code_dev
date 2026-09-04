@@ -58,22 +58,29 @@ trap - EXIT
 # Publish after verification, never before: an unnotarized DMG on a release page
 # is worse than no DMG, because macOS refuses to open it and the download looks
 # like the product is broken.
-VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+# electron-builder stamps the artifact with the *server* package version, so the
+# tag has to come from the same file or the tag and the DMG disagree.
+VERSION="$(node -p "require('./apps/server/package.json').version")"
 TAG="pseudocode-v$VERSION"
+
+# This repo has an `upstream` remote, and `gh` resolves to it by default, so
+# every release command has to name the fork explicitly.
+REPO="$(git config --get remote.origin.url | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
 
 # Deliberately not `v$VERSION`. The release workflow triggers on `v*.*.*` and
 # cannot produce a usable artifact for this fork, so a tag in that shape starts
 # a run that is guaranteed to fail. See the skill's CI section.
-if gh release view "$TAG" >/dev/null 2>&1; then
+if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   echo "Adding $(basename "$DMG") to $TAG"
-  gh release upload "$TAG" "$DMG" --clobber
+  gh release upload "$TAG" "$DMG" --repo "$REPO" --clobber
 else
   echo "Creating release $TAG"
   gh release create "$TAG" "$DMG" \
+    --repo "$REPO" \
     --title "PseudoCode $VERSION" \
     --notes "Desktop build for macOS. Signed and notarized."
 fi
 
 echo
 echo "Shipped: $DMG"
-echo "Published: $(gh release view "$TAG" --json url --jq .url)"
+echo "Published: $(gh release view "$TAG" --repo "$REPO" --json url --jq .url)"

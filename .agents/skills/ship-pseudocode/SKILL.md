@@ -27,13 +27,18 @@ result before claiming success.
 
 `ship-mac.sh` ends with `spctl` reporting `source=Notarized Developer ID`, then publishes the DMG to
 GitHub Releases under the tag `pseudocode-v<version>`, taking the version from
-`apps/desktop/package.json`. Anything less than a notarized result is a failure, not a warning, and
+`apps/server/package.json`, which is the one electron-builder stamps onto the artifact. Anything
+less than a notarized result is a failure, not a warning, and
 publishing only happens after verification passes: an unnotarized DMG on a release page is worse
 than no DMG, because macOS refuses to open it.
 
 The tag is deliberately not `v<version>`. The release workflow triggers on `v*.*.*` and cannot
 produce a usable artifact here, so a tag in that shape starts a run guaranteed to fail. Re-running
 for the other architecture adds its DMG to the same release.
+
+A release bump touches four files, the way upstream's own release commit does: `apps/server`,
+`apps/desktop`, `apps/web`, and `packages/contracts`. Bumping only one leaves the tag and the DMG
+filename disagreeing.
 
 `ship-ios.sh` ends when Apple accepts the upload. The build then processes for 5 to 15 minutes
 before appearing in TestFlight, so an empty build list right after upload is normal. Report the
@@ -121,3 +126,5 @@ been done.
 | duplicate `.xcframework-ios.signature`        | A binary target inside a pod's SwiftPM dependency. Its signature is collected twice and both copy into one Signatures folder. Pin below the release that added it. |
 | missing `llama.xcframework` or bundled model  | The voice artifacts are gitignored. `ship-ios.sh` builds them; a hand-run archive must run the two scripts in `apps/mobile/modules/t3-voice/scripts/`.             |
 | macOS refuses to open the DMG elsewhere       | Signed but not notarized.                                                                                                                                          |
+| `Failed to create release, "workflow" scope`  | `gh` resolved to the `upstream` remote, where this account has read only. The script passes `--repo` derived from `origin`.                                        |
+| Release tag and DMG filename disagree         | The version bump missed `apps/server/package.json`.                                                                                                                |
