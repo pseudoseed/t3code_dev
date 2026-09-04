@@ -42,6 +42,7 @@ export type UnsnoozeThreadInput = CommandInput<"thread.unsnooze">;
 export type PinThreadInput = CommandInput<"thread.pin">;
 export type UnpinThreadInput = CommandInput<"thread.unpin">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
+export type ViewThreadInput = CommandInput<"thread.view">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
 export type SetThreadInteractionModeInput = CommandInput<"thread.interaction-mode.set">;
@@ -226,6 +227,21 @@ export const reorderPinnedThread: (input: ReorderPinnedThreadInput) => CommandEf
   return yield* dispatch({
     ...input,
     type: "thread.pin.reorder",
+    commandId: yield* commandId(input),
+  });
+});
+
+/**
+ * Record that a client has this thread open. Read state lives on the server so
+ * every surface agrees on what has been seen; omit `viewedAt` to let the
+ * server stamp its own clock (see the thread.view command contract).
+ */
+export const viewThread: (input: ViewThreadInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.viewThread",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.view",
     commandId: yield* commandId(input),
   });
 });

@@ -276,6 +276,7 @@ import {
 } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
+import { threadNeedsViewRecord } from "@t3tools/client-runtime/state/thread-read-state";
 import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
@@ -284,6 +285,7 @@ import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSki
 import { vcsEnvironment } from "../state/vcs";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
+  readEnvironmentSupportsThreadReadState,
   useProject,
   useProjects,
   useThread,
@@ -1456,6 +1458,10 @@ function ChatViewContent(props: ChatViewProps) {
     };
   }, [routeKind, routeThreadRef, routeThreadState]);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
+  const recordThreadView = useAtomCommand(threadEnvironment.view, {
+    label: "thread view",
+    reportFailure: false,
+  });
   const settings = useEnvironmentSettings(environmentId);
   // New-thread defaults live in the primary environment's settings.json (the
   // settings UI never writes to remote environments), so read them from the
@@ -1937,6 +1943,29 @@ function ChatViewContent(props: ChatViewProps) {
     );
   }, [
     markThreadVisited,
+    serverThread?.environmentId,
+    serverThread?.id,
+    serverThread?.latestTurn?.completedAt,
+  ]);
+  // The same receipt, recorded on the server so the phone's unread indicator
+  // clears too. Skipped once the server already has a view newer than the
+  // completion being read, which is what keeps re-opening a read thread from
+  // writing anything at all.
+  useEffect(() => {
+    if (!serverThread?.id) return;
+    // Older servers reject the command outright, so this browser keeps only
+    // its own local record there.
+    if (!readEnvironmentSupportsThreadReadState(serverThread.environmentId)) return;
+    if (!threadNeedsViewRecord(serverThread)) return;
+    void recordThreadView({
+      environmentId: serverThread.environmentId,
+      input: { threadId: serverThread.id },
+    });
+    // Deliberately keyed on the identifiers above rather than the whole
+    // shell: re-running on every shell update would fire a second command
+    // inside the round trip that answers the first.
+  }, [
+    recordThreadView,
     serverThread?.environmentId,
     serverThread?.id,
     serverThread?.latestTurn?.completedAt,

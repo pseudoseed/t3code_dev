@@ -63,6 +63,7 @@ function threadDetailToShell(
     settledAt: thread.settledAt,
     snoozedUntil: thread.snoozedUntil ?? null,
     snoozedAt: thread.snoozedAt ?? null,
+    lastViewedAt: thread.lastViewedAt ?? null,
     session: thread.session,
     latestUserMessageAt: latestUserMessageAt(thread),
     hasPendingApprovals: false,

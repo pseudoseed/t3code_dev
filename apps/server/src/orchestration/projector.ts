@@ -26,6 +26,7 @@ import {
   ThreadSettledPayload,
   ThreadPinnedPayload,
   ThreadPinReorderedPayload,
+  ThreadViewedPayload,
   ThreadSnoozedPayload,
   ThreadUnpinnedPayload,
   ThreadUnarchivedPayload,
@@ -338,6 +339,7 @@ export function projectEvent(
             unsettledAt: null,
             snoozedUntil: null,
             snoozedAt: null,
+            lastViewedAt: null,
             deletedAt: null,
             messages: [],
             activities: [],
@@ -470,6 +472,17 @@ export function projectEvent(
             // Unpin clears the slot: re-pinning is "pin again", not "restore
             // an ancient position".
             pinOrderKey: null,
+            updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.viewed":
+      return decodeForEvent(ThreadViewedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            lastViewedAt: payload.lastViewedAt,
             updatedAt: payload.updatedAt,
           }),
         })),

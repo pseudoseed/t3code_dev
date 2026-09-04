@@ -48,6 +48,21 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+## Unread threads
+
+A thread that finished work while you were somewhere else is marked **Done** in place of its
+timestamp. Opening the thread clears the mark.
+
+T3 Code keeps track of this on the server, so reading a thread on your desktop clears it on your
+phone and iPad too. A thread you have never opened is not marked, so turning on a machine after a
+long break does not light up your whole history.
+
+On web and desktop you can put the mark back: open the thread's context menu and choose **Mark
+unread**. That applies everywhere too. Mobile shows the mark but does not set it by hand.
+
+If one environment does not show the mark, update the T3 Code server running there. Older servers
+fall back to per-device tracking on web and desktop, and show nothing on mobile.
+
 ## Project sections
 
 **Settings → General → Group sidebar by project** gives every project its own container in the

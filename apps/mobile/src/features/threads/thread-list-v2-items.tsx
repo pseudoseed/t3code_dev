@@ -42,6 +42,7 @@ import {
   type ThreadListV2Status,
 } from "./threadListV2";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
+import { threadHasUnreadCompletion } from "@t3tools/client-runtime/state/thread-read-state";
 
 /**
  * Thread List v2 renders one flat native list: rich edge-to-edge rows for
@@ -67,6 +68,11 @@ const STATUS_LABEL_BY_STATUS: Partial<
   working: { label: "Working", className: "text-adaptive-sky-600-400" },
   failed: { label: "Failed", className: "text-adaptive-red-700-300" },
 };
+
+// The resting counterpart of the four live states: the agent stopped and you
+// have not looked since. Same emerald the web sidebar uses for Done, so a
+// thread reads the same wherever it surfaces.
+const UNREAD_STATUS_LABEL = { label: "Done", className: "text-adaptive-emerald-700-300" };
 
 function threadTimeLabel(thread: EnvironmentThreadShell): string {
   return relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt);
@@ -537,7 +543,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const selected = props.selected === true;
 
   const status = resolveThreadListV2Status(thread);
-  const statusLabel = STATUS_LABEL_BY_STATUS[status];
+  // A thread that finished while you were elsewhere. Read state is
+  // server-side, so opening the thread on any surface clears this one. Only
+  // active rows carry it: filing a thread on the settled shelf is itself the
+  // acknowledgement, and history should stay quiet.
+  const unread =
+    variant === "card" && status === "ready" && !snoozedRow && threadHasUnreadCompletion(thread);
+  const statusLabel = STATUS_LABEL_BY_STATUS[status] ?? (unread ? UNREAD_STATUS_LABEL : undefined);
   // Settled rows label by the same stamp they sort by, so order and label
   // can't disagree. updatedAt is always present, so the resolver never
   // returns null here.

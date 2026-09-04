@@ -221,6 +221,16 @@ export function applyThreadDetailEvent(
         },
       };
 
+    case "thread.viewed":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          lastViewedAt: event.payload.lastViewedAt,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
     // ── Thread metadata ─────────────────────────────────────────────
     case "thread.meta-updated":
       return {
