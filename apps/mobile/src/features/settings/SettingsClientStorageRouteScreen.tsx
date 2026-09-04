@@ -58,7 +58,7 @@ export function SettingsClientStorageRouteScreen() {
   const confirmClearAll = () => {
     Alert.alert(
       "Clear all client caches?",
-      "This removes offline data for every environment. Connections, credentials, account data, and app preferences stay intact.",
+      "This removes offline data for every environment. Connections, credentials, account data, app preferences, and downloaded voice models stay intact.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -159,8 +159,9 @@ export function SettingsClientStorageRouteScreen() {
             </Pressable>
           </SettingsSection>
           <Text className="px-2 text-sm leading-normal text-foreground-muted">
-            Clearing caches never removes environment connections, credentials, account data, or
-            appearance preferences.
+            Clearing caches never removes environment connections, credentials, account data,
+            appearance preferences, or downloaded voice models. Voice models are removed in Voice
+            Input settings.
           </Text>
           {AsyncResult.isFailure(summaryResult) || AsyncResult.isFailure(clearResult) ? (
             <Text selectable className="px-2 text-sm text-danger-foreground">

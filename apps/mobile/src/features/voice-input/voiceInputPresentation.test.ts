@@ -6,7 +6,10 @@ import { resolveVoiceComposerPresentation } from "./voiceInputPresentation";
 describe("resolveVoiceComposerPresentation", () => {
   it("maps voice states to stable composer actions and editor read-only state", () => {
     expect(
-      resolveVoiceComposerPresentation({ phase: "idle", error: null, errorAction: null }, 0),
+      resolveVoiceComposerPresentation(
+        { phase: "idle", error: null, errorAction: null, notice: null },
+        0,
+      ),
     ).toEqual({
       leadingAction: null,
       trailingAction: "mic",
@@ -16,7 +19,10 @@ describe("resolveVoiceComposerPresentation", () => {
       confirmationEnabled: false,
     });
     expect(
-      resolveVoiceComposerPresentation({ phase: "preparing", error: null, errorAction: null }, 0),
+      resolveVoiceComposerPresentation(
+        { phase: "preparing", error: null, errorAction: null, notice: null },
+        0,
+      ),
     ).toMatchObject({
       leadingAction: "cancel",
       trailingAction: "confirm",
@@ -25,7 +31,10 @@ describe("resolveVoiceComposerPresentation", () => {
       confirmationEnabled: false,
     });
     expect(
-      resolveVoiceComposerPresentation({ phase: "recording", error: null, errorAction: null }, 64),
+      resolveVoiceComposerPresentation(
+        { phase: "recording", error: null, errorAction: null, notice: null },
+        64,
+      ),
     ).toMatchObject({
       leadingAction: "cancel",
       trailingAction: "confirm",
@@ -35,7 +44,7 @@ describe("resolveVoiceComposerPresentation", () => {
     });
     expect(
       resolveVoiceComposerPresentation(
-        { phase: "transcribing", error: null, errorAction: null },
+        { phase: "transcribing", error: null, errorAction: null, notice: null },
         0,
       ),
     ).toMatchObject({
@@ -44,7 +53,19 @@ describe("resolveVoiceComposerPresentation", () => {
     });
     expect(
       resolveVoiceComposerPresentation(
-        { phase: "error", error: "Microphone unavailable", errorAction: "retry" },
+        { phase: "cleaning", error: null, errorAction: null, notice: null },
+        0,
+      ),
+    ).toMatchObject({
+      leadingAction: "cancel",
+      trailingAction: "confirm",
+      showsSend: false,
+      statusLabel: "Cleaning up",
+      confirmationEnabled: false,
+    });
+    expect(
+      resolveVoiceComposerPresentation(
+        { phase: "error", error: "Microphone unavailable", errorAction: "retry", notice: null },
         0,
       ),
     ).toMatchObject({
@@ -55,15 +76,43 @@ describe("resolveVoiceComposerPresentation", () => {
       statusLabel: "Microphone unavailable",
     });
 
-    expect(voiceInputFreezesEditor({ phase: "preparing", error: null, errorAction: null })).toBe(
-      true,
-    );
-    expect(voiceInputFreezesEditor({ phase: "recording", error: null, errorAction: null })).toBe(
-      true,
-    );
-    expect(voiceInputFreezesEditor({ phase: "transcribing", error: null, errorAction: null })).toBe(
-      true,
-    );
-    expect(voiceInputFreezesEditor({ phase: "idle", error: null, errorAction: null })).toBe(false);
+    expect(
+      voiceInputFreezesEditor({ phase: "preparing", error: null, errorAction: null, notice: null }),
+    ).toBe(true);
+    expect(
+      voiceInputFreezesEditor({ phase: "recording", error: null, errorAction: null, notice: null }),
+    ).toBe(true);
+    expect(
+      voiceInputFreezesEditor({
+        phase: "transcribing",
+        error: null,
+        errorAction: null,
+        notice: null,
+      }),
+    ).toBe(true);
+    expect(
+      voiceInputFreezesEditor({ phase: "cleaning", error: null, errorAction: null, notice: null }),
+    ).toBe(true);
+    expect(
+      voiceInputFreezesEditor({ phase: "idle", error: null, errorAction: null, notice: null }),
+    ).toBe(false);
+  });
+
+  it("shows a notice on the idle composer without blocking anything", () => {
+    const notice = "More than one voice was speaking, so the whole recording was transcribed.";
+
+    expect(
+      resolveVoiceComposerPresentation(
+        { phase: "idle", error: null, errorAction: null, notice },
+        0,
+      ),
+    ).toEqual({
+      leadingAction: null,
+      trailingAction: "mic",
+      showsSend: true,
+      statusKind: "notice",
+      statusLabel: notice,
+      confirmationEnabled: false,
+    });
   });
 });

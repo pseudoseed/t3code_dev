@@ -12,6 +12,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [Appearance](#appearance)
+- [Voice input](#voice-input)
 
 ## Concepts
 
@@ -172,6 +173,28 @@ theme a user picks in Settings afterwards sticks until the next set; mobile keep
 appearance settings. Naming a published [environment theme](#environment-theme) is how a desktop
 ships T3 Code already matching it.
 
+### Voice input
+
+#### Speech model
+
+The on-device model that turns a recording into text. Selectable per device in voice settings, and gated on how much memory the process can still get. One small English model ships inside the app so dictation works offline on first launch; the rest download. See [voice-input.md][27].
+
+#### Cleanup model
+
+A local language model that rewrites a raw transcript as written text, fixing punctuation and obvious mishearings and dropping filler words. A separate contract from transcription, because it is toggleable, separately selected, and must be skippable. It never answers the transcript; output that looks like an answer is rejected on length and the raw transcript is used instead.
+
+#### Diarization
+
+Splitting a recording into stretches of speech attributed to different speakers. It says how many voices there were and when, not who they are.
+
+#### Speaker filtering
+
+Using [diarization](#diarization) to keep only the speaker a dictation belongs to, so a conversation nearby does not land in the message. The rule is conservative: it keeps the speaker who did most of the talking, and only when they beat the runner-up clearly. When it cannot tell, it keeps everything and the composer says so, because dropping the user's own words is the worse failure. See [SpeakerFilter.swift][28].
+
+#### Correction hints
+
+Preferred spellings and `wrong -> right` pairs sent to the [cleanup model](#cleanup-model) in a delimited block. Typed by the user, and grown by the learning loop from words the user fixes by hand after a dictation. Every learned entry is listed and deletable.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -213,3 +236,5 @@ ships T3 Code already matching it.
 [24]: ./overview.md
 [25]: ../../apps/server/src/environmentTheme.ts
 [26]: ../user/environment-theme.md
+[27]: ./voice-input.md
+[28]: ../../apps/mobile/modules/t3-voice/ios/SpeakerFilter.swift

@@ -295,16 +295,28 @@ export function ComposerDictationStatus(props: {
 
   if (!props.presentation.statusLabel) return null;
   const isError = props.presentation.statusKind === "error";
+  // A notice is not a failure, so it reads in the normal colour, but it needs
+  // the same room to wrap and the same way out as an error.
+  const isDismissible = isError || props.presentation.statusKind === "notice";
   const elapsedLabel = `${Math.floor(props.elapsedSeconds / 60)}:${String(props.elapsedSeconds % 60).padStart(2, "0")}`;
   return (
     <View className="relative h-11 min-w-0 flex-1 justify-center">
-      {isError ? (
+      {isDismissible ? (
         <View className="min-w-0 flex-row items-center gap-1.5 px-2">
-          <Text className="min-w-0 flex-1 text-sm text-red-400" numberOfLines={2}>
+          <Text
+            className={
+              isError
+                ? "min-w-0 flex-1 text-sm text-red-400"
+                : "min-w-0 flex-1 text-sm text-foreground-muted"
+            }
+            numberOfLines={2}
+          >
             {props.presentation.statusLabel}
           </Text>
           <Pressable
-            accessibilityLabel="Dismiss voice input error"
+            accessibilityLabel={
+              isError ? "Dismiss voice input error" : "Dismiss voice input notice"
+            }
             accessibilityRole="button"
             className="size-7 items-center justify-center active:opacity-70"
             hitSlop={8}

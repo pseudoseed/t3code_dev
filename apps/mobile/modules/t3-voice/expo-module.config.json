@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["T3VoiceModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.t3voice.T3VoiceModule"]
+  }
+}

@@ -436,6 +436,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   const handleSend = useCallback(async () => {
     if (voiceInput.blocksSubmission) return;
+    // Before the draft is cleared: anything the user fixed in the words voice
+    // input inserted is a correction worth remembering.
+    voiceInput.learnFromSubmission();
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);

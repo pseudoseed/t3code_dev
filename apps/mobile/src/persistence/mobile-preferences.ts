@@ -6,11 +6,26 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import type { SidebarProjectGroupingMode } from "@t3tools/contracts";
+import {
+  MAX_CLEANUP_PROMPT_LENGTH,
+  MAX_LEARNED_CORRECTIONS,
+} from "@t3tools/client-runtime/voice-input";
 import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../lib/mobileTheme";
 
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
+
+/**
+ * Voice text is capped on the way in.
+ *
+ * These live in the one preferences blob, which is read-modify-written whole on
+ * every save. Bounded values are fine there; an unbounded one would make every
+ * unrelated preference write more expensive over time.
+ */
+const MAX_VOICE_CORRECTION_TEXT_LENGTH = 8_000;
+/** Five minutes of speech, with room to spare. */
+const MAX_VOICE_PENDING_TRANSCRIPT_LENGTH = 20_000;
 
 const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
@@ -55,6 +70,46 @@ export interface Preferences {
   readonly collapsedSidebarProjectSections?: readonly string[];
   /** Where the workspace terminal pane sits on regular-width layouts. */
   readonly terminalPaneDockPosition?: "right" | "bottom";
+  /**
+   * On-device dictation, all device-scoped rather than environment-scoped: the
+   * model runs on this phone no matter which environment the composer is
+   * attached to.
+   */
+  readonly voiceSpeechModelId?: string;
+  /** Only honoured by models whose backend can tell voices apart. */
+  readonly voiceSpeakerFilteringEnabled?: boolean;
+  /** Off keeps multi-hundred-megabyte downloads off a metered connection. */
+  readonly voiceDownloadOnCellular?: boolean;
+  readonly voiceCleanupEnabled?: boolean;
+  readonly voiceCleanupModelId?: string;
+  /** Undefined means the shipped default prompt, which can change per release. */
+  readonly voiceCleanupPrompt?: string;
+  /** Raw editor text, parsed into hints at prompt-build time. */
+  readonly voiceCleanupPreferredSpellings?: string;
+  readonly voiceCleanupCorrections?: string;
+  /**
+   * Mappings the learning loop picked up from words the user fixed by hand.
+   *
+   * Capped, oldest dropped first, and every entry is listed and deletable in
+   * voice settings. Nothing is learned that the user cannot see and undo.
+   */
+  readonly voiceLearnedCorrections?: ReadonlyArray<{
+    readonly wrong: string;
+    readonly right: string;
+  }>;
+  /**
+   * A transcript written down before cleanup started and not yet committed.
+   *
+   * Only present when the process died between the two, which is the one
+   * failure that raises no error to catch. The next launch offers it back into
+   * the draft it belongs to, or discards it if that draft has moved on.
+   */
+  readonly voicePendingTranscript?: {
+    readonly ownerKey: string;
+    readonly revision: number;
+    readonly text: string;
+    readonly capturedAt: number;
+  };
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -117,6 +172,21 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     sidebarProjectSectionsEnabled?: boolean;
     collapsedSidebarProjectSections?: readonly string[];
     terminalPaneDockPosition?: "right" | "bottom";
+    voiceSpeechModelId?: string;
+    voiceSpeakerFilteringEnabled?: boolean;
+    voiceDownloadOnCellular?: boolean;
+    voiceCleanupEnabled?: boolean;
+    voiceCleanupModelId?: string;
+    voiceCleanupPrompt?: string;
+    voiceCleanupPreferredSpellings?: string;
+    voiceCleanupCorrections?: string;
+    voiceLearnedCorrections?: ReadonlyArray<{ readonly wrong: string; readonly right: string }>;
+    voicePendingTranscript?: {
+      readonly ownerKey: string;
+      readonly revision: number;
+      readonly text: string;
+      readonly capturedAt: number;
+    };
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -200,6 +270,63 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (parsed.terminalPaneDockPosition === "right" || parsed.terminalPaneDockPosition === "bottom") {
     preferences.terminalPaneDockPosition = parsed.terminalPaneDockPosition;
+  }
+  if (typeof parsed.voiceSpeechModelId === "string") {
+    preferences.voiceSpeechModelId = parsed.voiceSpeechModelId;
+  }
+  if (typeof parsed.voiceSpeakerFilteringEnabled === "boolean") {
+    preferences.voiceSpeakerFilteringEnabled = parsed.voiceSpeakerFilteringEnabled;
+  }
+  if (typeof parsed.voiceDownloadOnCellular === "boolean") {
+    preferences.voiceDownloadOnCellular = parsed.voiceDownloadOnCellular;
+  }
+  if (typeof parsed.voiceCleanupEnabled === "boolean") {
+    preferences.voiceCleanupEnabled = parsed.voiceCleanupEnabled;
+  }
+  if (typeof parsed.voiceCleanupModelId === "string") {
+    preferences.voiceCleanupModelId = parsed.voiceCleanupModelId;
+  }
+  if (typeof parsed.voiceCleanupPrompt === "string") {
+    preferences.voiceCleanupPrompt = parsed.voiceCleanupPrompt.slice(0, MAX_CLEANUP_PROMPT_LENGTH);
+  }
+  if (typeof parsed.voiceCleanupPreferredSpellings === "string") {
+    preferences.voiceCleanupPreferredSpellings = parsed.voiceCleanupPreferredSpellings.slice(
+      0,
+      MAX_VOICE_CORRECTION_TEXT_LENGTH,
+    );
+  }
+  if (typeof parsed.voiceCleanupCorrections === "string") {
+    preferences.voiceCleanupCorrections = parsed.voiceCleanupCorrections.slice(
+      0,
+      MAX_VOICE_CORRECTION_TEXT_LENGTH,
+    );
+  }
+  if (Array.isArray(parsed.voiceLearnedCorrections)) {
+    preferences.voiceLearnedCorrections = parsed.voiceLearnedCorrections
+      .filter(
+        (pair): pair is { wrong: string; right: string } =>
+          typeof pair === "object" &&
+          pair !== null &&
+          typeof (pair as { wrong?: unknown }).wrong === "string" &&
+          typeof (pair as { right?: unknown }).right === "string",
+      )
+      .slice(-MAX_LEARNED_CORRECTIONS);
+  }
+  const pendingTranscript = parsed.voicePendingTranscript;
+  if (
+    typeof pendingTranscript === "object" &&
+    pendingTranscript !== null &&
+    typeof pendingTranscript.ownerKey === "string" &&
+    typeof pendingTranscript.revision === "number" &&
+    typeof pendingTranscript.text === "string" &&
+    typeof pendingTranscript.capturedAt === "number"
+  ) {
+    preferences.voicePendingTranscript = {
+      ownerKey: pendingTranscript.ownerKey,
+      revision: pendingTranscript.revision,
+      text: pendingTranscript.text.slice(0, MAX_VOICE_PENDING_TRANSCRIPT_LENGTH),
+      capturedAt: pendingTranscript.capturedAt,
+    };
   }
   return preferences;
 }

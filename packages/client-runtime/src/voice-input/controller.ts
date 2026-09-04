@@ -1,20 +1,41 @@
 import { replaceTextRange } from "@t3tools/shared/composerTrigger";
 
-import type { PreparedVoiceTranscription, VoiceTranscriber } from "./transcription.ts";
+import { resolveCleanupOutcome, type VoiceCleanup } from "./cleanup.ts";
+import type { DictationAnchor } from "./learning.ts";
+import {
+  resolveSpeakerFilteringNotice,
+  type PreparedVoiceTranscription,
+  type VoiceTranscriber,
+} from "./transcription.ts";
 
 export const VOICE_RECORDING_LIMIT_SECONDS = 5 * 60;
 
-export type VoiceInputPhase = "idle" | "preparing" | "recording" | "transcribing" | "error";
+export type VoiceInputPhase =
+  | "idle"
+  | "preparing"
+  | "recording"
+  | "transcribing"
+  | "cleaning"
+  | "error";
 
 export type VoiceInputState = {
   readonly phase: VoiceInputPhase;
   readonly error: string | null;
   readonly errorAction: "retry" | "settings" | null;
+  /**
+   * Something the last dictation did that the user should know about, without
+   * it having failed. Survives into `idle` because that is when it is read, and
+   * is cleared the moment the next recording starts.
+   */
+  readonly notice: string | null;
 };
 
 export function voiceInputBlocksSubmission(state: VoiceInputState): boolean {
   return (
-    state.phase === "preparing" || state.phase === "recording" || state.phase === "transcribing"
+    state.phase === "preparing" ||
+    state.phase === "recording" ||
+    state.phase === "transcribing" ||
+    state.phase === "cleaning"
   );
 }
 
@@ -27,6 +48,19 @@ export type VoiceDraftSnapshot = {
   readonly text: string;
   readonly selection: { readonly start: number; readonly end: number };
   readonly revision: number;
+};
+
+/**
+ * A transcript written to disk before the cleanup stage runs.
+ *
+ * Cleanup loads a multi-hundred-megabyte model, and an allocation that gets the
+ * app jetsam-killed raises no error to catch. The record survives that, so the
+ * next launch can offer back what the user said instead of losing it.
+ */
+export type PendingVoiceTranscript = {
+  readonly ownerKey: string;
+  readonly revision: number;
+  readonly text: string;
 };
 
 export type VoiceRecorderStatus = {
@@ -59,6 +93,15 @@ export type VoiceInputControllerDependencies = {
     selection: { readonly start: number; readonly end: number },
   ) => void;
   readonly onStateChange: (state: VoiceInputState) => void;
+  /** Returns null when cleanup is switched off or has no model loaded. */
+  readonly getCleanup?: () => VoiceCleanup | null;
+  readonly persistPendingTranscript?: (pending: PendingVoiceTranscript) => void;
+  readonly clearPendingTranscript?: () => void;
+  /**
+   * Called once per committed dictation with the span it wrote, so the learning
+   * loop can diff that span alone at submit time.
+   */
+  readonly onDictationCommitted?: (anchor: DictationAnchor) => void;
 };
 
 type TranscriptCommitResult =
@@ -66,6 +109,8 @@ type TranscriptCommitResult =
       readonly kind: "commit";
       readonly text: string;
       readonly selection: { readonly start: number; readonly end: number };
+      /** Where the transcript landed, so the learning loop can watch that span. */
+      readonly insertedRange: { readonly start: number; readonly end: number };
     }
   | { readonly kind: "stale" }
   | { readonly kind: "empty" };
@@ -118,6 +163,7 @@ export function resolveTranscriptCommit(
     kind: "commit",
     text: result.text,
     selection: { start: result.cursor, end: result.cursor },
+    insertedRange: { start: captured.selection.start, end: result.cursor },
   };
 }
 
@@ -171,7 +217,7 @@ function transcriptionErrorMessage(error: unknown): string {
   return "Could not transcribe this recording.";
 }
 
-const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
+const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null, notice: null };
 
 export class VoiceInputController {
   private readonly dependencies: VoiceInputControllerDependencies;
@@ -185,6 +231,8 @@ export class VoiceInputController {
   private readonly ownedRecordingUris = new Set<string>();
   private recordingConfigured = false;
   private finishing = false;
+  private cleanupAbortController: AbortController | null = null;
+  private pendingTranscriptPersisted = false;
 
   constructor(dependencies: VoiceInputControllerDependencies) {
     this.dependencies = dependencies;
@@ -211,7 +259,7 @@ export class VoiceInputController {
     const operationToken = ++this.operationToken;
     const abortController = new AbortController();
     this.transcriptionAbortController = abortController;
-    this.setState({ phase: "preparing", error: null, errorAction: null });
+    this.setState({ phase: "preparing", error: null, errorAction: null, notice: null });
 
     try {
       const transcriber = this.dependencies.getTranscriber();
@@ -255,7 +303,7 @@ export class VoiceInputController {
       }
       this.capturedDraft = capturedDraft;
       this.dependencies.recorder.record({ forDuration: VOICE_RECORDING_LIMIT_SECONDS });
-      this.setState({ phase: "recording", error: null, errorAction: null });
+      this.setState({ phase: "recording", error: null, errorAction: null, notice: null });
     } catch {
       if (this.isCurrent(operationToken))
         this.setError("Could not start voice recording.", "retry");
@@ -276,6 +324,9 @@ export class VoiceInputController {
   cancel(): void {
     switch (this.state.phase) {
       case "idle":
+        // Nothing to cancel, but the dismiss affordance on a notice routes
+        // here, and a notice nobody can clear is a permanent one.
+        if (this.state.notice) this.setState(IDLE_STATE);
         return;
       case "error":
         this.setState(IDLE_STATE);
@@ -290,6 +341,11 @@ export class VoiceInputController {
       case "transcribing":
         this.invalidateOperation();
         this.setState(IDLE_STATE);
+        return;
+      case "cleaning":
+        // Cancelling the rewrite is not cancelling the dictation. The raw
+        // transcript is what the user said, so it still gets committed.
+        this.cleanupAbortController?.abort();
         return;
     }
   }
@@ -310,6 +366,12 @@ export class VoiceInputController {
       this.setError("Voice input stopped when the app moved to the background.", "retry");
       return;
     }
+
+    // Transcription and cleanup keep running. The implementation holds a
+    // background assertion for them, so they finish or stop cleanly; abandoning
+    // them here would throw away a recording the user already made.
+    if (this.state.phase === "transcribing" || this.state.phase === "cleaning") return;
+
     return this.interruptRecording();
   }
 
@@ -331,6 +393,12 @@ export class VoiceInputController {
 
   ownerChanged(): void {
     if (this.state.phase === "idle") return;
+    if (this.state.phase === "cleaning") {
+      // The draft this transcript belongs to is gone, so unlike a user cancel
+      // there is nothing left to commit it into.
+      this.abandonCleaning();
+      return;
+    }
     this.cancel();
   }
 
@@ -339,10 +407,20 @@ export class VoiceInputController {
       this.discardRecording(null);
       return;
     }
+    if (this.state.phase === "cleaning") {
+      this.abandonCleaning();
+      return;
+    }
     if (this.state.phase === "preparing" || this.state.phase === "transcribing") {
       this.invalidateOperation();
       this.setState(IDLE_STATE);
     }
+  }
+
+  private abandonCleaning(): void {
+    this.invalidateOperation();
+    this.cleanupAbortController?.abort();
+    this.setState(IDLE_STATE);
   }
 
   private async finishRecording(
@@ -352,7 +430,7 @@ export class VoiceInputController {
     if (this.finishing || this.state.phase !== "recording") return;
     this.finishing = true;
     const operationToken = this.operationToken;
-    this.setState({ phase: "transcribing", error: null, errorAction: null });
+    this.setState({ phase: "transcribing", error: null, errorAction: null, notice: null });
 
     try {
       if (!alreadyStopped) await this.dependencies.recorder.stop();
@@ -375,10 +453,13 @@ export class VoiceInputController {
       const signal = this.transcriptionAbortController.signal;
       const capturedDraft = this.capturedDraft;
       let transcript: string;
+      let notice: string | null = null;
       try {
-        transcript = await runTranscriptionOperation(() =>
+        const result = await runTranscriptionOperation(() =>
           transcription.transcribe(recordingUri, { signal }),
         );
+        transcript = result.text;
+        notice = result.notice ?? resolveSpeakerFilteringNotice(result.speakerFiltering);
       } catch (error) {
         if (this.isCurrent(operationToken)) {
           this.setError(transcriptionErrorMessage(error), "retry");
@@ -387,10 +468,27 @@ export class VoiceInputController {
       }
       if (!this.isCurrent(operationToken)) return;
 
+      const cleanup = this.dependencies.getCleanup?.() ?? null;
+      let committedTranscript = transcript;
+      if (cleanup && transcript.trim().length > 0) {
+        // The store stamps the time it was written. The controller has no
+        // clock of its own, and the stamp only matters to the code deciding
+        // whether a record outlived the session that made it.
+        this.dependencies.persistPendingTranscript?.({
+          ownerKey: capturedDraft.ownerKey,
+          revision: capturedDraft.revision,
+          text: transcript,
+        });
+        this.pendingTranscriptPersisted = true;
+        this.setState({ phase: "cleaning", error: null, errorAction: null, notice: null });
+        committedTranscript = await this.runCleanup(cleanup, transcript);
+        if (!this.isCurrent(operationToken)) return;
+      }
+
       const result = resolveTranscriptCommit(
         capturedDraft,
         this.dependencies.readDraft(),
-        transcript,
+        committedTranscript,
         transcription.locale,
       );
       if (result.kind === "stale") {
@@ -406,7 +504,14 @@ export class VoiceInputController {
       }
 
       this.dependencies.commitDraft(result.text, result.selection);
-      this.setState(IDLE_STATE);
+      this.dependencies.onDictationCommitted?.({
+        ownerKey: capturedDraft.ownerKey,
+        revision: capturedDraft.revision,
+        before: result.text.slice(0, result.insertedRange.start),
+        insertedText: result.text.slice(result.insertedRange.start, result.insertedRange.end),
+        after: result.text.slice(result.insertedRange.end),
+      });
+      this.setState({ phase: "idle", error: null, errorAction: null, notice });
     } catch {
       if (this.isCurrent(operationToken)) {
         this.setError("Could not finish voice recording.", "retry");
@@ -417,12 +522,41 @@ export class VoiceInputController {
     }
   }
 
+  /**
+   * Runs the cleanup stage, degrading to the raw transcript rather than failing.
+   *
+   * Every exit lands on text. A throw, a cancel, a timeout, an empty result,
+   * and a result whose length says the model answered the transcript instead of
+   * rewriting it all commit what the user actually said. Cleanup is an
+   * improvement on the transcript; it is never a gate on getting one.
+   *
+   * The timeout is enforced by the implementation rather than here. Generation
+   * stops between tokens, so only the side running it can end a run early; a
+   * timer here would abandon the promise while the model kept burning battery.
+   */
+  private async runCleanup(cleanup: VoiceCleanup, transcript: string): Promise<string> {
+    const abortController = new AbortController();
+    this.cleanupAbortController = abortController;
+
+    try {
+      const cleaned = await runTranscriptionOperation(async () => {
+        const prepared = await cleanup.prepare({ signal: abortController.signal });
+        return prepared.clean(transcript, { signal: abortController.signal });
+      });
+      return resolveCleanupOutcome(transcript, cleaned).text;
+    } catch {
+      return transcript;
+    } finally {
+      if (this.cleanupAbortController === abortController) this.cleanupAbortController = null;
+    }
+  }
+
   private async discardRecording(error: string | null): Promise<void> {
     this.invalidateOperation();
     this.setState(
       error
-        ? { phase: "error", error, errorAction: "retry" }
-        : { phase: "idle", error: null, errorAction: null },
+        ? { phase: "error", error, errorAction: "retry", notice: null }
+        : { phase: "idle", error: null, errorAction: null, notice: null },
     );
     try {
       await this.dependencies.recorder.stop();
@@ -452,6 +586,13 @@ export class VoiceInputController {
     this.capturedDraft = null;
     this.transcription = null;
     this.transcriptionAbortController = null;
+    this.cleanupAbortController = null;
+    if (this.pendingTranscriptPersisted) {
+      // Reaching here at all means the process outlived cleanup and the user
+      // has been told what happened, so the crash-recovery record is spent.
+      this.pendingTranscriptPersisted = false;
+      this.dependencies.clearPendingTranscript?.();
+    }
   }
 
   private rememberRecordingUri(uri: string | null): void {
@@ -478,7 +619,7 @@ export class VoiceInputController {
   }
 
   private setError(error: string, errorAction: VoiceInputState["errorAction"]): void {
-    this.setState({ phase: "error", error, errorAction });
+    this.setState({ phase: "error", error, errorAction, notice: null });
   }
 
   private setState(state: VoiceInputState): void {

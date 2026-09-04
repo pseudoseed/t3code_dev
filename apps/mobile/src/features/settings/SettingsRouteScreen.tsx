@@ -60,7 +60,10 @@ import { useSavedRemoteConnections } from "../../state/use-remote-environment-re
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
-import { resolveAgentAwarenessPlatformPresentation } from "./SettingsRouteScreen.logic";
+import {
+  resolveAgentAwarenessPlatformPresentation,
+  resolveVoicePlatformPresentation,
+} from "./SettingsRouteScreen.logic";
 
 type NotificationStatus = "checking" | "enabled" | "disabled" | "unsupported";
 type LiveActivityStatus = "checking" | "enabled" | "disabled" | "signed-out" | "linking";
@@ -144,6 +147,8 @@ function LocalSettingsRouteScreen() {
         <SettingsSection title="Appearance">
           <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         </SettingsSection>
+
+        <VoiceSettingsSection />
 
         <LegacySettingsSection />
 
@@ -531,6 +536,8 @@ function ConfiguredSettingsRouteScreen() {
           <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         </SettingsSection>
 
+        <VoiceSettingsSection />
+
         <LegacySettingsSection />
 
         <ArchivedThreadsSettingsSection />
@@ -538,6 +545,26 @@ function ConfiguredSettingsRouteScreen() {
         <AppSettingsSection />
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * On-device dictation is iOS and iPadOS only, so the row says so on Android
+ * rather than opening a screen where nothing can be selected.
+ */
+function VoiceSettingsSection() {
+  const platform = resolveVoicePlatformPresentation(Platform.OS);
+
+  return (
+    <SettingsSection title="Voice">
+      <SettingsRow
+        icon="mic"
+        label="Voice Input"
+        value={platform.value}
+        disabled={!platform.supported}
+        target={platform.supported ? "SettingsVoice" : undefined}
+      />
+    </SettingsSection>
   );
 }
 

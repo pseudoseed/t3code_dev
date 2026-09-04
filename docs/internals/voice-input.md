@@ -1,102 +1,200 @@
 # Voice input
 
-> For maintainers. Using T3 Code? See [voice input on iPhone](../user/composer.md#voice-input-on-iphone).
+> For maintainers. Using T3 Code? See [voice input](../user/composer.md#voice-input).
 
-Voice input produces editable composer text. The current implementation records on the client and
-transcribes locally with Apple's `SpeechAnalyzer` and `SpeechTranscriber` on supported iOS 26+
-devices. Environment-provided transcription and transcription on web and desktop are not implemented.
+Voice input produces editable composer text. Everything runs on the client device: no audio and no
+text leaves it. Web and desktop have no voice input, and Android has none either. Transcription
+through an environment is not implemented.
 
-## Current boundaries
+## Stages
 
-The shared [`VoiceInputController`][controller] in `packages/client-runtime` owns preparation,
-recording, transcription, cancellation, temporary-file cleanup, and insertion into the captured
-draft selection. Applications import it through the [voice-input entry point][voice-input] as
-`@t3tools/client-runtime/voice-input`. Its dependencies separate capture from transcription; the
-controller imports neither React Native nor an Apple transcription API.
+One dictation runs up to three stages. Only the first is required.
 
-The shared [transcription contract][transcription] defines `VoiceTranscriber`,
-`PreparedVoiceTranscription`, and transcription errors. The controller calls `getTranscriber()` once
-at the start of an operation, before asking for microphone permission. Preparation returns a resolved
-locale and a bound `transcribe` function. The controller retains that result for the recording, so a
-selection change cannot prepare with one implementation and transcribe with another.
+1. **Speech.** A model turns the recording into text.
+2. **Speaker filtering.** With a diarizing backend, other voices are dropped before recognition.
+3. **Cleanup.** A local language model rewrites the transcript as written text.
 
-[`useVoiceInputController`][hook] supplies Expo audio capture, microphone permissions, audio-session
-management, waveform samples, and app and navigation lifecycle handling. It normalizes Expo's
-`mediaServicesDidReset` into a generic recorder error. [`voiceTranscription.ios.ts`][ios] adapts
-`@react-native-ai/apple` through `getLocalVoiceTranscriber()`, capturing the requested device locale
-and binding the prepared transcriber to Apple's resolved locale. The other-platform binding returns
-no local transcriber. That result describes the local implementation, not whether a client could use
-an environment's transcription service.
+Cleanup is a separate contract from transcription, not a step inside it, because it is
+user-toggleable, separately model-selected, and has to be skippable without touching the
+transcription path.
 
-Mobile's [`voiceInputPresentation.ts`][presentation] maps shared state to toolbar labels and actions.
-Waveform and toolbar rendering stay in mobile. The composer edits draft text without selecting a
-speech vendor.
-Recording captures the draft owner, revision, text, and selection. A late transcript cannot overwrite
-a different or edited draft. Only normal message submission sends the resulting text to an agent.
+## Shared layer
 
-Each operation passes one `AbortSignal` through preparation and transcription. Cancellation
-invalidates the operation and aborts that signal immediately. Implementations settle their promises
-only after their underlying work stops. The Apple binding checks cancellation between asynchronous
-steps but cannot interrupt an in-flight native request. The controller retains its session until
-that work settles, ignores its result, and cleans up the recording.
+The [`VoiceInputController`][controller] in `packages/client-runtime` owns preparation, recording,
+transcription, cleanup, cancellation, temporary-file cleanup, and insertion into the captured draft
+selection. Applications import it through the [voice-input entry point][voice-input]. Its
+dependencies separate capture from inference; the controller imports neither React Native nor any
+model API.
 
-## Ownership decisions
+The [transcription contract][transcription] defines `VoiceTranscriber`, `PreparedVoiceTranscription`,
+`VoiceTranscriptionResult`, and transcription errors. The controller calls `getTranscriber()` once at
+the start of an operation, before asking for microphone permission. Preparation returns a resolved
+locale and a bound `transcribe` function, retained for the whole recording, so a selection change
+cannot prepare with one implementation and transcribe with another.
 
-The extension boundary distinguishes transcription on the client device from transcription through
-the composer's environment. These constraints apply when adding selectable transcription services:
+The [cleanup contract][cleanup] defines `VoiceCleanup`, the prompt builder, correction parsing, and
+the rules that decide whether a rewrite is usable. The [model catalog][models] holds every selectable
+model and the gating that decides which of them a device is offered. The [learning module][learning]
+holds the anchored diff. All of it is pure; storage and inference are client concerns.
 
-- Local means the client device, regardless of which machine hosts the environment. A device's lack
-  of local recognition does not prevent it from recording audio for an environment service.
-- Remote service configuration and API keys belong to the environment. The environment calls the
-  external service. Clients receive service identifiers, labels, and availability information, never
-  credential values. Transcription services are independent of coding-agent `providerInstances`;
-  selecting OpenAI for transcription does not select Codex for the thread.
-- The client owns its transcription preference, scoped by stable `environmentId`. Its choices are
-  supported local recognition and the services exposed by the composer's environment. A service ID
-  is meaningful only within that environment. Different clients can make different choices.
-- Resolve and capture the environment, selected service, and locale when an operation starts.
-  Preparation and transcription use the same selection; preference changes affect the next
-  recording. Capture environment identity explicitly rather than recovering it from a draft key.
-  Keep the existing draft-owner and revision checks before inserting text.
-- If the selected option is unavailable, report that state and let the user choose another option.
-  A local failure must not silently upload audio, and a disconnected environment must not redirect
-  a recording to another environment or service.
-- Transcription audio is temporary input, separate from durable chat attachments and messages.
-  Remote adapters need cancellation of upload and transcription where supported, cleanup after
-  success, failure, or cancellation, and the same protection against late results as local transcription.
+`VoiceInputPhase` has a `cleaning` state. Without it a multi-second local rewrite would render as
+"Transcribing", which is a lying spinner.
 
-## Existing integration points
+## Native module
 
-[`ServerSettingsService`][settings] and [`ServerSecretStore`][secrets] provide environment-owned
-configuration and secret persistence. Existing settings redaction handles coding-provider environment
-variables only. Any transcription credential fields need their own explicit separation and redaction
-before settings responses or subscriptions reach client caches.
+[`apps/mobile/modules/t3-voice`][module] is an Expo module, iOS and iPadOS only. It owns model
+storage, downloads, model residency, and inference. Its engines are independent and evict
+independently: [WhisperKit][whisperkit-engine], [FluidAudio][fluid-engine] for recognition and
+diarization, and [llama.cpp][llama-session] for cleanup.
 
-[`ExecutionEnvironmentCapabilities`][capabilities] handles version skew. Remote transcription must be
-opt-in: a missing transcription capability means unsupported. The authenticated server-config
-subscription and [shared environment state][server-state] already distribute configuration per
-environment. A transcription service catalog belongs behind that capability and authenticated
-boundary. Older servers expose no remote transcription choices.
+Engines come in two ways, and the difference is deliberate:
 
-The [attachment upload contracts][uploads] and [shared upload operations][attachment-state] provide a
-pattern for authorized binary uploads through an environment, including remote connections. Their
-existing chat-attachment retention is not a transcription cleanup policy.
+- **WhisperKit and FluidAudio** resolve through SwiftPM from the podspec, pinned to exact versions.
+- **llama.cpp** is a vendored xcframework built by [a checked-in script][llama-script] from a pinned
+  upstream tag. Every Swift wrapper around llama.cpp depends on SwiftSyntax, which does not build
+  inside a CocoaPods workspace, and llama.cpp's own published xcframework has no iOS simulator
+  slice.
 
-Future service selection and environment requests belong alongside the controller in
-`packages/client-runtime`, with wire contracts in `packages/contracts`. Capture and native local
-recognition remain client-specific. An environment-backed transcriber implements the same shared
-contract, with its environment and service bound when selected. The controller does not own service
-credentials, provider SDKs, or transport selection.
+The bundled Whisper tiny.en model ships inside the app so dictation works offline on first launch.
+[A script][model-script] fetches it from pinned revisions; the weights are not in git.
+
+Pure Swift logic that can be tested without a model lives behind a [standalone package][swift-tests],
+because `apps/mobile/ios` is generated by `expo prebuild` and cannot hold a test target that
+survives.
+
+## Model storage
+
+Models live in Application Support, not Caches, and the directory is excluded from backup. iOS purges
+Caches under disk pressure, and silently deleting a model the user waited minutes for is worse than
+running out of space honestly. Multi-gigabyte weights in an iCloud backup burn quota to store bytes
+that are freely re-downloadable.
+
+**Clearing the app cache never deletes voice models.** They are durable user data with an explicit
+per-model delete in voice settings, and the Client Storage screen says so.
+
+A model counts as installed only when its completion marker is present, written last after every file
+has been verified and moved into place. A half-written directory from an interrupted download
+otherwise looks finished and fails deep inside CoreML with an error nobody can act on.
+
+Two download paths exist. Most models come from a [committed manifest][manifest] with per-file
+checksums, downloaded into a staging directory and moved into place only after everything verifies.
+FluidAudio's models are fetched by FluidAudio, because it knows which files each version needs; those
+carry no progress reporting and no checksum of ours. FluidAudio treats the directory it is handed as
+the repository folder and writes to its _parent_, so it is given a repository-named subfolder inside
+the folder the store owns.
+
+## Gating
+
+Models are gated on memory. `os_proc_available_memory()` is read at picker render and again at load,
+because it is an instantaneous snapshot and the two differ. It returns 0 for a process with no memory
+limit, which is every process on the Simulator; that case reports the machine's memory instead and
+flags that the number is not a device budget.
+
+A model the device cannot run is shown disabled with the reason, never hidden. A model that passes
+gating and then fails to load falls back to the bundled model for that one dictation, says so in the
+composer, and leaves the user's saved selection alone.
+
+Per-model peak memory figures are size-derived estimates and must be replaced with numbers measured
+on device before release.
+
+## Residency
+
+The selected speech model, and the cleanup model when cleanup is on, stay resident while the app is
+open. Loading is the slow part, not downloading. A memory warning evicts everything; the next
+dictation reloads what it needs, which costs one slower turn and is better than being killed.
+
+Changing the selected model loads the new one before dropping the old one, so a failed switch leaves
+dictation working rather than leaving nothing loaded.
+
+## Cancellation
+
+Each operation passes one `AbortSignal` through preparation, transcription, and cleanup. That signal
+is the only cancellation contract the controller knows. The JS adapters mint a native `operationId`,
+map the signal onto `cancel(operationId)`, and settle only after native confirms the stop.
+Implementations settle their promises after their underlying work stops, never before. Downloads are
+not part of a voice operation and carry their own operation id.
+
+Cancelling during `cleaning` is not cancelling the dictation: the rewrite is abandoned and the raw
+transcript is committed.
+
+## Durability
+
+**The recording audio is deleted after the cleanup stage, not after transcription.**
+
+**The raw transcript is written to disk before cleanup starts.** Cleanup loads a
+multi-hundred-megabyte model, and an allocation that gets the app jetsam-killed raises no error to
+catch. On the next launch the record is offered back into the draft it belongs to, matched on owner,
+and discarded once the user accepts or dismisses it.
+
+Cleanup degrades to the raw transcript on a throw, a cancel, a timeout, empty output, or an
+output-to-input length ratio outside a defined band. A local model given a transcript it does not
+understand will answer it, translate it, or apologize; all three miss the ratio. The timeout is
+enforced natively, between generated tokens, because nothing in JS can interrupt a running model.
+
+## Preference scoping
+
+**Local model choice is device-scoped, not environment-scoped.** This is a deliberate change from the
+earlier rule. The model runs on the phone regardless of which environment the composer is attached
+to, so scoping it per environment would make the same phone behave differently for no reason a user
+could explain.
+
+A future environment-backed transcriber remains environment-scoped and slots into the same picker as
+an additional section behind `ExecutionEnvironmentCapabilities`. A service id is meaningful only
+within its environment.
+
+Voice settings live in the device preferences blob. Every list stored there is capped on load; an
+unbounded one would make every unrelated preference write more expensive over time.
+
+## Learning loop
+
+When a dictation commits, the controller reports the span it wrote plus the text on either side. At
+submit, that span alone is diffed against what the user left, and word-level replacements of one or
+two words become correction hints in the cleanup prompt.
+
+The anchor stores surrounding text rather than positions, because positions do not survive editing.
+If either side has moved, nothing is learned. That bias is deliberate: a wrong mapping rewrites every
+future transcript until the user finds it, while a missed one costs nothing. Diffing the whole draft
+would learn unrelated typing, which is why the span is anchored at all.
+
+Every learned mapping is listed and deletable in voice settings. Nothing is learned that the user
+cannot see and undo.
+
+## Speaker filtering
+
+Diarization returns speaker spans; the rule that turns those into "this one is the user" is
+[in Swift][speaker-filter], next to the audio, and is deliberately conservative. It keeps the speaker
+who did most of the talking, and only when they beat the runner-up by a clear margin. When it cannot
+tell, it keeps everything and the composer says so, because dropping the user's own words is a far
+worse failure than leaving a stray voice in.
+
+Filtering needs both a diarizing speech model and the separate diarizer model. Without either it
+stays off rather than reporting a fallback nobody can act on.
+
+## Client boundaries
+
+Mobile's [presentation module][presentation] maps shared state to toolbar labels and actions.
+Waveform and toolbar rendering stay in mobile. Recording captures the draft owner, revision, text,
+and selection, so a late transcript cannot overwrite a different or edited draft. Only normal message
+submission sends the resulting text to an agent.
+
+Apple's `SpeechAnalyzer` comes through [its own binding][ios-transcription], not the t3-voice module,
+so anything deciding whether a model is offered has to ask for the app-wide backend list rather than
+the module's own.
 
 [controller]: ../../packages/client-runtime/src/voice-input/controller.ts
 [voice-input]: ../../packages/client-runtime/src/voice-input/index.ts
 [transcription]: ../../packages/client-runtime/src/voice-input/transcription.ts
-[hook]: ../../apps/mobile/src/features/voice-input/useVoiceInputController.ts
+[cleanup]: ../../packages/client-runtime/src/voice-input/cleanup.ts
+[models]: ../../packages/client-runtime/src/voice-input/models.ts
+[learning]: ../../packages/client-runtime/src/voice-input/learning.ts
+[module]: ../../apps/mobile/modules/t3-voice
+[whisperkit-engine]: ../../apps/mobile/modules/t3-voice/ios/WhisperKitEngine.swift
+[fluid-engine]: ../../apps/mobile/modules/t3-voice/ios/FluidAudioEngine.swift
+[llama-session]: ../../apps/mobile/modules/t3-voice/ios/LlamaCleanupSession.swift
+[llama-script]: ../../apps/mobile/modules/t3-voice/scripts/build-llama-xcframework.sh
+[model-script]: ../../apps/mobile/modules/t3-voice/scripts/fetch-bundled-model.sh
+[swift-tests]: ../../apps/mobile/modules/t3-voice/Package.swift
+[manifest]: ../../apps/mobile/src/native/voiceModelManifest.json
+[speaker-filter]: ../../apps/mobile/modules/t3-voice/ios/SpeakerFilter.swift
 [presentation]: ../../apps/mobile/src/features/voice-input/voiceInputPresentation.ts
-[ios]: ../../apps/mobile/src/native/voiceTranscription.ios.ts
-[settings]: ../../apps/server/src/serverSettings.ts
-[secrets]: ../../apps/server/src/auth/ServerSecretStore.ts
-[capabilities]: ../../packages/contracts/src/environment.ts
-[server-state]: ../../packages/client-runtime/src/state/server.ts
-[uploads]: ../../packages/contracts/src/assets.ts
-[attachment-state]: ../../packages/client-runtime/src/state/attachments.ts
+[ios-transcription]: ../../apps/mobile/src/native/voiceTranscription.ios.ts

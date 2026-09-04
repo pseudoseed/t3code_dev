@@ -8,24 +8,51 @@ import {
 } from "expo-audio";
 import { File } from "expo-file-system";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
+import { evictResidentModels } from "../../native/t3Voice";
+import { getLocalVoiceCleanup } from "../../native/voiceCleanup";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
+import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import {
+  resolveRecoverableTranscript,
+  resolveVoiceCleanupSettings,
+  resolveVoiceTranscriptionSettings,
+} from "./voiceCleanupSettings";
 import {
   VoiceInputController,
   VOICE_RECORDING_LIMIT_SECONDS,
+  addLearnedCorrections,
+  diffCorrections,
+  resolveEditedSpan,
   voiceInputBlocksSubmission,
   voiceInputFreezesEditor,
+  type DictationAnchor,
   type VoiceDraftSnapshot,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
-const INITIAL_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
+/**
+ * When this process started reading preferences.
+ *
+ * Only a record written before this moment came from a session that died. One
+ * written after it belongs to a dictation still running.
+ */
+const SESSION_STARTED_AT = Date.now();
+
+const INITIAL_STATE: VoiceInputState = {
+  phase: "idle",
+  error: null,
+  errorAction: null,
+  notice: null,
+};
 const VOICE_METERING_INTERVAL_MS = 80;
 const VOICE_RECORDING_OPTIONS = {
   ...RecordingPresets.HIGH_QUALITY,
@@ -71,6 +98,25 @@ export function useVoiceInputController(input: {
 }) {
   const [state, setState] = useState<VoiceInputState>(INITIAL_STATE);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const preferences = AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value : null;
+  const cleanupSettings = useMemo(
+    () => (preferences ? resolveVoiceCleanupSettings(preferences) : null),
+    [preferences],
+  );
+  const cleanupSettingsRef = useRef(cleanupSettings);
+  cleanupSettingsRef.current = cleanupSettings;
+  const transcriptionSettings = useMemo(
+    () => (preferences ? resolveVoiceTranscriptionSettings(preferences) : null),
+    [preferences],
+  );
+  const transcriptionSettingsRef = useRef(transcriptionSettings);
+  transcriptionSettingsRef.current = transcriptionSettings;
+  const savePreferencesRef = useRef(savePreferences);
+  savePreferencesRef.current = savePreferences;
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
   const elapsedSecondsRef = useRef(0);
   const audioLevelsRef = useRef(Array<number>(VOICE_WAVEFORM_SAMPLE_COUNT).fill(0));
   const audioLevels = useSharedValue(audioLevelsRef.current);
@@ -87,6 +133,8 @@ export function useVoiceInputController(input: {
   const latestInputRef = useRef(input);
   latestInputRef.current = input;
 
+  const anchorRef = useRef<DictationAnchor | null>(null);
+
   const handleRecorderStatus = useCallback((status: RecordingStatus) => {
     controllerRef.current?.handleRecorderStatus({
       isFinished: status.isFinished,
@@ -100,7 +148,10 @@ export function useVoiceInputController(input: {
   if (!controllerRef.current) {
     controllerRef.current = new VoiceInputController({
       recorder,
-      getTranscriber: getLocalVoiceTranscriber,
+      getTranscriber: () => {
+        const settings = transcriptionSettingsRef.current;
+        return settings ? getLocalVoiceTranscriber(settings) : null;
+      },
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -124,6 +175,26 @@ export function useVoiceInputController(input: {
         current.onChangeDraftMessage(text);
       },
       onStateChange: setState,
+      getCleanup: () => {
+        const settings = cleanupSettingsRef.current;
+        return settings ? getLocalVoiceCleanup(settings) : null;
+      },
+      persistPendingTranscript: (pending) => {
+        // Stamped here, not in the controller: the timestamp exists only so a
+        // later launch can tell this record from one a dead session left behind.
+        savePreferencesRef.current({
+          voicePendingTranscript: { ...pending, capturedAt: Date.now() },
+        });
+      },
+      clearPendingTranscript: () => {
+        savePreferencesRef.current({ voicePendingTranscript: undefined });
+      },
+      onDictationCommitted: (anchor) => {
+        // One anchor at a time. A second dictation in the same draft replaces
+        // the first, because the span the first one wrote is no longer
+        // separable from what came after it.
+        anchorRef.current = anchor;
+      },
     });
   }
 
@@ -132,6 +203,8 @@ export function useVoiceInputController(input: {
   useEffect(() => {
     if (previousOwnerRef.current === input.ownerKey) return;
     previousOwnerRef.current = input.ownerKey;
+    // The span belonged to the draft that just went away.
+    anchorRef.current = null;
     controller.ownerChanged();
   }, [controller, input.ownerKey]);
 
@@ -143,6 +216,16 @@ export function useVoiceInputController(input: {
       [controller],
     ),
   );
+
+  // Models stay resident so the next dictation starts instantly, which means
+  // this process is holding several hundred megabytes it does not need right
+  // now. A warning costs one slower dictation; ignoring it costs the app.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("memoryWarning", () => {
+      void evictResidentModels();
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -203,10 +286,92 @@ export function useVoiceInputController(input: {
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
+  const recoverableTranscript = preferences
+    ? resolveRecoverableTranscript(
+        preferences,
+        { ownerKey: input.ownerKey, text: input.draftMessage },
+        SESSION_STARTED_AT,
+      )
+    : null;
+
+  const discardRecoverableTranscript = useCallback(() => {
+    savePreferencesRef.current({ voicePendingTranscript: undefined });
+  }, []);
+
+  const insertRecoverableTranscript = useCallback(() => {
+    if (!recoverableTranscript) return;
+    const current = latestInputRef.current;
+    const insertion = current.draftMessage
+      ? `${current.draftMessage.trimEnd()} ${recoverableTranscript}`
+      : recoverableTranscript;
+    current.onChangeDraftMessage(insertion);
+    current.onChangeSelection({ start: insertion.length, end: insertion.length });
+    savePreferencesRef.current({ voicePendingTranscript: undefined });
+  }, [recoverableTranscript]);
+
+  // Offered once, when the composer that owns the transcript appears. Only a
+  // process that died between transcription and cleanup leaves one behind, so
+  // this is rare enough to interrupt for and too valuable to drop silently.
+  const offeredRecoveryRef = useRef(false);
+  useEffect(() => {
+    if (!recoverableTranscript || offeredRecoveryRef.current) return;
+    offeredRecoveryRef.current = true;
+    Alert.alert(
+      "Add what you said?",
+      `T3 Code closed before this was added to the draft.\n\n"${recoverableTranscript}"`,
+      [
+        { text: "Discard", style: "destructive", onPress: discardRecoverableTranscript },
+        { text: "Add", onPress: insertRecoverableTranscript },
+      ],
+    );
+  }, [discardRecoverableTranscript, insertRecoverableTranscript, recoverableTranscript]);
+
+  /**
+   * Learns from what the user changed in the words this dictation inserted.
+   *
+   * Called once, when the draft is sent, because that is the moment the user
+   * has stopped editing and every remaining difference is deliberate. Only the
+   * dictated span is compared: diffing the whole draft would learn unrelated
+   * typing and then apply it to every future transcript.
+   */
+  const learnFromSubmission = useCallback(() => {
+    const anchor = anchorRef.current;
+    anchorRef.current = null;
+    if (!anchor) return;
+
+    const current = latestInputRef.current;
+    if (anchor.ownerKey !== current.ownerKey) return;
+
+    const edited = resolveEditedSpan(anchor, current.draftMessage);
+    if (edited === null) return;
+
+    const learned = diffCorrections(anchor.insertedText, edited);
+    if (learned.length === 0) return;
+
+    savePreferencesRef.current({
+      voiceLearnedCorrections: addLearnedCorrections(
+        preferencesRef.current?.voiceLearnedCorrections ?? [],
+        learned,
+      ),
+    });
+  }, []);
+
   return {
     // Store screenshots show the dictation button even on simulators, whose
     // on-device transcription is unavailable.
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    isAvailable:
+      (transcriptionSettings !== null &&
+        getLocalVoiceTranscriber(transcriptionSettings) !== null) ||
+      getNativeShowcaseScene() !== null,
+    cleanupEnabled: cleanupSettings?.enabled ?? false,
+    /**
+     * A transcript from a session that died before it could be committed.
+     * Non-null means the composer should offer it back rather than losing it.
+     */
+    recoverableTranscript,
+    insertRecoverableTranscript,
+    discardRecoverableTranscript,
+    learnFromSubmission,
     state,
     audioLevels,
     elapsedSeconds,

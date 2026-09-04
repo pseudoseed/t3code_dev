@@ -862,6 +862,9 @@ export function NewTaskDraftScreen(props: {
 
   async function handleStart(): Promise<void> {
     if (voiceInput.blocksSubmission) return;
+    // Before the draft is consumed: anything the user fixed in the words voice
+    // input inserted is a correction worth remembering.
+    voiceInput.learnFromSubmission();
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
     if (!selectedProject || !draftKey) {

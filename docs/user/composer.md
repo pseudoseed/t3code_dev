@@ -211,22 +211,64 @@ uploaded. Stashed files stay uploaded on the server for 24 hours. If you restore
 that, the file comes back with **Attach again** next to it. Attach the file again or remove it, then
 send.
 
-## Voice input on iPhone
+## Voice input
 
-On supported iPhones with iOS 26 or later, tap the microphone in the composer to record a message.
-An expanded composer keeps your draft visible and flips its bottom toolbar into recording controls
-with waves that respond to your voice. A collapsed composer flips into a compact recording strip
-without changing height. Tap the checkmark to finish and transcribe on your device. The waves fade
-into a transcription status, then the usual
-controls return with the text inserted at the selection where recording started. If the keyboard
-is open when you start, it stays open during voice input. You can review and edit the text before
-you send it.
+On iPhone and iPad, tap the microphone in the composer to record a message. An expanded composer
+keeps your draft visible and flips its bottom toolbar into recording controls with waves that
+respond to your voice. A collapsed composer flips into a compact recording strip without changing
+height. Tap the checkmark to finish. The waves fade into a status, then the usual controls return
+with the text inserted where recording started. If the keyboard is open when you start, it stays
+open. You can review and edit the text before you send it.
 
-The first use can download Apple's speech model and needs a network connection. Later transcription
-works offline for that language. A recording can be up to five minutes long. Canceling voice input,
-leaving the screen, or an audio interruption discards the new recording and keeps the existing draft
-and attachments. T3 Code deletes the local audio file after transcription or cancellation. It sends
-only the normal message text when you submit the draft.
+Everything runs on your device. No audio and no text is sent anywhere. Dictation works with no
+network connection at all, including the first time you use it.
+
+A recording can be up to five minutes long. Canceling voice input, leaving the screen, or an audio
+interruption discards the new recording and keeps your existing draft and attachments. T3 Code
+deletes the local audio file when it is done with it. It sends only the normal message text when you
+submit the draft.
+
+### Choosing a speech model
+
+**Settings → Voice → Voice Input** lists the speech models your device can run. A small English
+model is built into the app and needs no download. Larger and multilingual models download when you
+pick them, and you can delete any of them later to free the space. A model your device does not have
+the memory for is shown greyed out with the reason.
+
+Downloads wait for Wi-Fi unless you turn on **Download over cellular**. Models are large, so this is
+off to begin with.
+
+Clearing the app cache never deletes voice models. The only way to remove one is to delete it in
+voice settings.
+
+### Ignoring other voices
+
+Some speech models can tell voices apart. With one of those selected, turn on **Ignore other voices**
+and T3 Code keeps only the voice that did most of the talking, so a conversation nearby does not end
+up in your message. This needs one extra small download.
+
+When it cannot tell which voice is yours, it transcribes the whole recording and tells you it did.
+Losing your own words would be worse than leaving a stray voice in.
+
+### Cleaning up transcripts
+
+Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
+written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed. It
+does not answer, summarize, or add anything.
+
+Three cleanup models are available, trading speed for quality. You can edit the instructions they
+follow and reset them to the default at any time.
+
+Two lists help with words that get misheard. **Preferred spellings** are kept exactly as you write
+them, which is useful for project and tool names. **Corrections** are `wrong -> right` pairs, one
+per line.
+
+T3 Code also learns from you. When you fix a word that voice input got wrong and then send the
+message, that fix is remembered and applied to later transcripts. Everything it has learned is listed
+under **Learned from your edits**, and you can delete any entry.
+
+If cleanup fails or takes too long, you get the original transcript instead. You never lose what you
+said.
 
 ## Commands and skills
 
