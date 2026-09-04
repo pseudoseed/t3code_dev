@@ -2573,6 +2573,17 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
  * defaulting to the upstream values so a fork keeps its difference to one
  * environment file rather than a rename across the tree.
  */
+/**
+ * The downloaded filename. Follows T3CODE_APP_NAME so a fork's DMG is not named
+ * after upstream, and keeps upstream's literal when the override is unset so
+ * released artifact names stay stable.
+ */
+export function resolveDesktopArtifactName(): string {
+  const override = process.env.T3CODE_APP_NAME?.trim();
+  const base = override ? override.replace(/\s+/gu, "-") : "T3-Code";
+  return `${base}-\${version}-\${arch}.\${ext}`;
+}
+
 export function resolveDesktopProductName(version: string): string {
   const override = process.env.T3CODE_APP_NAME?.trim();
   if (override) return override;
@@ -2603,7 +2614,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: resolveDesktopArtifactName(),
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,

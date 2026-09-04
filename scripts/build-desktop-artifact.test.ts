@@ -48,6 +48,7 @@ import {
   resolveFffNativeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
+  resolveDesktopArtifactName,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
@@ -261,6 +262,23 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("switches desktop packaging product names to nightly for nightly builds", () => {
     assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Alpha)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
+  });
+
+  it("names the artifact after the fork's app name, keeping upstream's when unset", () => {
+    const original = process.env.T3CODE_APP_NAME;
+    try {
+      delete process.env.T3CODE_APP_NAME;
+      assert.equal(resolveDesktopArtifactName(), "T3-Code-${version}-${arch}.${ext}");
+
+      process.env.T3CODE_APP_NAME = "PseudoCode";
+      assert.equal(resolveDesktopArtifactName(), "PseudoCode-${version}-${arch}.${ext}");
+
+      process.env.T3CODE_APP_NAME = "Two Words";
+      assert.equal(resolveDesktopArtifactName(), "Two-Words-${version}-${arch}.${ext}");
+    } finally {
+      if (original === undefined) delete process.env.T3CODE_APP_NAME;
+      else process.env.T3CODE_APP_NAME = original;
+    }
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
