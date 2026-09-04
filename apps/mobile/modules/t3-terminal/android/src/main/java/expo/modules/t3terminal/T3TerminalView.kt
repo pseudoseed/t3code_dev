@@ -45,7 +45,6 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       recreateTerminal()
     }
 
-
   var fontSize: Float = 10f
     set(value) {
       field = value
@@ -342,18 +341,15 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     // answers with a replay, so dropping this delivery loses nothing.
     if (terminalHandle == 0L) return
 
+    val isStale = append.epoch != appliedEpoch || append.cursor <= appliedCursor
+    if (!append.reset && isStale) return
+
     if (append.reset) {
       appliedEpoch = append.epoch
-      appliedCursor = append.cursor
       // RIS clears the modes a previous session left behind; the screen and
       // scrollback have to go with them before the replay lands.
       feedBytes("\u001Bc\u001B[3J")
-      feedBytes(append.chunk)
-      renderSnapshot()
-      return
     }
-
-    if (append.epoch != appliedEpoch || append.cursor <= appliedCursor) return
     appliedCursor = append.cursor
     feedBytes(append.chunk)
     renderSnapshot()

@@ -138,27 +138,31 @@ enum TerminalHardwareKeyEncoder {
     }
   }
 
+  private static let ghosttyKeys: [String: ghostty_input_key_e] = [
+    UIKeyCommand.inputEscape: GHOSTTY_KEY_ESCAPE,
+    UIKeyCommand.inputUpArrow: GHOSTTY_KEY_ARROW_UP,
+    UIKeyCommand.inputDownArrow: GHOSTTY_KEY_ARROW_DOWN,
+    UIKeyCommand.inputLeftArrow: GHOSTTY_KEY_ARROW_LEFT,
+    UIKeyCommand.inputRightArrow: GHOSTTY_KEY_ARROW_RIGHT,
+    UIKeyCommand.inputHome: GHOSTTY_KEY_HOME,
+    UIKeyCommand.inputEnd: GHOSTTY_KEY_END,
+    UIKeyCommand.inputPageUp: GHOSTTY_KEY_PAGE_UP,
+    UIKeyCommand.inputPageDown: GHOSTTY_KEY_PAGE_DOWN,
+    UIKeyCommand.inputDelete: GHOSTTY_KEY_DELETE,
+    backspace: GHOSTTY_KEY_BACKSPACE,
+    "\t": GHOSTTY_KEY_TAB,
+  ]
+
   static func ghosttyKey(for input: String) -> ghostty_input_key_e? {
-    switch input {
-    case UIKeyCommand.inputEscape: return GHOSTTY_KEY_ESCAPE
-    case UIKeyCommand.inputUpArrow: return GHOSTTY_KEY_ARROW_UP
-    case UIKeyCommand.inputDownArrow: return GHOSTTY_KEY_ARROW_DOWN
-    case UIKeyCommand.inputLeftArrow: return GHOSTTY_KEY_ARROW_LEFT
-    case UIKeyCommand.inputRightArrow: return GHOSTTY_KEY_ARROW_RIGHT
-    case UIKeyCommand.inputHome: return GHOSTTY_KEY_HOME
-    case UIKeyCommand.inputEnd: return GHOSTTY_KEY_END
-    case UIKeyCommand.inputPageUp: return GHOSTTY_KEY_PAGE_UP
-    case UIKeyCommand.inputPageDown: return GHOSTTY_KEY_PAGE_DOWN
-    case UIKeyCommand.inputDelete: return GHOSTTY_KEY_DELETE
-    case backspace: return GHOSTTY_KEY_BACKSPACE
-    case "\t": return GHOSTTY_KEY_TAB
-    default:
-      guard let scalar = input.lowercased().unicodeScalars.first,
-            input.unicodeScalars.count == 1,
-            scalar >= "a", scalar <= "z"
-      else { return nil }
-      return ghostty_input_key_e(GHOSTTY_KEY_A.rawValue + (scalar.value - UInt32(("a" as Unicode.Scalar).value)))
+    if let key = ghosttyKeys[input] {
+      return key
     }
+    guard input.unicodeScalars.count == 1,
+          let scalar = input.lowercased().unicodeScalars.first,
+          scalar >= "a", scalar <= "z"
+    else { return nil }
+    let offset = scalar.value - ("a" as Unicode.Scalar).value
+    return ghostty_input_key_e(GHOSTTY_KEY_A.rawValue + offset)
   }
 
   static func ghosttyMods(_ modifiers: UIKeyModifierFlags) -> ghostty_input_mods_e {
@@ -180,27 +184,31 @@ enum TerminalHardwareKeyEncoder {
 
   /// Used only when no Ghostty surface exists yet, so mode-dependent keys fall
   /// back to their default-mode encoding.
+  private static let fallbackSequences: [String: String] = [
+    UIKeyCommand.inputEscape: "\u{1B}",
+    UIKeyCommand.inputUpArrow: "\u{1B}[A",
+    UIKeyCommand.inputDownArrow: "\u{1B}[B",
+    UIKeyCommand.inputRightArrow: "\u{1B}[C",
+    UIKeyCommand.inputLeftArrow: "\u{1B}[D",
+    UIKeyCommand.inputHome: "\u{1B}[H",
+    UIKeyCommand.inputEnd: "\u{1B}[F",
+    UIKeyCommand.inputPageUp: "\u{1B}[5~",
+    UIKeyCommand.inputPageDown: "\u{1B}[6~",
+    UIKeyCommand.inputDelete: "\u{1B}[3~",
+    backspace: "\u{7F}",
+  ]
+
   static func fallbackSequence(input: String, modifiers: UIKeyModifierFlags) -> String? {
-    switch input {
-    case UIKeyCommand.inputEscape: return "\u{1B}"
-    case UIKeyCommand.inputUpArrow: return "\u{1B}[A"
-    case UIKeyCommand.inputDownArrow: return "\u{1B}[B"
-    case UIKeyCommand.inputRightArrow: return "\u{1B}[C"
-    case UIKeyCommand.inputLeftArrow: return "\u{1B}[D"
-    case UIKeyCommand.inputHome: return "\u{1B}[H"
-    case UIKeyCommand.inputEnd: return "\u{1B}[F"
-    case UIKeyCommand.inputPageUp: return "\u{1B}[5~"
-    case UIKeyCommand.inputPageDown: return "\u{1B}[6~"
-    case UIKeyCommand.inputDelete: return "\u{1B}[3~"
-    case backspace: return "\u{7F}"
-    case "\t":
+    if input == "\t" {
       return modifiers.contains(.shift) ? "\u{1B}[Z" : "\t"
-    default:
-      break
+    }
+    if let sequence = fallbackSequences[input] {
+      return sequence
     }
 
-    guard modifiers.contains(.control) else { return nil }
-    guard let scalar = input.lowercased().unicodeScalars.first else { return nil }
+    guard modifiers.contains(.control),
+          let scalar = input.lowercased().unicodeScalars.first
+    else { return nil }
     return controlSequence(for: scalar)
   }
 
@@ -346,7 +354,6 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
       }
     }
   }
-
 
   var fontSize: CGFloat = 10 {
     didSet {
