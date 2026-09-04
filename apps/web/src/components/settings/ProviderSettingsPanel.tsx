@@ -69,6 +69,12 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
+
+/**
+ * Drivers whose instances expose a setup panel. Each one signs in through the
+ * provider's own CLI or runtime; the rest are configured with settings alone.
+ */
+const PROVIDER_SETUP_DRIVERS = new Set<string>(["antigravity", "claudeAgent", "codex"]);
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
 import { searchableSetting } from "./settingsSearch";
@@ -836,12 +842,14 @@ export function EnvironmentProviderSettings({
         onSelect={mode === "list" ? () => setSelectedInstanceId(row.instanceId) : undefined}
         readOnly={readOnly}
         setup={
-          mode === "editor" && row.driver === "antigravity" ? (
+          mode === "editor" && PROVIDER_SETUP_DRIVERS.has(row.driver) ? (
             <ProviderSetupSection
               environmentId={environmentId}
               environmentLabel={environmentLabel}
               instanceId={row.instanceId}
               provider={liveProvider}
+              driver={row.driver}
+              providerLabel={resetLabel}
               binaryPath={configuredBinaryPath(row.instance.config)}
               authMethod={readAntigravityAuthMethod(row.instance.config)}
               enabled={resolveProviderInstanceEnabled(row.instance)}

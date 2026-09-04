@@ -46,6 +46,7 @@ import {
 } from "../ProviderDriver.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import { resolveProviderCredentialHome } from "../providerCredentialHome.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makePackageManagedProviderMaintenanceResolver,
@@ -58,6 +59,7 @@ import {
   type ProviderSnapshotSettings,
 } from "../providerUpdateSettings.ts";
 import { makeClaudeCapabilitiesCacheKey, makeClaudeContinuationGroupKey } from "./ClaudeHome.ts";
+import { makeClaudeAuthController } from "./ClaudeLogin.ts";
 import { discoverClaudeSkills } from "./ClaudeSkills.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
@@ -110,7 +112,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const { cwd } = yield* ServerConfig;
+      const { cwd, providerHomesDir } = yield* ServerConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
@@ -121,7 +123,15 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         driverKind: DRIVER_KIND,
         instanceId,
       });
-      const effectiveConfig = { ...config, enabled } satisfies ClaudeSettings;
+      // Additional instances get their own CLAUDE_CONFIG_DIR so a second
+      // subscription's sign-in cannot overwrite the first one's.
+      const homePath = yield* resolveProviderCredentialHome({
+        driverKind: DRIVER_KIND,
+        instanceId,
+        configuredPath: config.homePath,
+        providerHomesDir,
+      });
+      const effectiveConfig = { ...config, enabled, homePath } satisfies ClaudeSettings;
       const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
@@ -133,6 +143,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         displayName,
         accentColor,
         continuationGroupKey,
+        // T3 Code signs in through the Claude CLI but does not install it.
+        setup: { canAuthenticate: true, canInstall: false },
       });
 
       // One per instance: the status probe writes the model-scoped bucket
@@ -231,6 +243,22 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               Effect.provideService(Path.Path, path),
             );
 
+      // The capabilities probe caches account metadata for minutes at a time.
+      // Signing in or out changes exactly that metadata, so the cache entry has
+      // to go before the snapshot is re-probed or the UI keeps showing the
+      // previous account.
+      const reprobeAccount = Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+        Effect.andThen(snapshot.refresh),
+        Effect.asVoid,
+      );
+      const auth = yield* makeClaudeAuthController({
+        instanceId,
+        config: effectiveConfig,
+        environment: processEnv,
+        onAuthenticated: reprobeAccount,
+        onSignedOut: reprobeAccount,
+      });
+
       return {
         instanceId,
         driverKind: DRIVER_KIND,
@@ -245,6 +273,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         snapshotForCwd,
         adapter,
         textGeneration,
+        auth,
       } satisfies ProviderInstance;
     }),
 };

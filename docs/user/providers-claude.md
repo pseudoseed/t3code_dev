@@ -10,17 +10,25 @@ Common reasons:
 - run Claude through a router such as Claude Code Router
 - use external providers exposed through a Claude-compatible workflow
 
+## Signing In
+
+Open Settings, select your Claude provider, and press **Sign in to Claude**.
+
+T3 Code opens Anthropic's sign-in page and shows you a link you can open on any device. After you
+approve, Anthropic gives you a code. Paste it back into T3 Code and the sign-in finishes.
+
+This works the same from the web app, the desktop app, and the phone app, including when the server
+is on another machine. You never need a terminal.
+
+If the sign-in expires or is revoked, the provider shows as signed out and the same button reads
+**Sign in again**. Nothing else has to be reset.
+
+T3 Code does not hold your Claude credentials. Claude Code stores them itself, in its own format,
+and refreshes them as it works.
+
 ## I Only Use One Claude Account
 
 Use the default provider.
-
-Log in with Claude Code normally:
-
-```bash
-claude auth login
-```
-
-In T3 Code Settings, your Claude provider can stay like this:
 
 ```text
 Display name: Claude
@@ -28,7 +36,8 @@ Binary path: claude
 CLAUDE_CONFIG_DIR path: empty
 ```
 
-An empty `CLAUDE_CONFIG_DIR path` means T3 Code uses Claude Code's normal config directory.
+An empty `CLAUDE_CONFIG_DIR path` means T3 Code uses Claude Code's normal config directory, so a
+login you already made with `claude auth login` keeps working.
 
 When you set this field, T3 Code points Claude Code at that directory with the
 `CLAUDE_CONFIG_DIR` environment variable. It does not change `HOME`, so your system keychain and
@@ -62,44 +71,22 @@ Claude starts the others through its Skill tool, which refuses skills marked
 
 ## I Want Work And Personal Claude Accounts
 
-Use a different Claude config directory for each account.
+Add a second Claude provider and sign in to it. There is nothing else to set up.
 
-Example:
+1. In Settings, press **Add provider** and choose Claude.
+2. Give it a name such as `Claude Personal`.
+3. Select it and press **Sign in to Claude**.
 
-```text
-default config dir           work account
-~/.claude_personal_home      personal account
-```
+Each Claude provider you add gets its own config directory, so signing in to the second account
+leaves the first one signed in. You can add as many as you have accounts.
 
-### Set Up The First Account
+Use the email shown in Settings to confirm each provider is using the intended account. Emails are
+blurred by default; click the blurred email to reveal it.
 
-Log in normally:
+### Pointing At A Directory You Already Have
 
-```bash
-claude auth login
-```
-
-In T3 Code Settings:
-
-```text
-Display name: Claude Work
-Binary path: claude
-CLAUDE_CONFIG_DIR path: empty
-```
-
-### Set Up The Second Account
-
-Log in with a separate config directory:
-
-```bash
-mkdir -p ~/.claude_personal_home
-CLAUDE_CONFIG_DIR=~/.claude_personal_home claude auth login
-```
-
-Use `CLAUDE_CONFIG_DIR`, not `HOME`. Setting `HOME` writes the login to
-`~/.claude_personal_home/.claude`, which is not where T3 Code looks.
-
-Then add another Claude provider in T3 Code:
+If you already keep a Claude config directory per account, set it yourself and T3 Code uses it
+instead of provisioning one:
 
 ```text
 Display name: Claude Personal
@@ -107,8 +94,11 @@ Binary path: claude
 CLAUDE_CONFIG_DIR path: ~/.claude_personal_home
 ```
 
-Use the email shown in Settings to confirm each provider is using the intended account. Emails are
-blurred by default; click the blurred email to reveal it.
+Use `CLAUDE_CONFIG_DIR`, not `HOME`. Setting `HOME` writes the login to
+`~/.claude_personal_home/.claude`, which is not where T3 Code looks.
+
+Each config directory holds its own settings, skills, and project history as well as its own login.
+Providers do not share those with each other.
 
 ## Can I Switch Claude Accounts In An Existing Thread?
 

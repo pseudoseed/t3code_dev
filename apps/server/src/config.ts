@@ -36,6 +36,12 @@ export interface ServerDerivedPaths {
   /** Palettes this machine publishes for clients to follow, one file per theme. */
   readonly environmentThemesDir: string;
   readonly providerStatusCacheDir: string;
+  /**
+   * Root for the per-instance credential directories T3 Code provisions so a
+   * second subscription on the same provider signs in without disturbing the
+   * first. One subdirectory per provider instance.
+   */
+  readonly providerHomesDir: string;
   readonly worktreesDir: string;
   readonly attachmentsDir: string;
   readonly logsDir: string;
@@ -123,6 +129,7 @@ export const deriveServerPaths = Effect.fn(function* (
     settingsPath: join(stateDir, "settings.json"),
     environmentThemesDir: join(stateDir, "themes"),
     providerStatusCacheDir,
+    providerHomesDir: join(stateDir, "provider-homes"),
     worktreesDir: join(baseDir, "worktrees"),
     attachmentsDir,
     logsDir,
@@ -153,6 +160,7 @@ export const ensureServerDirectories = Effect.fn(function* (derivedPaths: Server
       fs.makeDirectory(path.dirname(derivedPaths.keybindingsConfigPath), { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true }),
       fs.makeDirectory(derivedPaths.providerStatusCacheDir, { recursive: true }),
+      fs.makeDirectory(derivedPaths.providerHomesDir, { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.anonymousIdPath), { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.serverRuntimeStatePath), { recursive: true }),
     ],
