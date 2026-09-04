@@ -33,7 +33,12 @@ Pod::Spec.new do |s|
     spm_dependency(
       s,
       url: 'https://github.com/FluidInference/FluidAudio.git',
-      requirement: { :kind => 'exactVersion', :version => '0.15.6' },
+      # 0.15.5, not 0.15.6. That release added a `NemoTextProcessing` binary
+      # target, and a binary target inside a pod's SwiftPM dependency gets its
+      # signature collected twice during an archive, once at the top of the
+      # build products directory and once under the pod's own subdirectory.
+      # Both then copy into one Signatures folder and collide on the name.
+      requirement: { :kind => 'exactVersion', :version => '0.15.5' },
       products: ['FluidAudio']
     )
   else
