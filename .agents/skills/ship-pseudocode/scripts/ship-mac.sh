@@ -52,5 +52,28 @@ codesign --verify --deep --strict "$APP"
 xcrun stapler validate "$APP"
 spctl --assess --verbose=4 --type exec "$APP"
 
+cleanup
+trap - EXIT
+
+# Publish after verification, never before: an unnotarized DMG on a release page
+# is worse than no DMG, because macOS refuses to open it and the download looks
+# like the product is broken.
+VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+TAG="pseudocode-v$VERSION"
+
+# Deliberately not `v$VERSION`. The release workflow triggers on `v*.*.*` and
+# cannot produce a usable artifact for this fork, so a tag in that shape starts
+# a run that is guaranteed to fail. See the skill's CI section.
+if gh release view "$TAG" >/dev/null 2>&1; then
+  echo "Adding $(basename "$DMG") to $TAG"
+  gh release upload "$TAG" "$DMG" --clobber
+else
+  echo "Creating release $TAG"
+  gh release create "$TAG" "$DMG" \
+    --title "PseudoCode $VERSION" \
+    --notes "Desktop build for macOS. Signed and notarized."
+fi
+
 echo
 echo "Shipped: $DMG"
+echo "Published: $(gh release view "$TAG" --json url --jq .url)"

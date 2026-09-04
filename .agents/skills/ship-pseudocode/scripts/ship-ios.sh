@@ -33,6 +33,14 @@ else
 fi
 export T3CODE_IOS_BUILD_NUMBER="$NEXT"
 
+# On-device dictation links a llama.cpp xcframework and ships a speech model
+# inside the app. Both are built or fetched by these scripts and neither is in
+# git, so a fresh clone has an app that will not link. Both no-op when the
+# artifact is already present at the pinned version.
+echo "Preparing voice artifacts"
+bash apps/mobile/modules/t3-voice/scripts/fetch-bundled-model.sh
+bash apps/mobile/modules/t3-voice/scripts/build-llama-xcframework.sh
+
 APP="$T3CODE_APP_NAME"
 cd apps/mobile
 mkdir -p build
@@ -59,10 +67,14 @@ AUTH=(
   -authenticationKeyIssuerID "$T3CODE_ASC_ISSUER_ID"
 )
 
+# The team is passed on the command line, not left to the generated project.
+# Expo writes appleTeamId onto the app target only, so the share extension and
+# the widgets target archive without one and fail to sign.
 echo "Archiving"
 xcodebuild -workspace "ios/$APP.xcworkspace" -scheme "$APP" \
   -configuration Release -destination "generic/platform=iOS" \
-  -archivePath "build/$APP.xcarchive" "${AUTH[@]}" archive
+  -archivePath "build/$APP.xcarchive" \
+  DEVELOPMENT_TEAM="$T3CODE_IOS_TEAM_ID" "${AUTH[@]}" archive
 
 ARCHIVED=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' \
   "build/$APP.xcarchive/Info.plist")

@@ -9,9 +9,9 @@
  * Run with: node apps/mobile/modules/t3-voice/scripts/generate-model-manifest.mts
  */
 
-import { writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeURL from "node:url";
+import * as NodePath from "node:path";
 
 const MODEL_REPO = "argmaxinc/whisperkit-coreml";
 const MODEL_REVISION = "0f63a7800b00dd0226abd051b906c246e1907482";
@@ -170,8 +170,8 @@ for (const modelId of Object.keys(CLEANUP_MODELS)) {
   console.log(`${modelId}: ${files.length} files, ${(total / 1024 / 1024).toFixed(1)} MB`);
 }
 
-const outputPath = join(
-  dirname(fileURLToPath(import.meta.url)),
+const outputPath = NodePath.join(
+  NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
   "..",
   "..",
   "..",
@@ -180,5 +180,5 @@ const outputPath = join(
   "voiceModelManifest.json",
 );
 
-await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
+await NodeFSP.writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`wrote ${outputPath}`);

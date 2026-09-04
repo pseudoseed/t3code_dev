@@ -24,6 +24,15 @@ in git.
   at `87c7102498dcde7456f24cfd30239ca606ed9063`
 - License: MIT (OpenAI Whisper), Apache 2.0 (WhisperKit conversions)
 
+## FluidAudio
+
+Speech recognition (Parakeet v3) and speaker diarization, resolved through Swift
+Package Manager from the podspec.
+
+- Upstream project: https://github.com/FluidInference/FluidAudio
+- Pinned version: `0.15.5`, exact
+- License: Apache 2.0
+
 ## llama.cpp
 
 Transcript cleanup runs on llama.cpp directly. `scripts/build-llama-xcframework.sh`
