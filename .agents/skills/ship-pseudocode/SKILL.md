@@ -21,11 +21,19 @@ One command each. Both run from anywhere in the repo.
 ```
 
 The scripts handle the parts that are easy to get wrong: they pick Node 24, put `/usr/bin` ahead of
-Homebrew, export the branding variables the desktop build needs, bump the iOS build number, and
-verify the result before claiming success.
+Homebrew, export the branding variables the desktop build needs, bump the iOS build number, build
+the voice artifacts that are not in git, pass the signing team to every target, and verify the
+result before claiming success.
 
-`ship-mac.sh` ends with `spctl` reporting `source=Notarized Developer ID`. Anything less is a
-failure, not a warning.
+`ship-mac.sh` ends with `spctl` reporting `source=Notarized Developer ID`, then publishes the DMG to
+GitHub Releases under the tag `pseudocode-v<version>`, taking the version from
+`apps/desktop/package.json`. Anything less than a notarized result is a failure, not a warning, and
+publishing only happens after verification passes: an unnotarized DMG on a release page is worse
+than no DMG, because macOS refuses to open it.
+
+The tag is deliberately not `v<version>`. The release workflow triggers on `v*.*.*` and cannot
+produce a usable artifact here, so a tag in that shape starts a run guaranteed to fail. Re-running
+for the other architecture adds its DMG to the same release.
 
 `ship-ios.sh` ends when Apple accepts the upload. The build then processes for 5 to 15 minutes
 before appearing in TestFlight, so an empty build list right after upload is normal. Report the
@@ -99,14 +107,17 @@ been done.
 
 ## Errors and what they mean
 
-| Symptom                                 | Cause                                                                                                   |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `ERR_UNKNOWN_FILE_EXTENSION ".ts"`      | Node 20 on PATH. The ship scripts pick Node 24; a hand-run command must too.                            |
-| `command not found: vp`                 | `node_modules/.bin` missing from PATH.                                                                  |
-| App bundle named `T3 Code.app`          | `T3CODE_APP_NAME` not exported for the desktop build.                                                   |
-| `skipped macOS notarization`            | No notarytool keychain profile named `pseudocode`. `ROTATION.md` step 6.                                |
-| `codesign ... errSecInternalComponent`  | The keychain holding the signing key is locked, so `codesign` sees the identity but cannot use the key. |
-| `Cloud signing permission error`        | The App Store Connect API key lacks the Admin role.                                                     |
-| rsync failure during iOS export         | Homebrew's rsync ahead of `/usr/bin` on PATH.                                                           |
-| App Store Connect rejects the upload    | Build number already used. `ship-ios.sh` raises it; a hand-run archive does not.                        |
-| macOS refuses to open the DMG elsewhere | Signed but not notarized.                                                                               |
+| Symptom                                       | Cause                                                                                                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ERR_UNKNOWN_FILE_EXTENSION ".ts"`            | Node 20 on PATH. The ship scripts pick Node 24; a hand-run command must too.                                                                                       |
+| `command not found: vp`                       | `node_modules/.bin` missing from PATH.                                                                                                                             |
+| App bundle named `T3 Code.app`                | `T3CODE_APP_NAME` not exported for the desktop build.                                                                                                              |
+| `skipped macOS notarization`                  | No notarytool keychain profile named `pseudocode`. `ROTATION.md` step 6.                                                                                           |
+| `codesign ... errSecInternalComponent`        | The keychain holding the signing key is locked, so `codesign` sees the identity but cannot use the key.                                                            |
+| `Cloud signing permission error`              | The App Store Connect API key lacks the Admin role.                                                                                                                |
+| rsync failure during iOS export               | Homebrew's rsync ahead of `/usr/bin` on PATH.                                                                                                                      |
+| App Store Connect rejects the upload          | Build number already used. `ship-ios.sh` raises it; a hand-run archive does not.                                                                                   |
+| `requires a development team` on an extension | Expo writes `appleTeamId` onto the app target only. `ship-ios.sh` passes `DEVELOPMENT_TEAM` to every target; a hand-run archive must too.                          |
+| duplicate `.xcframework-ios.signature`        | A binary target inside a pod's SwiftPM dependency. Its signature is collected twice and both copy into one Signatures folder. Pin below the release that added it. |
+| missing `llama.xcframework` or bundled model  | The voice artifacts are gitignored. `ship-ios.sh` builds them; a hand-run archive must run the two scripts in `apps/mobile/modules/t3-voice/scripts/`.             |
+| macOS refuses to open the DMG elsewhere       | Signed but not notarized.                                                                                                                                          |
