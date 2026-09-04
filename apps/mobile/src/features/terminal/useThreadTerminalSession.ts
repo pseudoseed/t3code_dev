@@ -10,7 +10,7 @@ import {
 } from "../../state/use-terminal-session";
 import {
   getTerminalBufferReplayKey,
-  getTerminalSurfaceReplayBuffer,
+  getTerminalSurfaceReplayContent,
   TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS,
 } from "./terminalBufferReplay";
 import { terminalDebugLog } from "./terminalDebugLog";
@@ -236,11 +236,17 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   if (lastBufferReplayKeyRef.current === null) {
     lastBufferReplayKeyRef.current = bufferReplayKey;
   }
-  const surfaceBuffer = getTerminalSurfaceReplayBuffer({
-    buffer: terminal.buffer,
-    replayKey: bufferReplayKey,
-    readyReplayKey: readyBufferReplayKey,
-  });
+  // Identity has to stay stable while nothing streams: the native surface prop
+  // is diffed by reference, and a fresh object every render re-crosses the bridge.
+  const surfaceContent = useMemo(
+    () =>
+      getTerminalSurfaceReplayContent({
+        terminal,
+        replayKey: bufferReplayKey,
+        readyReplayKey: readyBufferReplayKey,
+      }),
+    [bufferReplayKey, readyBufferReplayKey, terminal],
+  );
   const isRunning = terminal.status === "running" || terminal.status === "starting";
   const runningTerminalKeyRef = useRef<string | null>(null);
   const reopenedStaleTerminalKeyRef = useRef<string | null>(null);
@@ -586,7 +592,7 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     knownSessions,
     pendingModifier,
     sendInput,
-    surfaceBuffer,
+    surfaceContent,
     terminal,
     terminalKey,
     togglePendingModifier,

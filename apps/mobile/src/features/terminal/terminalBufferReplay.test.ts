@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { getTerminalBufferReplayKey, getTerminalSurfaceReplayBuffer } from "./terminalBufferReplay";
+import {
+  getTerminalBufferReplayKey,
+  getTerminalSurfaceReplayContent,
+} from "./terminalBufferReplay";
+
+const TERMINAL = {
+  buffer: "fastfetch output",
+  cursor: 16,
+  trimmed: 0,
+  epoch: 1,
+};
 
 describe("terminalBufferReplay", () => {
   it("keys replay readiness by terminal identity and font metrics", () => {
@@ -19,25 +29,34 @@ describe("terminalBufferReplay", () => {
     });
 
     expect(
-      getTerminalSurfaceReplayBuffer({
-        buffer: "fastfetch output",
+      getTerminalSurfaceReplayContent({
+        terminal: TERMINAL,
         replayKey,
         readyReplayKey: null,
       }),
-    ).toBe("fastfetch output");
+    ).toEqual(TERMINAL);
     expect(
-      getTerminalSurfaceReplayBuffer({
-        buffer: "fastfetch output",
-        replayKey,
-        readyReplayKey: "env-1:thread-1:default:11",
-      }),
-    ).toBe("");
-    expect(
-      getTerminalSurfaceReplayBuffer({
-        buffer: "fastfetch output",
+      getTerminalSurfaceReplayContent({
+        terminal: TERMINAL,
         replayKey,
         readyReplayKey: replayKey,
       }),
-    ).toBe("fastfetch output");
+    ).toEqual(TERMINAL);
+  });
+
+  it("hides content behind an unreachable epoch while the replay key is stale", () => {
+    const replayKey = getTerminalBufferReplayKey({
+      terminalKey: "env-1:thread-1:default",
+      fontSize: 10,
+    });
+    const hidden = getTerminalSurfaceReplayContent({
+      terminal: TERMINAL,
+      replayKey,
+      readyReplayKey: "env-1:thread-1:default:11",
+    });
+
+    expect(hidden.buffer).toBe("");
+    // A surface parked on the hidden epoch must replay in full once it clears.
+    expect(hidden.epoch).not.toBe(TERMINAL.epoch);
   });
 });

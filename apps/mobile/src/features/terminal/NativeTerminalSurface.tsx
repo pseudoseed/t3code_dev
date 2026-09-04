@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -9,6 +9,8 @@ import {
   type ViewProps,
 } from "react-native";
 
+import { terminalBufferDelta } from "@t3tools/client-runtime/state/terminal";
+
 import { AppText as Text } from "../../components/AppText";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -16,6 +18,7 @@ import {
   getNativeTerminalHardwareKeyRevision,
   resolveNativeTerminalSurfaceView,
 } from "./nativeTerminalModule";
+import type { TerminalSurfaceContent } from "./terminalBufferReplay";
 import {
   buildGhosttyThemeConfig,
   getMobileTerminalTheme,
@@ -34,7 +37,7 @@ interface TerminalResizeEvent {
 
 interface TerminalSurfaceProps extends ViewProps {
   readonly terminalKey: string;
-  readonly buffer: string;
+  readonly content: TerminalSurfaceContent;
   readonly fontSize?: number;
   readonly isRunning: boolean;
   readonly autoFocus?: boolean;
@@ -117,7 +120,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: Ter
               lineHeight: Math.round(fontSize * 1.35),
             }}
           >
-            {props.buffer || "$ "}
+            {props.content.buffer || "$ "}
           </Text>
         </ScrollView>
       </View>
@@ -178,6 +181,26 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
   const { onInput, onResize } = props;
   const NativeTerminalSurfaceView = resolveNativeTerminalSurfaceView();
   const hasNativeSurface = Boolean(NativeTerminalSurfaceView);
+  const content = props.content;
+
+  // What the native surface has already been handed. A native surface is
+  // recreated on font, theme and identity changes, and announces each new one
+  // through onSurfaceReady; parking the cursor at null replays into it.
+  const deliveredRef = useRef<{ readonly cursor: number; readonly epoch: number } | null>(null);
+  const [replayRequest, setReplayRequest] = useState(0);
+  const handleSurfaceReady = useCallback(() => {
+    deliveredRef.current = null;
+    setReplayRequest((request) => request + 1);
+  }, []);
+  const append = useMemo(
+    () => terminalBufferDelta(content, deliveredRef.current),
+    // deliveredRef advances after commit, so replayRequest is what re-runs this
+    // when the surface asked for a replay but the content itself did not change.
+    [content, replayRequest],
+  );
+  useEffect(() => {
+    deliveredRef.current = { cursor: append.cursor, epoch: append.epoch };
+  });
 
   useEffect(() => {
     terminalDebugLog("native:surface", {
@@ -185,10 +208,10 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
       native: hasNativeSurface,
       // null = installed binary predates native hardware-key handling (rebuild needed).
       hardwareKeyRevision: getNativeTerminalHardwareKeyRevision(),
-      bufferLen: props.buffer.length,
+      bufferLen: content.buffer.length,
       isRunning: props.isRunning,
     });
-  }, [hasNativeSurface, props.buffer.length, props.isRunning, props.terminalKey]);
+  }, [content.buffer.length, hasNativeSurface, props.isRunning, props.terminalKey]);
   const handleNativeInput = useCallback(
     (event: NativeSyntheticEvent<TerminalInputEvent>) => {
       if (!props.isRunning) {
@@ -222,12 +245,13 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
           foregroundColor={theme.foreground}
           mutedForegroundColor={theme.mutedForeground}
           terminalKey={props.terminalKey}
-          initialBuffer={props.buffer}
+          append={append}
           fontSize={fontSize}
           style={{ flex: 1 }}
           themeConfig={buildGhosttyThemeConfig(theme)}
           onInput={handleNativeInput}
           onResize={handleNativeResize}
+          onSurfaceReady={handleSurfaceReady}
         />
       </View>
     );

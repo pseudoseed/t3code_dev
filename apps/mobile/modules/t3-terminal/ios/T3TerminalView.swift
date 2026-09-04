@@ -162,6 +162,17 @@ private final class TerminalInputField: UITextField {
   }
 }
 
+/// One delivery from JS: the slice appended since `cursor` last advanced, or a
+/// full replay that replaces whatever the surface currently holds.
+public struct TerminalAppend: Record {
+  @Field public var reset: Bool = false
+  @Field public var chunk: String = ""
+  @Field public var cursor: Double = -1
+  @Field public var epoch: Double = -1
+
+  public init() {}
+}
+
 private enum TerminalAppearanceScheme: String {
   case light
   case dark
@@ -204,7 +215,8 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   private var lastViewportSize: CGSize = .zero
   private var lastContentScale: CGFloat = 0
   private var lastReportedGrid: (cols: Int, rows: Int)?
-  private var lastAppliedBuffer = ""
+  private var appliedCursor: Double = -1
+  private var appliedEpoch: Double = -1
   private var pendingVerticalScrollPoints: CGFloat = 0
   private var app: ghostty_app_t?
   private var surface: ghostty_surface_t?
@@ -215,6 +227,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
 
   let onInput = EventDispatcher()
   let onResize = EventDispatcher()
+  let onSurfaceReady = EventDispatcher()
 
   var terminalKey: String = "" {
     didSet {
@@ -225,11 +238,6 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     }
   }
 
-  var initialBuffer: String = "" {
-    didSet {
-      applyRemoteBuffer(initialBuffer)
-    }
-  }
 
   var fontSize: CGFloat = 10 {
     didSet {
@@ -499,12 +507,20 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     ghostty_surface_set_color_scheme(createdSurface, appearance.ghosttyColorScheme)
     setupWriteCallback()
     resizeSurface()
-    feedBuffer(initialBuffer)
+
+    // A fresh surface holds nothing. Announcing it is what makes JS resend the
+    // history, so the view never has to keep a second copy of the scrollback.
+    appliedCursor = -1
+    appliedEpoch = -1
+    DispatchQueue.main.async { [weak self] in
+      self?.onSurfaceReady([:])
+    }
   }
 
   private func resetSurface() {
     destroySurface()
-    lastAppliedBuffer = ""
+    appliedCursor = -1
+    appliedEpoch = -1
     lastViewportSize = .zero
     lastContentScale = 0
     lastReportedGrid = nil
@@ -529,33 +545,27 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     app = nil
   }
 
-  private func applyRemoteBuffer(_ buffer: String) {
+  func applyAppend(_ append: TerminalAppend) {
     guard surface != nil else {
+      // Nothing to write into yet. Surface creation announces itself and JS
+      // answers with a replay, so dropping this delivery loses nothing.
       createSurfaceIfPossible()
       return
     }
 
-    if buffer.isEmpty {
-      feedData(Data("\u{1B}[3J\u{1B}[H\u{1B}[2J".utf8))
-      lastAppliedBuffer = ""
+    if append.reset {
+      appliedEpoch = append.epoch
+      appliedCursor = append.cursor
+      // RIS clears the modes a previous session left behind; the screen and
+      // scrollback have to go with them before the replay lands.
+      feedData(Data("\u{1B}c\u{1B}[3J".utf8))
+      feedData(Data(append.chunk.utf8))
       return
     }
 
-    if buffer.hasPrefix(lastAppliedBuffer) {
-      let suffix = String(buffer.dropFirst(lastAppliedBuffer.count))
-      feedData(Data(suffix.utf8))
-      lastAppliedBuffer = buffer
-      return
-    }
-
-    resetSurface()
-    createSurfaceIfPossible()
-  }
-
-  private func feedBuffer(_ buffer: String) {
-    guard !buffer.isEmpty else { return }
-    feedData(Data(buffer.utf8))
-    lastAppliedBuffer = buffer
+    guard append.epoch == appliedEpoch, append.cursor > appliedCursor else { return }
+    appliedCursor = append.cursor
+    feedData(Data(append.chunk.utf8))
   }
 
   private func feedData(_ data: Data) {

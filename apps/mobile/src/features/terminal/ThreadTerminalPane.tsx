@@ -306,7 +306,7 @@ export function ThreadTerminalPane(props: {
         {isEnvironmentReady ? (
           <TerminalSurfacePanel
             autoFocus={Platform.OS !== "android"}
-            buffer={session.surfaceBuffer}
+            content={session.surfaceContent}
             keyboardMode={props.dockPosition === "bottom" ? "hosted" : "inset"}
             environmentLabel={environmentLabel}
             fontSize={fontSize}

@@ -15,8 +15,8 @@ public class T3TerminalModule: Module {
         view.terminalKey = terminalKey
       }
 
-      Prop("initialBuffer") { (view: T3TerminalView, initialBuffer: String) in
-        view.initialBuffer = initialBuffer
+      Prop("append") { (view: T3TerminalView, append: TerminalAppend) in
+        view.applyAppend(append)
       }
 
       Prop("fontSize") { (view: T3TerminalView, fontSize: Double) in
@@ -51,7 +51,7 @@ public class T3TerminalModule: Module {
         view.mutedForegroundColorHex = mutedForegroundColor
       }
 
-      Events("onInput", "onResize")
+      Events("onInput", "onResize", "onSurfaceReady")
     }
   }
 }

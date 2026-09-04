@@ -3,7 +3,10 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { type TerminalSessionState } from "@t3tools/client-runtime/state/terminal";
+import {
+  terminalBufferDelta,
+  type TerminalSessionState,
+} from "@t3tools/client-runtime/state/terminal";
 import {
   Plus,
   Square,
@@ -407,11 +410,17 @@ export function TerminalViewport({
     },
   );
   const terminalVersion = terminalSession.version;
+  const terminalCursor = terminalSession.cursor;
+  const terminalTrimmed = terminalSession.trimmed;
+  const terminalEpoch = terminalSession.epoch;
   const previousSessionRef = useRef({
     buffer: terminalBuffer,
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
+    cursor: terminalCursor,
+    trimmed: terminalTrimmed,
+    epoch: terminalEpoch,
   });
   const latestSessionRef = useRef(previousSessionRef.current);
   latestSessionRef.current = {
@@ -419,6 +428,9 @@ export function TerminalViewport({
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
+    cursor: terminalCursor,
+    trimmed: terminalTrimmed,
+    epoch: terminalEpoch,
   };
 
   useEffect(() => {
@@ -866,6 +878,9 @@ export function TerminalViewport({
       error: terminalError,
       status: terminalStatus,
       version: terminalVersion,
+      cursor: terminalCursor,
+      trimmed: terminalTrimmed,
+      epoch: terminalEpoch,
     };
     if (!terminal) {
       previousSessionRef.current = current;
@@ -878,15 +893,17 @@ export function TerminalViewport({
       return;
     }
 
-    if (
-      current.buffer.length >= previous.buffer.length &&
-      current.buffer.startsWith(previous.buffer)
-    ) {
-      terminal.write(current.buffer.slice(previous.buffer.length));
-    } else {
-      writeTerminalBuffer(terminal, current.buffer);
+    const delta = terminalBufferDelta(current, previous);
+    if (delta.reset) {
+      writeTerminalBuffer(terminal, delta.chunk);
+    } else if (delta.chunk.length > 0) {
+      terminal.write(delta.chunk);
     }
-    terminal.clearSelection();
+    // Selection is anchored to screen cells that new output scrolls out from
+    // under; a version bump that wrote nothing has not moved them.
+    if (delta.reset || delta.chunk.length > 0) {
+      terminal.clearSelection();
+    }
 
     if (current.error !== null && current.error !== previous.error) {
       writeSystemMessage(terminal, current.error);
@@ -898,7 +915,16 @@ export function TerminalViewport({
       });
     }
     previousSessionRef.current = current;
-  }, [autoFocus, terminalBuffer, terminalError, terminalStatus, terminalVersion]);
+  }, [
+    autoFocus,
+    terminalBuffer,
+    terminalCursor,
+    terminalEpoch,
+    terminalError,
+    terminalStatus,
+    terminalTrimmed,
+    terminalVersion,
+  ]);
 
   useEffect(() => {
     if (!autoFocus) return;
