@@ -11,14 +11,14 @@ import expo.modules.kotlin.records.Record
  */
 class TerminalAppend : Record {
   @Field
-  val reset: Boolean = false
+  var reset: Boolean = false
 
   @Field
-  val chunk: String = ""
+  var chunk: String = ""
 
   @Field
-  val cursor: Double = -1.0
+  var cursor: Double = -1.0
 
   @Field
-  val epoch: Double = -1.0
+  var epoch: Double = -1.0
 }

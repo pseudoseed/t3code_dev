@@ -6,7 +6,11 @@ The JavaScript contract is intentionally small:
 
 - input from the native surface is emitted as `{ data: string }`
 - resize from the native surface is emitted as `{ cols: number, rows: number }`
-- remote PTY output is delivered by the existing `WsRpcClient.terminal` RPC stream
+- remote PTY output arrives through the `append` prop as `{ reset, chunk, cursor, epoch }`
+- a newly created surface emits `onSurfaceReady`, which is how JS learns to resend history
+
+The views deliberately hold no copy of the scrollback. They apply the slice an `append` carries
+and ignore one whose cursor they already passed, so the buffer lives in exactly one place.
 
 The iOS implementation uses the vendored `GhosttyKit.xcframework` built from VVTerm's Ghostty
 custom-I/O and live-padding branch. `T3TerminalView` owns a `libghostty` surface and uses that
@@ -17,6 +21,12 @@ callback I/O model:
 3. feed remote output into the surface with `ghostty_surface_feed_data`
 4. send user input back to JS with the write callback
 5. emit Ghostty's measured terminal size through `onResize`
+
+Hardware keys are captured with `UIKeyCommand` (the text-input system swallows presses before the
+responder chain sees them) and encoded by `ghostty_surface_key`, so cursor keys follow the modes
+the running program set. Chords that terminals encode as modified cursor keys — Option and Command
+with the arrows or Backspace — are sent as the readline control codes the web client uses instead,
+because stock zsh and readline do not bind the modified forms.
 
 Android implements the same view contract with upstream `libghostty-vt` for terminal state, parsing,
 reflow, and scrollback. An Android Canvas view renders compact snapshots produced by the JNI bridge,
