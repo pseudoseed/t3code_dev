@@ -234,6 +234,16 @@ describe("mobile connection storage", () => {
     });
   });
 
+  it("persists the terminal pane dock position and ignores unknown values", async () => {
+    await expect(savePreferencesPatch({ terminalPaneDockPosition: "bottom" })).resolves.toEqual({
+      terminalPaneDockPosition: "bottom",
+    });
+    await expect(loadPreferences()).resolves.toEqual({ terminalPaneDockPosition: "bottom" });
+
+    mocks.setPreferencesJson(JSON.stringify({ terminalPaneDockPosition: "floating" }), 10);
+    await expect(loadPreferences()).resolves.toEqual({});
+  });
+
   it("drops legacy and invalid thread list shelf expansion preferences", async () => {
     mocks.setPreferencesJson(
       JSON.stringify({

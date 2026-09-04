@@ -28,10 +28,12 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import {
   deriveFileInspectorPaneLayout,
   deriveLayout,
+  deriveWorkspaceDockPaneLayout,
   deriveWorkspacePaneLayout,
   type FileInspectorPaneLayout,
   type Layout,
   type WorkspaceAuxiliaryPaneRole,
+  type WorkspaceDockPaneLayout,
   type WorkspacePaneLayout,
 } from "../../lib/layout";
 import { resolveThreadSelectionNavigationAction } from "../../lib/adaptive-navigation";
@@ -49,11 +51,13 @@ import { AndroidHomeFabLayout } from "../home/AndroidHomeFab";
 import { HomeListOptionsProvider } from "../home/home-list-options";
 import { ThreadNavigationSidebar } from "../threads/ThreadNavigationSidebar";
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
+import { WorkspaceDockPane } from "./workspace-dock-pane";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
 
 interface AdaptiveWorkspaceContextValue {
   readonly layout: Layout;
   readonly panes: WorkspacePaneLayout;
+  readonly dock: WorkspaceDockPaneLayout;
   readonly fileInspector: FileInspectorPaneLayout;
   readonly primarySidebarSearchQuery: string;
   readonly activateAuxiliaryPaneRole: (role: WorkspaceAuxiliaryPaneRole) => () => void;
@@ -66,6 +70,9 @@ interface AdaptiveWorkspaceContextValue {
    * Prefer useRegisterWorkspaceInspector over calling this directly.
    */
   readonly registerWorkspaceInspector: (render: () => ReactNode) => () => void;
+  /** Same contract as registerWorkspaceInspector, for the bottom dock. */
+  readonly registerWorkspaceDock: (render: () => ReactNode) => () => void;
+  readonly setDockPaneHeight: (height: number) => void;
   readonly setPrimarySidebarSearchQuery: (query: string) => void;
   readonly showAuxiliaryPane: (role: WorkspaceAuxiliaryPaneRole) => void;
   readonly toggleAuxiliaryPane: () => void;
@@ -84,13 +91,17 @@ const compactFileInspector = deriveFileInspectorPaneLayout({
   layout: compactLayout,
   viewportWidth: 0,
 });
+const compactDock = deriveWorkspaceDockPaneLayout({ layout: compactLayout, viewportHeight: 0 });
 const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextValue>({
   layout: compactLayout,
   panes: compactPanes,
+  dock: compactDock,
   fileInspector: compactFileInspector,
   primarySidebarSearchQuery: "",
   activateAuxiliaryPaneRole: () => () => undefined,
   registerWorkspaceInspector: () => () => undefined,
+  registerWorkspaceDock: () => () => undefined,
+  setDockPaneHeight: () => undefined,
   setPrimarySidebarSearchQuery: () => undefined,
   showAuxiliaryPane: () => undefined,
   toggleAuxiliaryPane: () => undefined,
@@ -128,6 +139,19 @@ export function useAdaptiveWorkspacePaneRole(role: WorkspaceAuxiliaryPaneRole) {
  */
 export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefined) {
   const { registerWorkspaceInspector } = useAdaptiveWorkspaceLayout();
+  useRegisterWorkspacePane(registerWorkspaceInspector, render);
+}
+
+/** Bottom-dock counterpart of useRegisterWorkspaceInspector. */
+export function useRegisterWorkspaceDock(render: (() => ReactNode) | undefined) {
+  const { registerWorkspaceDock } = useAdaptiveWorkspaceLayout();
+  useRegisterWorkspacePane(registerWorkspaceDock, render);
+}
+
+function useRegisterWorkspacePane(
+  register: (render: () => ReactNode) => () => void,
+  render: (() => ReactNode) | undefined,
+) {
   // Raw context values (not the useNavigation/useRoute wrappers) so the
   // portal re-provides exactly what this screen sees.
   const navigation = use(NavigationContext);
@@ -154,8 +178,8 @@ export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefi
       deactivateRef.current?.();
       return;
     }
-    deactivateRef.current = registerWorkspaceInspector(wrappedRenderRef.current);
-  }, [registerWorkspaceInspector]);
+    deactivateRef.current = register(wrappedRenderRef.current);
+  }, [register]);
 
   // Focus lifecycle. Blur/focus events fire even when the blurred subtree is
   // frozen (events are navigation-driven, renders are not).
@@ -233,6 +257,7 @@ function AdaptiveWorkspaceLayoutContent(
     null,
   );
   const [primarySidebarSearchQuery, setPrimarySidebarSearchQuery] = useState("");
+  const [dockPreferredHeight, setDockPreferredHeight] = useState<number | null>(null);
   const [focusedAuxiliaryPaneRole, setFocusedAuxiliaryPaneRole] =
     useState<WorkspaceAuxiliaryPaneRole | null>(null);
   const baseLayout = useMemo(() => deriveLayout({ width, height }), [height, width]);
@@ -259,6 +284,15 @@ function AdaptiveWorkspaceLayoutContent(
       shouldRenderPrimarySidebar,
       width,
     ],
+  );
+  const dock = useMemo(
+    () =>
+      deriveWorkspaceDockPaneLayout({
+        layout,
+        viewportHeight: height,
+        preferredHeight: dockPreferredHeight ?? undefined,
+      }),
+    [dockPreferredHeight, height, layout],
   );
   const auxiliaryPaneRole: WorkspaceAuxiliaryPaneRole =
     focusedAuxiliaryPaneRole ?? (/\/files(?:\/|$)/.test(pathname) ? "inspector" : "supplementary");
@@ -311,6 +345,29 @@ function AdaptiveWorkspaceLayoutContent(
     readonly active: boolean;
   } | null>(null);
   const workspaceInspectorOwner = useRef<symbol | null>(null);
+  const [workspaceDock, setWorkspaceDock] = useState<{
+    readonly render: () => ReactNode;
+    readonly active: boolean;
+  } | null>(null);
+  const workspaceDockOwner = useRef<symbol | null>(null);
+  const registerWorkspaceDock = useCallback((render: () => ReactNode) => {
+    const owner = Symbol("workspace-dock");
+    workspaceDockOwner.current = owner;
+    setWorkspaceDock({ render, active: true });
+
+    return () => {
+      if (workspaceDockOwner.current !== owner) {
+        return;
+      }
+      setWorkspaceDock((current) => (current === null ? null : { ...current, active: false }));
+    };
+  }, []);
+  const handleWorkspaceDockClosed = useCallback(() => {
+    setWorkspaceDock((current) => (current !== null && !current.active ? null : current));
+  }, []);
+  const setDockPaneHeight = useCallback((nextHeight: number) => {
+    setDockPreferredHeight(nextHeight);
+  }, []);
   const registerWorkspaceInspector = useCallback((render: () => ReactNode) => {
     const owner = Symbol("workspace-inspector");
     workspaceInspectorOwner.current = owner;
@@ -404,10 +461,13 @@ function AdaptiveWorkspaceLayoutContent(
     () => ({
       layout,
       panes,
+      dock,
       fileInspector,
       primarySidebarSearchQuery,
       activateAuxiliaryPaneRole,
       registerWorkspaceInspector,
+      registerWorkspaceDock,
+      setDockPaneHeight,
       setPrimarySidebarSearchQuery,
       showAuxiliaryPane,
       toggleAuxiliaryPane,
@@ -416,11 +476,14 @@ function AdaptiveWorkspaceLayoutContent(
     }),
     [
       activateAuxiliaryPaneRole,
+      dock,
       fileInspector,
       layout,
       panes,
       primarySidebarSearchQuery,
+      registerWorkspaceDock,
       registerWorkspaceInspector,
+      setDockPaneHeight,
       showAuxiliaryPane,
       setPrimarySidebarSearchQuery,
       setAuxiliaryPaneWidth,
@@ -558,7 +621,17 @@ function AdaptiveWorkspaceLayoutContent(
                 contentSettledWidth !== null ? { flex: 1, width: contentSettledWidth } : { flex: 1 }
               }
             >
-              {props.children}
+              <View className="flex-1" collapsable={false}>
+                {props.children}
+              </View>
+              <WorkspaceDockPane
+                active={workspaceDock?.active ?? false}
+                dock={dock}
+                renderDock={workspaceDock?.render}
+                setDockPaneHeight={setDockPaneHeight}
+                viewportHeight={height}
+                onClosed={handleWorkspaceDockClosed}
+              />
             </View>
           </View>
           <WorkspaceInspectorPane

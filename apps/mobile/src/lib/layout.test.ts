@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   constrainAuxiliaryPaneWidth,
+  constrainDockPaneHeight,
   constrainPrimarySidebarWidth,
   deriveCenteredContentHorizontalPadding,
   deriveFileInspectorPaneLayout,
@@ -9,6 +10,7 @@ import {
   deriveStableFormSheetDetent,
   deriveThreadFeedInitialContentInset,
   deriveThreadWorkLogSizing,
+  deriveWorkspaceDockPaneLayout,
   deriveWorkspacePaneLayout,
   SPLIT_LAYOUT_MIN_HEIGHT,
   SPLIT_LAYOUT_MIN_WIDTH,
@@ -85,6 +87,39 @@ describe("resizable pane constraints", () => {
     expect(constrainAuxiliaryPaneWidth({ preferredWidth: 440, availableWidth: 1_100 })).toBe(440);
     expect(constrainAuxiliaryPaneWidth({ preferredWidth: 440, availableWidth: 900 })).toBe(340);
     expect(constrainAuxiliaryPaneWidth({ preferredWidth: 100, availableWidth: 1_100 })).toBe(260);
+  });
+
+  it("keeps chat usable above a resized bottom dock", () => {
+    expect(constrainDockPaneHeight({ preferredHeight: 400, availableHeight: 1_024 })).toBe(400);
+    expect(constrainDockPaneHeight({ preferredHeight: 900, availableHeight: 1_024 })).toBe(704);
+    expect(constrainDockPaneHeight({ preferredHeight: 40, availableHeight: 1_024 })).toBe(180);
+  });
+});
+
+describe("deriveWorkspaceDockPaneLayout", () => {
+  it("offers a default dock height on a split-view window", () => {
+    const layout = deriveLayout({ width: 1_024, height: 1_366 });
+
+    expect(deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 1_366 })).toEqual({
+      supported: true,
+      height: 519,
+    });
+  });
+
+  it("does not dock in a compact shell or a short window", () => {
+    expect(
+      deriveWorkspaceDockPaneLayout({
+        layout: deriveLayout({ width: 430, height: 932 }),
+        viewportHeight: 932,
+      }),
+    ).toEqual({ supported: false, height: null });
+
+    expect(
+      deriveWorkspaceDockPaneLayout({
+        layout: deriveLayout({ width: 1_024, height: 610 }),
+        viewportHeight: 610,
+      }),
+    ).toEqual({ supported: false, height: null });
   });
 });
 
