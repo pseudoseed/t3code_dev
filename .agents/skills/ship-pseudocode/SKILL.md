@@ -27,13 +27,25 @@ result before claiming success.
 
 `ship-mac.sh` ends with `spctl` reporting `source=Notarized Developer ID`, then publishes the DMG to
 GitHub Releases under the tag `pseudocode-v<version>`, taking the version from
-`apps/desktop/package.json`. Anything less than a notarized result is a failure, not a warning, and
+`apps/server/package.json`, which is the one electron-builder stamps onto the artifact. Anything
+less than a notarized result is a failure, not a warning, and
 publishing only happens after verification passes: an unnotarized DMG on a release page is worse
 than no DMG, because macOS refuses to open it.
 
 The tag is deliberately not `v<version>`. The release workflow triggers on `v*.*.*` and cannot
 produce a usable artifact here, so a tag in that shape starts a run guaranteed to fail. Re-running
 for the other architecture adds its DMG to the same release.
+
+The release carries `latest-mac.yml`, the zip, and both blockmaps alongside the DMG, because that
+is what "Check for updates" reads. electron-updater takes the version from `latest-mac.yml` and
+downloads the zip; the DMG is only for a person clicking Download. Those files exist only when
+`T3CODE_DESKTOP_UPDATE_REPOSITORY` is set at build time, which is also what writes `app-update.yml`
+into the app bundle. Without it the app reports updates as disabled rather than failing, so the
+symptom is a dead menu item and no error anywhere.
+
+A release bump touches four files, the way upstream's own release commit does: `apps/server`,
+`apps/desktop`, `apps/web`, and `packages/contracts`. Bumping only one leaves the tag and the DMG
+filename disagreeing.
 
 `ship-ios.sh` ends when Apple accepts the upload. The build then processes for 5 to 15 minutes
 before appearing in TestFlight, so an empty build list right after upload is normal. Report the
@@ -58,16 +70,17 @@ transcript and had to be revoked. `.claude/settings.json` denies the commands th
 `.env.local` at the repo root is the source of truth. It is gitignored, so a fresh clone or a new
 worktree needs it copied in.
 
-| Variable                  | Value                                 | Reaches                                                                          |
-| ------------------------- | ------------------------------------- | -------------------------------------------------------------------------------- |
-| `T3CODE_APP_NAME`         | `PseudoCode`                          | desktop product name, mobile app name, iOS project and scheme name, sidebar mark |
-| `T3CODE_APP_ICON`         | `assets/pseudocode/app-icon-1024.png` | macOS and Linux desktop icon, mobile icon                                        |
-| `T3CODE_WEB_ICON`         | `assets/pseudocode/app-icon-180.png`  | web apple-touch icon, which is the loading screen                                |
-| `T3CODE_IOS_BUNDLE_ID`    | `com.pseudoseed.pseudocode`           | iOS bundle identifier                                                            |
-| `T3CODE_IOS_TEAM_ID`      | `PTQN7W6777`                          | iOS signing team                                                                 |
-| `T3CODE_IOS_BUILD_NUMBER` | an integer                            | `ios.buildNumber`; `ship-ios.sh` raises it every run                             |
-| `T3CODE_ASC_KEY_ID`       | App Store Connect key id              | iOS archive, export, and upload                                                  |
-| `T3CODE_ASC_ISSUER_ID`    | App Store Connect issuer id           | same                                                                             |
+| Variable                           | Value                                 | Reaches                                                                          |
+| ---------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------- |
+| `T3CODE_APP_NAME`                  | `PseudoCode`                          | desktop product name, mobile app name, iOS project and scheme name, sidebar mark |
+| `T3CODE_APP_ICON`                  | `assets/pseudocode/app-icon-1024.png` | macOS and Linux desktop icon, mobile icon                                        |
+| `T3CODE_WEB_ICON`                  | `assets/pseudocode/app-icon-180.png`  | web apple-touch icon, which is the loading screen                                |
+| `T3CODE_DESKTOP_UPDATE_REPOSITORY` | `pseudoseed/t3code_dev`               | the repo the shipped desktop app checks for updates                              |
+| `T3CODE_IOS_BUNDLE_ID`             | `com.pseudoseed.pseudocode`           | iOS bundle identifier                                                            |
+| `T3CODE_IOS_TEAM_ID`               | `PTQN7W6777`                          | iOS signing team                                                                 |
+| `T3CODE_IOS_BUILD_NUMBER`          | an integer                            | `ios.buildNumber`; `ship-ios.sh` raises it every run                             |
+| `T3CODE_ASC_KEY_ID`                | App Store Connect key id              | iOS archive, export, and upload                                                  |
+| `T3CODE_ASC_ISSUER_ID`             | App Store Connect issuer id           | same                                                                             |
 
 The mobile config reads `.env.local` directly. **The desktop build does not**: it reads
 `T3CODE_APP_NAME` and `T3CODE_APP_ICON` from the process environment, which is why `ship-mac.sh`
@@ -121,3 +134,6 @@ been done.
 | duplicate `.xcframework-ios.signature`        | A binary target inside a pod's SwiftPM dependency. Its signature is collected twice and both copy into one Signatures folder. Pin below the release that added it. |
 | missing `llama.xcframework` or bundled model  | The voice artifacts are gitignored. `ship-ios.sh` builds them; a hand-run archive must run the two scripts in `apps/mobile/modules/t3-voice/scripts/`.             |
 | macOS refuses to open the DMG elsewhere       | Signed but not notarized.                                                                                                                                          |
+| `Failed to create release, "workflow" scope`  | `gh` resolved to the `upstream` remote, where this account has read only. The script passes `--repo` derived from `origin`.                                        |
+| Release tag and DMG filename disagree         | The version bump missed `apps/server/package.json`.                                                                                                                |
+| "Check for updates" does nothing              | The build ran without `T3CODE_DESKTOP_UPDATE_REPOSITORY`, so the app has no `app-update.yml` and reports updates as disabled.                                      |
