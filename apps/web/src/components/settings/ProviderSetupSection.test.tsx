@@ -100,6 +100,8 @@ function authState(patch: Partial<ProviderAuthState> = {}): ProviderAuthState {
     authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=test-only",
     expiresAt: "2026-09-02T00:05:00.000Z",
     message: null,
+    completion: "redirectUrl",
+    userCode: null,
     ...patch,
   };
 }
@@ -118,6 +120,8 @@ function renderSetup(
     environmentLabel: "Remote Google device",
     instanceId,
     provider: options.provider ?? provider,
+    driver: ProviderDriverKind.make("antigravity"),
+    providerLabel: "Antigravity",
     binaryPath: options.binaryPath,
     enabled: options.enabled ?? true,
     readOnly: options.readOnly ?? false,

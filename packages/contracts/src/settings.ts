@@ -476,6 +476,14 @@ export const CodexSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    deviceCodeLogin: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Sign in with a device code",
+        description:
+          "Use Codex device code authorization instead of the browser redirect. Your ChatGPT account must have device code authorization enabled.",
+      }),
+    ),
     launchArgs: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
@@ -489,7 +497,7 @@ export const CodexSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs"],
+    order: ["binaryPath", "homePath", "shadowHomePath", "deviceCodeLogin", "launchArgs"],
   },
 );
 export type CodexSettings = typeof CodexSettings.Type;

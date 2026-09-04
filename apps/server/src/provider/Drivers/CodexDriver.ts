@@ -51,8 +51,10 @@ import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import type { ProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
+import { makeCodexAuthController } from "./CodexLogin.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import { resolveProviderCredentialHome } from "../providerCredentialHome.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makePackageManagedProviderMaintenanceResolver,
@@ -113,7 +115,50 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       const eventLoggers = yield* ProviderEventLoggers;
       const modelManifest = yield* ModelManifest.ModelManifest;
       const processEnv = mergeProviderInstanceEnvironment(environment);
-      const homeLayout = yield* resolveCodexHomeLayout(config);
+      const { providerHomesDir } = yield* ServerConfig;
+      // An instance that configures either path has already chosen its layout,
+      // and a distinct CODEX_HOME isolates auth.json on its own. Only an
+      // instance with neither gets a provisioned shadow home, which keeps
+      // auth.json private per account while sessions stay shared from the
+      // default CODEX_HOME.
+      const configuresOwnHome =
+        config.homePath.trim().length > 0 || config.shadowHomePath.trim().length > 0;
+      const shadowHomePath = configuresOwnHome
+        ? config.shadowHomePath
+        : yield* resolveProviderCredentialHome({
+            driverKind: DRIVER_KIND,
+            instanceId,
+            configuredPath: "",
+            providerHomesDir,
+          });
+      const overlayIsProvisioned = !configuresOwnHome && shadowHomePath.length > 0;
+      const requestedLayout = yield* resolveCodexHomeLayout({ ...config, shadowHomePath });
+      const overlayFailure = yield* materializeCodexShadowHome(requestedLayout).pipe(
+        Effect.as(undefined),
+        Effect.catch((cause) => Effect.succeed(cause)),
+      );
+      // A shadow home the user configured is a layout they asked for, so a
+      // failure to build it is theirs to see. One T3 Code provisioned is an
+      // optimisation — it shares sessions out of CODEX_HOME — and an
+      // unreachable or unwritable CODEX_HOME must not cost the instance its
+      // sign-in. Fall back to a standalone home, which still isolates
+      // credentials, and drop only the sharing.
+      if (overlayFailure !== undefined && !overlayIsProvisioned) {
+        return yield* new ProviderDriverError({
+          driver: DRIVER_KIND,
+          instanceId,
+          detail: overlayFailure.message,
+          cause: overlayFailure,
+        });
+      }
+      const homeLayout =
+        overlayFailure === undefined
+          ? requestedLayout
+          : yield* resolveCodexHomeLayout({
+              ...config,
+              homePath: shadowHomePath,
+              shadowHomePath: "",
+            });
       const continuationIdentity = codexContinuationIdentity(homeLayout);
       const stampIdentity = withInstanceIdentity({
         instanceId,
@@ -121,18 +166,9 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         displayName,
         accentColor,
         continuationGroupKey: continuationIdentity.continuationKey,
+        // T3 Code signs in through the Codex CLI but does not install it.
+        setup: { canAuthenticate: true, canInstall: false },
       });
-      yield* materializeCodexShadowHome(homeLayout).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: cause.message,
-              cause,
-            }),
-        ),
-      );
       const effectiveConfig = {
         ...config,
         enabled,
@@ -298,6 +334,14 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
             ),
           );
 
+      const auth = yield* makeCodexAuthController({
+        instanceId,
+        config: effectiveConfig,
+        environment: processEnv,
+        onAuthenticated: snapshot.refresh.pipe(Effect.asVoid),
+        onSignedOut: snapshot.refresh.pipe(Effect.asVoid),
+      });
+
       return {
         instanceId,
         driverKind: DRIVER_KIND,
@@ -310,6 +354,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         consumeResetCredit,
         adapter,
         textGeneration,
+        auth,
       } satisfies ProviderInstance;
     }),
 };

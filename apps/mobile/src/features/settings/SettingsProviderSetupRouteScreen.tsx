@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import {
-  ANTIGRAVITY_AUTH_METHODS,
   AuthOrchestrationOperateScope,
   EnvironmentId,
   ProviderInstanceId,
@@ -27,8 +26,10 @@ import { serverEnvironment } from "../../state/server";
 import { environmentSession } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
-  antigravityEnabledPatch,
+  providerEnabledPatch,
   readAntigravityAuthMethod,
+  resolveMobileProviderSetupCopy,
+  supportsProviderSetupScreen,
   resolveProviderSignInPresentation,
 } from "./provider-setup-state";
 
@@ -72,6 +73,16 @@ function SetupButton(props: {
 }
 
 /** The same screen stays inside Settings or the current model picker. */
+const DRIVER_LABELS: Record<string, string> = {
+  antigravity: "Antigravity",
+  claudeAgent: "Claude",
+  codex: "Codex",
+};
+
+function providerDriverLabel(driver: string | undefined): string {
+  return (driver && DRIVER_LABELS[driver]) ?? "Provider";
+}
+
 export function SettingsProviderSetupRouteScreen({
   route,
 }: StaticScreenProps<ProviderSetupRouteParams>) {
@@ -159,10 +170,14 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
     config?.settings.providerInstances[instanceId]?.config ??
       (instanceId === "antigravity" ? config?.settings.providers.antigravity : undefined),
   );
-  const usesBrowser = authMethod === "oauth-personal" || authMethod === "oauth-business";
-  const methodLabel =
-    ANTIGRAVITY_AUTH_METHODS.find((method) => method.value === authMethod)?.label ??
-    "Google account";
+  const copy = resolveMobileProviderSetupCopy({
+    driver: provider?.driver ?? "antigravity",
+    authMethod,
+  });
+  const methodLabel = copy.accountLabel;
+  // `none` means the provider polls its own device authorization: there is
+  // nothing for the phone to send back, only a code to enter in the browser.
+  const completion = auth?.completion ?? "redirectUrl";
 
   // Return URLs never enter saved drafts, navigation params, or diagnostics.
   useEffect(() => {
@@ -197,7 +212,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
     const currentConfig = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
     const currentProvider = currentConfig?.providers.find((item) => item.instanceId === instanceId);
     if (!currentConfig || !currentProvider) return;
-    const patch = antigravityEnabledPatch(currentConfig.settings, currentProvider, enabled);
+    const patch = providerEnabledPatch(currentConfig.settings, currentProvider, enabled);
     if (!patch) return;
     void perform(
       () => updateSettings({ environmentId, input: { patch } }),
@@ -205,7 +220,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
     );
   };
 
-  const title = provider?.displayName ?? "Antigravity";
+  const title = provider?.displayName ?? providerDriverLabel(provider?.driver);
   return (
     <View className="flex-1 bg-black">
       <NativeStackScreenOptions
@@ -230,7 +245,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row items-center gap-3">
-          <ProviderIcon provider="antigravity" size={28} />
+          <ProviderIcon provider={copy.iconProvider} size={28} />
           <Text className="min-w-0 flex-1 text-base text-white">{environmentLabel}</Text>
         </View>
         {!isConnected ? (
@@ -252,7 +267,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
         ) : null}
         {!config ? (
           <Text className="text-base text-white">Loading provider settings.</Text>
-        ) : !provider || provider.driver !== "antigravity" ? (
+        ) : !provider || !supportsProviderSetupScreen(provider.driver) ? (
           <Text className="text-base text-white">
             This provider is not available on this environment.
           </Text>
@@ -266,7 +281,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                   : ". Not installed"}
               </Text>
               <SetupButton
-                label={provider.enabled ? "Disable Antigravity" : "Enable Antigravity"}
+                label={provider.enabled ? `Disable ${title}` : `Enable ${title}`}
                 disabled={controlsDisabled}
                 onPress={() => {
                   if (!provider.enabled) {
@@ -274,8 +289,8 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                     return;
                   }
                   Alert.alert(
-                    "Disable Antigravity?",
-                    `This stops Antigravity sessions on ${environmentLabel}. Google credentials stay saved.`,
+                    `Disable ${title}?`,
+                    `This stops ${title} sessions on ${environmentLabel}. Saved credentials stay.`,
                     [
                       { text: "Cancel", style: "cancel" },
                       { text: "Disable", style: "destructive", onPress: () => setEnabled(false) },
@@ -292,8 +307,8 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                       {installation.phase === "downloading"
                         ? `Downloading ${Math.round(installation.downloadedBytes / 1_048_576)}${installation.totalBytes === null ? "" : ` of ${Math.round(installation.totalBytes / 1_048_576)}`} MB`
                         : installation.phase === "extracting"
-                          ? "Extracting Antigravity files."
-                          : "Checking the Antigravity installation."}
+                          ? `Extracting ${title} files.`
+                          : `Checking the ${title} installation.`}
                     </Text>
                     <SetupButton
                       label="Cancel install"
@@ -314,7 +329,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                     label={
                       installation?.phase === "failed" || installation?.phase === "cancelled"
                         ? "Retry install"
-                        : "Install Antigravity"
+                        : `Install ${title}`
                     }
                     primary
                     disabled={controlsDisabled || authActive}
@@ -336,8 +351,8 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                     disabled={controlsDisabled || authActive}
                     onPress={() => {
                       Alert.alert(
-                        "Remove the Antigravity install?",
-                        `This removes T3's managed install from ${environmentLabel}. Providers that use it will need it installed again. Google credentials and threads stay.`,
+                        `Remove the ${title} install?`,
+                        `This removes T3's managed install from ${environmentLabel}. Providers that use it will need it installed again. Credentials and threads stay.`,
                         [
                           { text: "Cancel", style: "cancel" },
                           {
@@ -362,8 +377,8 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
               </View>
             ) : !provider.installed ? (
               <Text className="text-base text-white">
-                Antigravity cannot be installed on this environment. Use a supported server host or
-                set an executable path in provider settings.
+                {title} is not available on this environment. Install it or set an executable path
+                in provider settings.
               </Text>
             ) : null}
             {provider.setup?.canAuthenticate ? (
@@ -374,21 +389,15 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                     ? "Signed in. Credentials stay on this environment."
                     : provider.auth.status === "unknown"
                       ? "Sign-in has not been checked."
-                      : usesBrowser
-                        ? "Sign in with the Google account you use for Antigravity."
-                        : "Connect with the credentials set in provider settings on web or desktop."}
+                      : copy.idleLabel}
                 </Text>
                 {authActive ? (
                   <>
                     <Text accessibilityLiveRegion="polite" className="text-base text-white">
                       {auth.phase === "starting"
-                        ? usesBrowser
-                          ? "Starting Google sign-in."
-                          : "Checking credentials."
+                        ? copy.startingLabel
                         : auth.phase === "verifying"
-                          ? usesBrowser
-                            ? "Checking Google sign-in."
-                            : "Checking credentials."
+                          ? copy.verifyingLabel
                           : auth.authorizationUrl
                             ? "Complete sign-in in your browser."
                             : "Sign-in is open on another client. Complete it there or wait for it to expire."}
@@ -396,7 +405,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                     {auth.authorizationUrl && auth.phase === "waiting" ? (
                       <>
                         <SetupButton
-                          label="Open Google sign-in"
+                          label={copy.openLabel}
                           primary
                           disabled={controlsDisabled}
                           onPress={() => {
@@ -405,7 +414,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                               (opened) => {
                                 if (!opened)
                                   setError(
-                                    "Could not open Google sign-in. Copy the link and open it in your browser.",
+                                    "Could not open the sign-in page. Copy the link and open it in your browser.",
                                   );
                               },
                             );
@@ -423,44 +432,86 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                             });
                           }}
                         />
-                        <Text className="text-sm leading-5 text-white">
-                          After sign-in, the browser will open a 127.0.0.1 address that cannot load
-                          on your phone. Copy that full address and paste it here.
-                        </Text>
-                        <TextInput
-                          accessibilityLabel="Google sign-in return URL"
-                          autoCapitalize="none"
-                          autoComplete="off"
-                          autoCorrect={false}
-                          className="min-h-12 rounded-none border border-white/25 bg-black px-3 py-3 text-base text-white"
-                          editable={!controlsDisabled}
-                          keyboardType="url"
-                          onChangeText={setCallbackUrl}
-                          placeholder="http://127.0.0.1:.../"
-                          textContentType="none"
-                          value={callbackUrl}
-                        />
-                        <SetupButton
-                          label="Complete sign-in"
-                          primary
-                          disabled={
-                            controlsDisabled || callbackUrl.trim().length === 0 || !auth.flowId
-                          }
-                          onPress={() => {
-                            const flowId = auth.flowId;
-                            if (!flowId) return;
-                            const submittedUrl = callbackUrl.trim();
-                            setCallbackUrl("");
-                            void perform(
-                              () =>
-                                completeAuth({
-                                  environmentId,
-                                  input: { instanceId, flowId, callbackUrl: submittedUrl },
-                                }),
-                              "Could not complete Google sign-in. Check the return URL and try again.",
-                            );
-                          }}
-                        />
+                        {auth.userCode ? (
+                          <>
+                            <Text className="text-sm leading-5 text-white">
+                              Enter this code on the sign-in page.
+                            </Text>
+                            <Text
+                              accessibilityLabel="One-time sign-in code"
+                              selectable
+                              className="text-2xl tracking-widest text-white"
+                            >
+                              {auth.userCode}
+                            </Text>
+                            <SetupButton
+                              label="Copy code"
+                              disabled={controlsDisabled}
+                              onPress={() => {
+                                const code = auth.userCode;
+                                if (!code) return;
+                                void tryCopyTextWithHaptic(code, {
+                                  target: "provider-sign-in-code",
+                                }).then((copied) => {
+                                  if (!copied) setError("Could not copy the code.");
+                                });
+                              }}
+                            />
+                          </>
+                        ) : null}
+                        {completion === "none" ? (
+                          <Text className="text-sm leading-5 text-white">
+                            Finish in your browser. This screen updates on its own.
+                          </Text>
+                        ) : (
+                          <>
+                            <Text className="text-sm leading-5 text-white">
+                              {completion === "code"
+                                ? `After you approve, ${title} shows you a code. Paste it here.`
+                                : "After sign-in, the browser will open a 127.0.0.1 address that cannot load on your phone. Copy that full address and paste it here."}
+                            </Text>
+                            <TextInput
+                              accessibilityLabel={
+                                completion === "code" ? "Sign-in code" : "Sign-in return URL"
+                              }
+                              autoCapitalize="none"
+                              autoComplete="off"
+                              autoCorrect={false}
+                              className="min-h-12 rounded-none border border-white/25 bg-black px-3 py-3 text-base text-white"
+                              editable={!controlsDisabled}
+                              keyboardType={completion === "code" ? "default" : "url"}
+                              onChangeText={setCallbackUrl}
+                              placeholder={
+                                completion === "code" ? "Paste code" : "http://127.0.0.1:.../"
+                              }
+                              textContentType="none"
+                              value={callbackUrl}
+                            />
+                            <SetupButton
+                              label="Complete sign-in"
+                              primary
+                              disabled={
+                                controlsDisabled || callbackUrl.trim().length === 0 || !auth.flowId
+                              }
+                              onPress={() => {
+                                const flowId = auth.flowId;
+                                if (!flowId) return;
+                                const submitted = callbackUrl.trim();
+                                setCallbackUrl("");
+                                void perform(
+                                  () =>
+                                    completeAuth({
+                                      environmentId,
+                                      input: { instanceId, flowId, callbackUrl: submitted },
+                                    }),
+                                  completion === "code"
+                                    ? "Could not complete sign-in. Check the code and try again."
+                                    : "Could not complete sign-in. Check the return URL and try again.",
+                                );
+                              }}
+                            />
+                          </>
+                        )}
                       </>
                     ) : null}
                     {auth.expiresAt ? (
@@ -491,23 +542,20 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                   </>
                 ) : showSignOut ? (
                   <SetupButton
-                    label={usesBrowser ? "Sign out of Google" : "Disconnect"}
+                    label={copy.signOutLabel}
                     destructive
                     disabled={controlsDisabled}
                     onPress={() => {
                       Alert.alert(
-                        usesBrowser ? "Sign out of Google?" : "Disconnect Antigravity?",
-                        `This stops Antigravity sessions for ${title} on ${environmentLabel}. Threads and files stay.`,
+                        copy.signOutTitle,
+                        `This stops ${title} sessions on ${environmentLabel}. Threads and files stay.`,
                         [
                           { text: "Cancel", style: "cancel" },
                           {
                             text: "Sign out",
                             style: "destructive",
                             onPress: () =>
-                              void perform(
-                                () => logout(target),
-                                "Could not sign out of Google. Try again.",
-                              ),
+                              void perform(() => logout(target), "Could not sign out. Try again."),
                           },
                         ],
                       );
@@ -516,13 +564,9 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                 ) : (
                   <SetupButton
                     label={
-                      usesBrowser
-                        ? auth?.phase === "failed" || auth?.phase === "cancelled"
-                          ? "Retry Google sign-in"
-                          : "Sign in with Google"
-                        : auth?.phase === "failed" || auth?.phase === "cancelled"
-                          ? "Retry connection"
-                          : "Connect"
+                      auth?.phase === "failed" || auth?.phase === "cancelled"
+                        ? copy.retryLabel
+                        : copy.signInLabel
                     }
                     primary
                     disabled={

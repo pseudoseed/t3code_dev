@@ -76,6 +76,68 @@ list instead of persisting `error` over a working install. The built-in `grok-bu
 CLI's product name, not an ACP model id. `applyGrokAcpModelSelection` treats it as "keep the
 session's current model" and never sends it in `session/set_model`.
 
+## Claude and Codex sign-in
+
+Claude and Codex sign in by driving each vendor's own login command rather than by reimplementing
+their OAuth. T3 Code never holds a client ID, performs a token exchange, or stores an access token;
+the CLI does all of that, in its own format, and refreshes on use. Reauthentication after an expiry
+or revocation is the same flow run again, which is why there is no separate refresh path.
+
+[`CliLoginAuth`][cli-login-auth] is the shared `ProviderAuthController` for this. It spawns the
+login command, reads the authorization URL out of its output, publishes it as flow state, relays the
+user's response back, and settles on the process exit code. Per-provider specifics live in
+[`ClaudeLogin`][claude-login] and [`CodexLogin`][codex-login]:
+
+| Provider | Command                     | Completion    | Verified with               |
+| -------- | --------------------------- | ------------- | --------------------------- |
+| Claude   | `claude auth login`         | `code`        | `claude auth status --json` |
+| Codex    | `codex login`               | `redirectUrl` | `codex login status`        |
+| Codex    | `codex login --device-auth` | `none`        | `codex login status`        |
+
+Claude's flow ends on an Anthropic page that shows a code; the CLI reads that code from stdin, so
+`complete` writes it to the child and closes the pipe with `Queue.end`. `Queue.shutdown` would
+discard the buffered code, so it is reserved for abandoning a flow.
+
+Codex defaults to its loopback redirect. That mode binds a hardcoded port, so only one Codex sign-in
+can run on a machine at a time, and a browser on another device lands on a `localhost` URL it cannot
+reach. The user pastes that URL back and [`cliLoginCallback.ts`][cli-login-callback] validates it
+against the redirect and state carried in the authorization URL, then delivers it once to the CLI's
+listener without probing or following redirects. Delivery succeeding is not authentication
+succeeding.
+
+Device authorization is the opt-in fallback behind `CodexSettings.deviceCodeLogin`, not the default,
+because OpenAI ships device code authorization **disabled** on ChatGPT accounts: an account that has
+not enabled it in ChatGPT security settings is told to go run a terminal command, which is exactly
+what this feature exists to avoid. When it is enabled, `complete` is rejected and the `userCode`
+field carries what the user types into OpenAI's page.
+
+The flow's `completion` is decided at runtime, not from configuration: `receiveLine` parses the
+authorization URL and upgrades a flow to `redirectUrl` when that URL carries a loopback
+`redirect_uri`. A CLI that changes modes therefore cannot desync the client.
+
+A zero exit code only means the command ran, so the controller re-reads the CLI's own status before
+reporting success. Output parsing is confined to [`cliLoginOutput.ts`][cli-login-output], which
+strips ANSI, matches authorization URLs against a per-provider host allowlist, and redacts URLs out
+of failure messages so PKCE state cannot reach a client. Only the initiating auth session sees the
+URL, code, and flow ID; other clients see busy state.
+
+### Per-instance credentials
+
+A provider CLI keeps one account per credential directory, so
+[`providerCredentialHome.ts`][provider-credential-home] gives every instance its own directory under
+`ServerConfig.providerHomesDir`. The instance whose id equals its driver kind is the one migrated
+from the single-instance world and keeps pointing at the provider's default home, so an existing
+sign-in is never disturbed. A path the user configured always wins.
+
+Claude uses this as `CLAUDE_CONFIG_DIR`. Claude Code derives its macOS keychain item name from that
+directory, so distinct directories mean distinct keychain entries and a second sign-in cannot
+overwrite the first. Codex uses it as `shadowHomePath`, so `auth.json` stays private per instance
+while sessions and other state stay shared from `CODEX_HOME` (see
+[`CodexHomeLayout`][codex-home-layout]).
+
+The controller also refuses to start while another flow is in progress on the same instance, since
+two concurrent logins would race for one credential directory.
+
 ## Antigravity ownership and protocol
 
 [`AntigravityDriver`][antigravity] uses Google's official ACP executable. The instance config
@@ -387,6 +449,13 @@ when a request opens (approval) or user input is requested, via
 [antigravity-installation]: ../../apps/server/src/provider/AntigravityInstallation.ts
 [antigravity-release]: ../../apps/server/src/provider/antigravityRelease.ts
 [antigravity-auth]: ../../apps/server/src/provider/AntigravityAuth.ts
+[cli-login-auth]: ../../apps/server/src/provider/CliLoginAuth.ts
+[cli-login-callback]: ../../apps/server/src/provider/cliLoginCallback.ts
+[cli-login-output]: ../../apps/server/src/provider/cliLoginOutput.ts
+[claude-login]: ../../apps/server/src/provider/Drivers/ClaudeLogin.ts
+[codex-login]: ../../apps/server/src/provider/Drivers/CodexLogin.ts
+[codex-home-layout]: ../../apps/server/src/provider/Drivers/CodexHomeLayout.ts
+[provider-credential-home]: ../../apps/server/src/provider/providerCredentialHome.ts
 [antigravity-auth-support]: ../../apps/server/src/provider/antigravityAuthSupport.ts
 [antigravity-text]: ../../apps/server/src/textGeneration/AntigravityTextGeneration.ts
 [provider-auth-service]: ../../apps/server/src/provider/Layers/ProviderAuthService.ts

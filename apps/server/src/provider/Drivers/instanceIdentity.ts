@@ -17,6 +17,13 @@ export const withInstanceIdentity =
     readonly displayName: string | undefined;
     readonly accentColor: string | undefined;
     readonly continuationGroupKey: string;
+    /**
+     * Setup affordances the client may offer for this instance. Stamped here
+     * rather than in each snapshot builder so that pending, ready, and error
+     * snapshots all advertise the same capabilities — a client must not lose
+     * the sign-in button because a probe happened to fail.
+     */
+    readonly setup?: ServerProvider["setup"] | undefined;
   }) =>
   (snapshot: ServerProviderDraft): ServerProvider => ({
     ...snapshot,
@@ -24,5 +31,6 @@ export const withInstanceIdentity =
     driver: input.driverKind,
     ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.accentColor ? { accentColor: input.accentColor } : {}),
+    ...(input.setup ? { setup: input.setup } : {}),
     continuation: { groupKey: input.continuationGroupKey },
   });

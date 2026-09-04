@@ -226,6 +226,8 @@ const providerSetupAuthState: ProviderAuthState = {
   authorizationUrl: null,
   expiresAt: null,
   message: null,
+  completion: "redirectUrl",
+  userCode: null,
 };
 const providerSetupInstance: ProviderInstance = {
   instanceId: providerSetupInstanceId,

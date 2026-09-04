@@ -8,7 +8,7 @@ import {
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { antigravityEnabledPatch, resolveProviderSignInPresentation } from "./provider-setup-state";
+import { providerEnabledPatch, resolveProviderSignInPresentation } from "./provider-setup-state";
 
 const provider = Schema.decodeSync(ServerProvider)({
   instanceId: "antigravity",
@@ -89,7 +89,7 @@ describe("resolveProviderSignInPresentation", () => {
   });
 });
 
-describe("antigravityEnabledPatch", () => {
+describe("providerEnabledPatch", () => {
   it("enables a legacy instance without losing its executable path or models", () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,
@@ -103,7 +103,7 @@ describe("antigravityEnabledPatch", () => {
         },
       },
     };
-    const patch = antigravityEnabledPatch(settings, provider, true);
+    const patch = providerEnabledPatch(settings, provider, true);
     const instance = patch?.providerInstances?.[provider.instanceId];
 
     expect(instance).toMatchObject({
@@ -132,7 +132,7 @@ describe("antigravityEnabledPatch", () => {
         },
       },
     };
-    const patch = antigravityEnabledPatch(settings, { ...provider, instanceId: workId }, true);
+    const patch = providerEnabledPatch(settings, { ...provider, instanceId: workId }, true);
 
     expect(patch?.providerInstances?.[personalId]).toBe(personal);
     expect(patch?.providerInstances?.[workId]).toMatchObject({
@@ -144,16 +144,24 @@ describe("antigravityEnabledPatch", () => {
     expect(patch?.providers).toBeUndefined();
   });
 
-  it("does not change a different driver", () => {
+  it("does not change a driver without a legacy enabled flag", () => {
     expect(
-      antigravityEnabledPatch(
+      providerEnabledPatch(
         DEFAULT_SERVER_SETTINGS,
         {
           ...provider,
-          driver: ProviderDriverKind.make("codex"),
+          driver: ProviderDriverKind.make("cursor"),
         },
         true,
       ),
     ).toBeNull();
+  });
+
+  it.each(["claudeAgent", "codex"] as const)("handles the %s driver", (driver) => {
+    const target = { ...provider, driver: ProviderDriverKind.make(driver) };
+
+    const patch = providerEnabledPatch(DEFAULT_SERVER_SETTINGS, target, true);
+
+    expect(patch?.providerInstances?.[target.instanceId]).toMatchObject({ enabled: true });
   });
 });

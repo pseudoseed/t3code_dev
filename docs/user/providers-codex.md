@@ -10,6 +10,36 @@ Common reasons:
 - switch to another account when one account hits limits
 - keep one shared Codex history instead of maintaining two separate Codex setups
 
+## Signing In
+
+Open Settings, select your Codex provider, and press **Sign in to Codex**.
+
+T3 Code opens Codex's sign-in page and shows you a link you can open on any device. Approve the
+sign-in and it finishes.
+
+If your browser is on a different machine from the server, the last step lands on a `localhost`
+address your browser cannot load. That is expected. Copy that full address, paste it into the field
+T3 Code shows, and the sign-in completes.
+
+You never need a terminal.
+
+Only one Codex sign-in can run on a machine at a time. If you have a `codex login` open in a
+terminal, finish or cancel it first.
+
+### Signing In With A Device Code Instead
+
+Your Codex provider has a **Sign in with a device code** setting. It shows a short code you type
+into OpenAI's page rather than a link that redirects back.
+
+Leave it off unless you need it. ChatGPT accounts ship with device code authorization disabled, and
+OpenAI's page will tell you to enable it in ChatGPT security settings before it works.
+
+If the sign-in expires or is revoked, the provider shows as signed out and the same button reads
+**Sign in again**. Nothing else has to be reset.
+
+T3 Code does not hold your Codex credentials. Codex stores them itself, in its own `auth.json`, and
+refreshes them as it works.
+
 ## I Only Use One Codex Account
 
 Use the default provider.
@@ -22,11 +52,8 @@ CODEX_HOME path: ~/.codex
 Shadow home path: empty
 ```
 
-Log in with Codex normally:
-
-```bash
-codex login
-```
+An empty `Shadow home path` means this provider uses the Codex home directly, so a login you already
+made with `codex login` keeps working.
 
 ## Send feedback to OpenAI
 
@@ -85,13 +112,7 @@ The idea is:
 
 ### Set Up The First Account
 
-Log in normally:
-
-```bash
-codex login
-```
-
-This is the account used by `~/.codex`.
+Select the Codex provider and press **Sign in to Codex**. This is the account used by `~/.codex`.
 
 In T3 Code Settings, name it something obvious:
 
@@ -103,14 +124,18 @@ Shadow home path: empty
 
 ### Set Up The Second Account
 
-Log in with a separate Codex home:
+1. Press **Add provider** and choose Codex.
+2. Give it a name such as `Codex Personal`.
+3. Select it and press **Sign in to Codex**.
 
-```bash
-mkdir -p ~/.codex_p
-CODEX_HOME=~/.codex_p codex login
-```
+Each Codex provider you add gets its own shadow home, so the second account's login is stored
+separately while both keep reading sessions from the shared `CODEX_HOME`. The first account stays
+signed in. You can add as many as you have accounts.
 
-In T3 Code Settings, add another Codex provider:
+### Pointing At A Directory You Already Have
+
+If you already keep a shadow home per account, set it yourself and T3 Code uses it instead of
+provisioning one:
 
 ```text
 Display name: Codex Personal

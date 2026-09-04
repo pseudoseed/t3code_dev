@@ -2368,7 +2368,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
             defaultClaudeSettings,
-            claudeCapabilities(),
+            // An account field is what distinguishes a signed-in config
+            // directory from a freshly provisioned one.
+            claudeCapabilities({ email: "user@example.com" }),
           );
           assert.strictEqual(status.status, "ready");
           assert.strictEqual(status.installed, true);
@@ -2531,7 +2533,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               ...defaultClaudeSettings,
               homePath: claudeConfigDir,
             },
-            claudeCapabilities(),
+            claudeCapabilities({ email: "user@example.com" }),
           );
           assert.strictEqual(status.status, "ready");
           assert.deepStrictEqual(
