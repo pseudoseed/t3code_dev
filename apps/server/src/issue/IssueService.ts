@@ -204,16 +204,14 @@ export const make = Effect.gen(function* () {
                   ? page.items
                   : page.items.filter((item) => item.title.toLowerCase().includes(query));
               return {
-                entries: rows.map(
-                  (item): IssueListEntry => ({
-                    ...item,
-                    provider: resolved.kind,
-                    host: resolved.host,
-                    projectId: resolved.projectId,
-                    projectTitle: resolved.projectTitle,
-                    repository: resolved.repository,
-                  }),
-                ),
+                entries: rows.map((item): IssueListEntry => ({
+                  ...item,
+                  provider: resolved.kind,
+                  host: resolved.host,
+                  projectId: resolved.projectId,
+                  projectTitle: resolved.projectTitle,
+                  repository: resolved.repository,
+                })),
                 provider: providerSummary(resolved),
                 errors: [],
                 truncated: page.truncated,
@@ -235,17 +233,15 @@ export const make = Effect.gen(function* () {
               number: input.number,
             })
             .pipe(
-              Effect.map(
-                (detail): IssueDetail => ({
-                  ...detail,
-                  provider: resolved.kind,
-                  host: resolved.host,
-                  projectId: resolved.projectId,
-                  projectTitle: resolved.projectTitle,
-                  repository: resolved.repository,
-                  capabilities: resolved.api.capabilities,
-                }),
-              ),
+              Effect.map((detail): IssueDetail => ({
+                ...detail,
+                provider: resolved.kind,
+                host: resolved.host,
+                projectId: resolved.projectId,
+                projectTitle: resolved.projectTitle,
+                repository: resolved.repository,
+                capabilities: resolved.api.capabilities,
+              })),
               Effect.mapError(toError),
             ),
         ),
