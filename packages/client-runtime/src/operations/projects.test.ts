@@ -8,6 +8,7 @@ import {
 import * as Option from "effect/Option";
 
 import {
+  addProjectRemoteSourceLabel,
   buildAddProjectRemoteSourceReadiness,
   buildProjectCreateCommand,
   canCreateProjectInEnvironment,
@@ -17,10 +18,12 @@ import {
   getCloneDestinationPath,
   getCloneDirectoryName,
   getDefaultCloneUrl,
+  isAddProjectRemoteProviderKind,
   normalizePastedCloneUrl,
   resolveAddProjectPath,
   sortAddProjectProviderSources,
 } from "./projects.ts";
+import type { AddProjectRemoteProviderKind } from "./projects.ts";
 import type { EnvironmentProject } from "../state/models.ts";
 
 describe("add project shared logic", () => {
@@ -267,5 +270,24 @@ describe("add project shared logic", () => {
       createWorkspaceRootIfMissing: true,
       defaultModelSelection: null,
     });
+  });
+  it("recognises every provider source a clone route can carry", () => {
+    // The clone screen's title comes from this narrowing, so a provider the
+    // guard misses silently degrades to the plain "Git URL" header. Keyed by
+    // the union so adding a provider fails to compile until it is listed.
+    const providerSources: Record<AddProjectRemoteProviderKind, true> = {
+      github: true,
+      gitlab: true,
+      bitbucket: true,
+      "azure-devops": true,
+      forgejo: true,
+    };
+    for (const source of Object.keys(providerSources) as AddProjectRemoteProviderKind[]) {
+      expect(isAddProjectRemoteProviderKind(source)).toBe(true);
+      expect(addProjectRemoteSourceLabel(source)).not.toBe("Git URL");
+    }
+    expect(isAddProjectRemoteProviderKind("url")).toBe(false);
+    expect(isAddProjectRemoteProviderKind("gitea")).toBe(false);
+    expect(isAddProjectRemoteProviderKind(undefined)).toBe(false);
   });
 });

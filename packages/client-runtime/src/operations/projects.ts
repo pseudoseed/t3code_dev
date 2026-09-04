@@ -72,6 +72,17 @@ const ADD_PROJECT_REMOTE_PROVIDER_SOURCES: ReadonlyArray<AddProjectRemoteProvide
   "forgejo",
 ];
 
+/**
+ * Narrows a route parameter or query string to a provider source. Callers that
+ * hand-rolled this check drifted when a provider was added, so the list of
+ * kinds stays in one place here.
+ */
+export function isAddProjectRemoteProviderKind(
+  source: string | null | undefined,
+): source is AddProjectRemoteProviderKind {
+  return ADD_PROJECT_REMOTE_PROVIDER_SOURCES.some((kind) => kind === source);
+}
+
 export function addProjectRemoteSourceLabel(source: AddProjectRemoteSource): string {
   switch (source) {
     case "github":
