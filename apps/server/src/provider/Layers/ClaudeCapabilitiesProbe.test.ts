@@ -168,6 +168,32 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
 // same as the config directory holding a sign-in. Instances get their own
 // `CLAUDE_CONFIG_DIR`, so a fresh one probes clean and must not read as
 // authenticated.
+// Captured by probing one config directory each way on Claude Code 2.1.260.
+it("treats the SDK's signed-out shape as signed out", () => {
+  assert.equal(
+    hasClaudeAccountEvidence({
+      email: undefined,
+      subscriptionType: undefined,
+      // The SDK names the absence of credentials rather than omitting it.
+      tokenSource: "none",
+      apiProvider: "firstParty",
+    }),
+    false,
+  );
+});
+
+it("treats the SDK's signed-in shape as signed in", () => {
+  assert.equal(
+    hasClaudeAccountEvidence({
+      email: "user@example.com",
+      subscriptionType: "Claude Max",
+      tokenSource: undefined,
+      apiProvider: "firstParty",
+    }),
+    true,
+  );
+});
+
 it("treats a probe with no account fields as signed out", () => {
   assert.equal(
     hasClaudeAccountEvidence({

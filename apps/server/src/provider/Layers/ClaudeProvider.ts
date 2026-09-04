@@ -142,6 +142,14 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
  * `apiProvider` of anything else means the runtime authenticates against a
  * cloud backend whose credentials live outside Claude's config directory, and
  * the account fields are empty by design.
+ *
+ * Observed on Claude Code 2.1.260, probing one config directory each way:
+ *
+ * - signed in — `email` and `subscriptionType` set, `tokenSource` absent
+ * - signed out — `email` and `subscriptionType` absent, `tokenSource: "none"`
+ *
+ * `tokenSource` is therefore evidence only when it names an actual source; the
+ * SDK spells "no credentials" as the string `"none"` rather than omitting it.
  */
 export function hasClaudeAccountEvidence(capabilities: {
   readonly email: string | undefined;
@@ -153,10 +161,11 @@ export function hasClaudeAccountEvidence(capabilities: {
   if (apiProvider !== undefined && apiProvider !== "" && apiProvider !== "firstparty") {
     return true;
   }
+  const tokenSource = capabilities.tokenSource?.trim().toLowerCase();
   return Boolean(
     capabilities.email?.trim() ||
     capabilities.subscriptionType?.trim() ||
-    capabilities.tokenSource?.trim(),
+    (tokenSource !== undefined && tokenSource !== "" && tokenSource !== "none"),
   );
 }
 
