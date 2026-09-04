@@ -441,10 +441,13 @@ function ThreadRouteContent(
     [fileInspector.supported, navigation, selectedThread],
   );
   // The workspace inspector column spans the full window height. On iOS the
-  // panes bring their own nested native headers (which underlap the status
-  // bar); elsewhere the pane content pads itself below the top inset.
+  // git and files panes bring their own nested native headers (which underlap
+  // the status bar); elsewhere the pane content pads itself below the top
+  // inset. The terminal pane draws a plain tab strip instead of a native
+  // header, so it always pads itself out of the status bar.
   const safeAreaInsets = useSafeAreaInsets();
   const inspectorHeaderInset = Platform.OS === "ios" ? 0 : safeAreaInsets.top;
+  const terminalPaneHeaderInset = safeAreaInsets.top;
   // Regular widths host terminals in the workspace pane beside the chat;
   // compact widths keep pushing the full-screen terminal route.
   const supportsTerminalPane =
@@ -548,7 +551,7 @@ function ThreadRouteContent(
           canDockBottom={dock.supported}
           dockPosition={terminalDockPosition}
           environmentId={selectedThread.environmentId}
-          headerInset={terminalDockPosition === "bottom" ? 0 : inspectorHeaderInset}
+          headerInset={terminalDockPosition === "bottom" ? 0 : terminalPaneHeaderInset}
           onClose={handleCloseTerminalPane}
           onMaximize={handleMaximizeTerminal}
           onSelectTerminal={handleSelectPaneTerminal}
@@ -564,7 +567,7 @@ function ThreadRouteContent(
       handleMaximizeTerminal,
       handleSelectPaneTerminal,
       handleToggleTerminalDockPosition,
-      inspectorHeaderInset,
+      terminalPaneHeaderInset,
       selectedThread,
       selectedThreadDetailWorktreePath,
       selectedThreadProject?.workspaceRoot,
