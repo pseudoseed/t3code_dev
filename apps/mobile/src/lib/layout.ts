@@ -45,8 +45,16 @@ export function deriveThreadWorkLogSizing(input: {
   };
 }
 
+export const DOCK_PANE_MIN_HEIGHT = 180;
+export const DOCK_PANE_MAX_HEIGHT = 720;
+const DOCK_PANE_MIN_MAIN_HEIGHT = 320;
+const DOCK_PANE_MIN_VIEWPORT_HEIGHT = 620;
+const DOCK_PANE_DEFAULT_FRACTION = 0.38;
+
 export const AUXILIARY_PANE_MIN_WIDTH = 260;
-export const AUXILIARY_PANE_MAX_WIDTH = 480;
+// Wide enough for a useful terminal column; the main-pane floor below keeps
+// chat readable, so this only binds on large windows.
+export const AUXILIARY_PANE_MAX_WIDTH = 720;
 const AUXILIARY_PANE_DEFAULT_MAX_WIDTH = 320;
 const FILE_INSPECTOR_MIN_VIEWPORT_WIDTH = 820;
 const FILE_INSPECTOR_MIN_MAIN_WIDTH = 560;
@@ -76,6 +84,53 @@ export interface WorkspacePaneLayout {
 export interface FileInspectorPaneLayout {
   readonly supported: boolean;
   readonly width: number | null;
+}
+
+export interface WorkspaceDockPaneLayout {
+  readonly supported: boolean;
+  readonly height: number | null;
+}
+
+/**
+ * The bottom dock is only worth offering when the window can spare the room:
+ * a phone-height window would leave neither surface usable.
+ */
+export function deriveWorkspaceDockPaneLayout(input: {
+  readonly layout: Layout;
+  readonly viewportHeight: number;
+  readonly preferredHeight?: number;
+}): WorkspaceDockPaneLayout {
+  const viewportHeight = Math.max(0, input.viewportHeight);
+  const supported = input.layout.usesSplitView && viewportHeight >= DOCK_PANE_MIN_VIEWPORT_HEIGHT;
+
+  return {
+    supported,
+    height: supported
+      ? constrainDockPaneHeight({
+          preferredHeight:
+            input.preferredHeight ?? Math.round(viewportHeight * DOCK_PANE_DEFAULT_FRACTION),
+          availableHeight: viewportHeight,
+        })
+      : null,
+  };
+}
+
+/** Keeps the dock tall enough to work in and short enough to leave chat usable. */
+export function constrainDockPaneHeight(input: {
+  readonly preferredHeight: number;
+  readonly availableHeight: number;
+}): number {
+  const safePreferredHeight = Number.isFinite(input.preferredHeight)
+    ? input.preferredHeight
+    : DOCK_PANE_MIN_HEIGHT;
+  const availableHeight = Number.isFinite(input.availableHeight)
+    ? Math.max(0, input.availableHeight)
+    : 0;
+  const maxHeight = Math.max(
+    DOCK_PANE_MIN_HEIGHT,
+    Math.min(DOCK_PANE_MAX_HEIGHT, availableHeight - DOCK_PANE_MIN_MAIN_HEIGHT),
+  );
+  return clamp(Math.round(safePreferredHeight), DOCK_PANE_MIN_HEIGHT, maxHeight);
 }
 
 export function deriveThreadFeedInitialContentInset(input: {

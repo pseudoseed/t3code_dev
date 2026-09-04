@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { View } from "react-native";
 
-export type ThreadInspectorMode = "route" | "git" | "files";
+export type ThreadInspectorMode = "route" | "git" | "files" | "terminal";
 
 const INSPECTOR_PREWARM_DELAY_MS = 350;
 
@@ -37,6 +37,7 @@ export function ThreadInspectorContentStack(props: {
   readonly Git: ComponentType;
   readonly mode: ThreadInspectorMode;
   readonly Route?: ComponentType;
+  readonly Terminal?: ComponentType;
 }) {
   const [mountedModes, setMountedModes] = useState<ReadonlySet<ThreadInspectorMode>>(
     () => new Set([props.mode]),
@@ -50,7 +51,10 @@ export function ThreadInspectorContentStack(props: {
       return new Set([...current, props.mode]);
     });
 
-    if (props.mode === "route") {
+    // Files and Git are the pair users flip between. Route and Terminal are
+    // mounted on demand only: a prewarmed terminal would attach a pty the
+    // user never asked for.
+    if (props.mode === "route" || props.mode === "terminal") {
       return;
     }
 
@@ -73,6 +77,7 @@ export function ThreadInspectorContentStack(props: {
   const Files = props.Files;
   const Git = props.Git;
   const Route = props.Route;
+  const Terminal = props.Terminal;
 
   return (
     <View className="flex-1">
@@ -94,6 +99,14 @@ export function ThreadInspectorContentStack(props: {
           visible={props.mode === "route"}
         >
           <Route />
+        </InspectorContentPane>
+      ) : null}
+      {Terminal ? (
+        <InspectorContentPane
+          mounted={mountedModes.has("terminal") || props.mode === "terminal"}
+          visible={props.mode === "terminal"}
+        >
+          <Terminal />
         </InspectorContentPane>
       ) : null}
     </View>

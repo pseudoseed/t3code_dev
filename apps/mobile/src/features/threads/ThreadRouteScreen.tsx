@@ -7,7 +7,12 @@ import {
 } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
-import { EnvironmentId, ThreadId, type ProjectScript } from "@t3tools/contracts";
+import {
+  DEFAULT_TERMINAL_ID,
+  EnvironmentId,
+  ThreadId,
+  type ProjectScript,
+} from "@t3tools/contracts";
 import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
@@ -49,6 +54,10 @@ import {
   stagePendingTerminalLaunch,
 } from "../terminal/terminalLaunchContext";
 import { terminalDebugLog } from "../terminal/terminalDebugLog";
+import { ThreadTerminalPane } from "../terminal/ThreadTerminalPane";
+import { useTerminalPaneDockPosition } from "../terminal/useTerminalPaneDockPosition";
+import { pickRunningTerminalSessionForBootstrap } from "../terminal/useThreadTerminalSession";
+import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { ThreadDetailScreen } from "./ThreadDetailScreen";
 import {
   ThreadGitControls,
@@ -67,6 +76,7 @@ import { projectThreadContentPresentation } from "./threadContentPresentation";
 import {
   useAdaptiveWorkspaceLayout,
   useAdaptiveWorkspacePaneRole,
+  useRegisterWorkspaceDock,
   useRegisterWorkspaceInspector,
 } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
@@ -182,6 +192,7 @@ function ThreadRouteContent(
   },
 ) {
   const {
+    dock,
     fileInspector,
     layout,
     panes,
@@ -225,9 +236,19 @@ function ThreadRouteContent(
   const [inspectorSelection, setInspectorSelection] = useState<ThreadInspectorSelection | null>(
     () => (props.renderInspector ? { routeThreadIdentity, mode: "route" } : null),
   );
+  // Which shell the terminal pane is attached to, scoped to this thread so a
+  // sidebar switch never lands on another thread's session.
+  const [terminalPaneSelection, setTerminalPaneSelection] = useState<{
+    readonly routeThreadIdentity: string | null;
+    readonly terminalId: string;
+    readonly open: boolean;
+  }>(() => ({ routeThreadIdentity, terminalId: DEFAULT_TERMINAL_ID, open: false }));
   const inspectorMode = (() => {
     if (inspectorSelection?.routeThreadIdentity === routeThreadIdentity) {
       if (inspectorSelection.mode === "files" && selectedThreadCwd === null) {
+        return null;
+      }
+      if (inspectorSelection.mode === "terminal" && !selectedThreadProject?.workspaceRoot) {
         return null;
       }
       return inspectorSelection.mode;
@@ -424,6 +445,47 @@ function ThreadRouteContent(
   // bar); elsewhere the pane content pads itself below the top inset.
   const safeAreaInsets = useSafeAreaInsets();
   const inspectorHeaderInset = Platform.OS === "ios" ? 0 : safeAreaInsets.top;
+  // Regular widths host terminals in the workspace pane beside the chat;
+  // compact widths keep pushing the full-screen terminal route.
+  const supportsTerminalPane =
+    fileInspector.supported && Boolean(selectedThreadProject?.workspaceRoot);
+  const terminalPaneTerminalId =
+    terminalPaneSelection.routeThreadIdentity === routeThreadIdentity
+      ? terminalPaneSelection.terminalId
+      : DEFAULT_TERMINAL_ID;
+  const { dockPosition, toggleDockPosition } = useTerminalPaneDockPosition();
+  // A short window has no room to split vertically; keep those on the side.
+  const terminalDockPosition = dockPosition === "bottom" && dock.supported ? "bottom" : "right";
+  const terminalPaneOpen =
+    supportsTerminalPane &&
+    terminalPaneSelection.routeThreadIdentity === routeThreadIdentity &&
+    terminalPaneSelection.open;
+  const showTerminalInInspector = terminalPaneOpen && terminalDockPosition === "right";
+  const openTerminalPane = useCallback(
+    (nextTerminalId: string) => {
+      setTerminalPaneSelection({ routeThreadIdentity, terminalId: nextTerminalId, open: true });
+      if (terminalDockPosition === "bottom") {
+        return;
+      }
+      setInspectorSelection({ routeThreadIdentity, mode: "terminal" });
+      showAuxiliaryPane("inspector");
+    },
+    [routeThreadIdentity, showAuxiliaryPane, terminalDockPosition],
+  );
+  const handleToggleTerminalDockPosition = useCallback(() => {
+    if (!dock.supported && dockPosition === "right") {
+      return;
+    }
+    const next = toggleDockPosition();
+    if (next === "bottom") {
+      // The dock renders the pane from here on; drop the trailing copy.
+      setInspectorSelection((current) => (current?.mode === "terminal" ? null : current));
+      return;
+    }
+    setInspectorSelection({ routeThreadIdentity, mode: "terminal" });
+    showAuxiliaryPane("inspector");
+  }, [dock.supported, dockPosition, routeThreadIdentity, showAuxiliaryPane, toggleDockPosition]);
+
   const GitInspector = useCallback(
     () => (
       <GitOverviewSheet
@@ -454,6 +516,63 @@ function ThreadRouteContent(
       selectedThreadProject?.title,
     ],
   );
+  const handleCloseTerminalPane = useCallback(() => {
+    setTerminalPaneSelection((current) => ({ ...current, open: false }));
+    setInspectorSelection((current) => (current?.mode === "terminal" ? null : current));
+  }, []);
+  // Maximizing MOVES the terminal to its own screen rather than leaving a
+  // duplicate pane behind the push.
+  const handleMaximizeTerminal = useCallback(() => {
+    if (selectedThread === null) {
+      return;
+    }
+    setTerminalPaneSelection((current) => ({ ...current, open: false }));
+    setInspectorSelection((current) => (current?.mode === "terminal" ? null : current));
+    void navigation.navigate("ThreadTerminal", {
+      environmentId: String(selectedThread.environmentId),
+      threadId: String(selectedThread.id),
+      terminalId: terminalPaneTerminalId,
+    });
+  }, [navigation, selectedThread, terminalPaneTerminalId]);
+  const handleSelectPaneTerminal = useCallback(
+    (nextTerminalId: string) => {
+      setTerminalPaneSelection({ routeThreadIdentity, terminalId: nextTerminalId, open: true });
+    },
+    [routeThreadIdentity],
+  );
+  const TerminalInspector = useCallback(
+    () =>
+      selectedThread !== null && selectedThreadProject?.workspaceRoot ? (
+        <ThreadTerminalPane
+          activeTerminalId={terminalPaneTerminalId}
+          canDockBottom={dock.supported}
+          dockPosition={terminalDockPosition}
+          environmentId={selectedThread.environmentId}
+          headerInset={terminalDockPosition === "bottom" ? 0 : inspectorHeaderInset}
+          onClose={handleCloseTerminalPane}
+          onMaximize={handleMaximizeTerminal}
+          onSelectTerminal={handleSelectPaneTerminal}
+          onToggleDockPosition={handleToggleTerminalDockPosition}
+          threadDetailWorktreePath={selectedThreadDetailWorktreePath}
+          threadId={selectedThread.id}
+          threadWorktreePath={selectedThread.worktreePath ?? null}
+          workspaceRoot={selectedThreadProject.workspaceRoot}
+        />
+      ) : null,
+    [
+      handleCloseTerminalPane,
+      handleMaximizeTerminal,
+      handleSelectPaneTerminal,
+      handleToggleTerminalDockPosition,
+      inspectorHeaderInset,
+      selectedThread,
+      selectedThreadDetailWorktreePath,
+      selectedThreadProject?.workspaceRoot,
+      dock.supported,
+      terminalDockPosition,
+      terminalPaneTerminalId,
+    ],
+  );
   const RouteInspector = useCallback(
     () => props.renderInspector?.(inspectorHeaderInset),
     [inspectorHeaderInset, props.renderInspector],
@@ -466,15 +585,29 @@ function ThreadRouteContent(
           Git={GitInspector}
           mode={inspectorMode}
           Route={props.renderInspector ? RouteInspector : undefined}
+          Terminal={showTerminalInInspector ? TerminalInspector : undefined}
         />
       ),
-    [FilesInspector, GitInspector, RouteInspector, inspectorMode, props.renderInspector],
+    [
+      FilesInspector,
+      GitInspector,
+      RouteInspector,
+      TerminalInspector,
+      inspectorMode,
+      props.renderInspector,
+      showTerminalInInspector,
+    ],
   );
   const activeInspectorRenderer = inspectorMode === null ? undefined : renderInspectorStack;
   // Hand the inspector to the workspace so it renders beside the navigator,
   // outside this screen's native header — the terminal/git/files toolbar
   // stays anchored to the chat pane instead of floating above the inspector.
   useRegisterWorkspaceInspector(activeInspectorRenderer);
+  // A bottom-docked terminal renders under the chat instead of beside it, so
+  // it takes the dock channel and leaves the trailing column to files/git.
+  useRegisterWorkspaceDock(
+    terminalPaneOpen && terminalDockPosition === "bottom" ? TerminalInspector : undefined,
+  );
 
   const handleOpenConnectionEditor = useCallback(() => {
     void navigation.navigate("Connections");
@@ -510,13 +643,29 @@ function ThreadRouteContent(
         return;
       }
 
+      if (supportsTerminalPane) {
+        openTerminalPane(
+          nextTerminalId ??
+            pickRunningTerminalSessionForBootstrap(knownTerminalSessions)?.target.terminalId ??
+            DEFAULT_TERMINAL_ID,
+        );
+        return;
+      }
+
       void navigation.navigate("ThreadTerminal", {
         environmentId: String(selectedThread.environmentId),
         threadId: String(selectedThread.id),
         ...(nextTerminalId ? { terminalId: nextTerminalId } : {}),
       });
     },
-    [navigation, selectedThread, selectedThreadProject?.workspaceRoot],
+    [
+      knownTerminalSessions,
+      navigation,
+      openTerminalPane,
+      selectedThread,
+      selectedThreadProject?.workspaceRoot,
+      supportsTerminalPane,
+    ],
   );
 
   const handleOpenNewTerminal = useCallback(() => {
@@ -532,13 +681,38 @@ function ThreadRouteContent(
 
     const nextId = nextOpenTerminalId({
       listedTerminalIds: terminalMenuSessions.map((session) => session.terminalId),
+      ...(inspectorMode === "terminal" ? { activeRouteTerminalId: terminalPaneTerminalId } : {}),
     });
+    if (supportsTerminalPane) {
+      openTerminalPane(nextId);
+      return;
+    }
     void navigation.navigate("ThreadTerminal", {
       environmentId: String(selectedThread.environmentId),
       threadId: String(selectedThread.id),
       terminalId: nextId,
     });
-  }, [navigation, selectedThread, selectedThreadProject?.workspaceRoot, terminalMenuSessions]);
+  }, [
+    inspectorMode,
+    navigation,
+    openTerminalPane,
+    selectedThread,
+    selectedThreadProject?.workspaceRoot,
+    supportsTerminalPane,
+    terminalMenuSessions,
+    terminalPaneTerminalId,
+  ]);
+
+  // Cmd-shortcut parity with the chat toolbar: open the pane where one fits,
+  // otherwise fall through to the provider's full-screen terminal route.
+  const handleTerminalKeyboardCommand = useCallback(() => {
+    if (!supportsTerminalPane) {
+      return false;
+    }
+    handleOpenTerminal(null);
+    return true;
+  }, [handleOpenTerminal, supportsTerminalPane]);
+  useHardwareKeyboardCommand("terminal", handleTerminalKeyboardCommand);
 
   const handleRunProjectScript = useCallback(
     async (script: ProjectScript) => {
@@ -595,6 +769,11 @@ function ThreadRouteContent(
         worktreePath: preferredWorktreePath,
       });
 
+      if (supportsTerminalPane) {
+        openTerminalPane(targetTerminalId);
+        return;
+      }
+
       void navigation.navigate("ThreadTerminal", {
         environmentId: String(selectedThread.environmentId),
         threadId: String(selectedThread.id),
@@ -603,9 +782,11 @@ function ThreadRouteContent(
     },
     [
       navigation,
+      openTerminalPane,
       selectedThread,
       selectedThreadDetailWorktreePath,
       selectedThreadProject,
+      supportsTerminalPane,
       terminalMenuSessions,
     ],
   );

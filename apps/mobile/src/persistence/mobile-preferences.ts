@@ -53,6 +53,8 @@ export interface Preferences {
   /** Project keys whose sidebar section is folded. Only meaningful with
       `sidebarProjectSectionsEnabled`; the legacy list has its own key. */
   readonly collapsedSidebarProjectSections?: readonly string[];
+  /** Where the workspace terminal pane sits on regular-width layouts. */
+  readonly terminalPaneDockPosition?: "right" | "bottom";
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -114,6 +116,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListSnoozedShelfExpanded?: boolean;
     sidebarProjectSectionsEnabled?: boolean;
     collapsedSidebarProjectSections?: readonly string[];
+    terminalPaneDockPosition?: "right" | "bottom";
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -194,6 +197,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.collapsedSidebarProjectSections = parsed.collapsedSidebarProjectSections.filter(
       (key): key is string => typeof key === "string",
     );
+  }
+  if (parsed.terminalPaneDockPosition === "right" || parsed.terminalPaneDockPosition === "bottom") {
+    preferences.terminalPaneDockPosition = parsed.terminalPaneDockPosition;
   }
   return preferences;
 }
