@@ -38,3 +38,6 @@ node_modules/
 *.log
 .env*
 !.env.example
+
+# Machine-specific Claude Code permissions (absolute paths)
+.claude/settings.local.json

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "deny": [
+      "Bash(security dump-keychain:*)",
+      "Bash(security export:*)",
+      "Bash(security find-generic-password:*)",
+      "Bash(security find-internet-password:*)",
+      "Bash(security unlock-keychain:*)",
+      "Bash(security set-keychain-password:*)",
+      "Bash(security create-keychain:*)",
+      "Bash(openssl genrsa:*)",
+      "Bash(openssl req:*)",
+      "Bash(openssl rsa:*)",
+      "Bash(openssl pkcs12:*)"
+    ]
+  }
+}
