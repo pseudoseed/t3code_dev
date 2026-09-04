@@ -11,7 +11,7 @@ import type { MenuAction } from "@react-native-menu/menu";
 import { useAtomValue } from "@effect/atom-react";
 import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { sortPinnedThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LayoutChangeEvent } from "react-native";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -73,6 +73,7 @@ import {
 import {
   ThreadListV2PendingRow,
   ThreadListV2ProjectHeader,
+  ThreadListV2SectionMember,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
   ThreadListV2SnoozedShelfHeader,
@@ -940,253 +941,280 @@ function ThreadNavigationSidebarPane(
   useHardwareKeyboardCommand("focusSearch", focusSearch);
   const renderListItem = useCallback(
     ({ item }: { readonly item: SidebarListItem }) => {
-      switch (item.type) {
-        case "v2-pending": {
-          const pendingScopeKey = scopedProjectKey(
-            item.pendingTask.message.environmentId,
-            item.pendingTask.creation.projectId,
-          );
-          return (
-            <ThreadListV2PendingRow
-              pendingTask={item.pendingTask}
-              project={projectByKey.get(pendingScopeKey) ?? null}
-              projectTitle={projectTitleByProjectKey.get(pendingScopeKey)}
-              environmentLabel={
-                Object.keys(savedConnectionsById).length > 1
-                  ? (savedConnectionsById[item.pendingTask.message.environmentId]
-                      ?.environmentLabel ?? null)
-                  : null
-              }
-              environmentMachine={machineByEnvironmentId.get(
-                item.pendingTask.message.environmentId,
-              )}
-              pane="sidebar"
-              showPendingDivider={item.showPendingDivider}
-              onSelectPendingTask={openPendingTask}
-              onDeletePendingTask={confirmDeletePendingTask}
-            />
-          );
+      // Rows below a project header continue that header's card, so each one
+      // supplies the card's sides and the last one closes its bottom.
+      const sectionKey = "projectSectionKey" in item ? (item.projectSectionKey ?? null) : null;
+      const inSection = sectionKey !== null;
+      const withSectionCard = (content: ReactNode) =>
+        sectionKey !== null && item.type !== "v2-project-header" ? (
+          <ThreadListV2SectionMember
+            projectKey={sectionKey}
+            last={"endsProjectSection" in item && item.endsProjectSection === true}
+          >
+            {content}
+          </ThreadListV2SectionMember>
+        ) : (
+          content
+        );
+
+      const content = ((): ReactNode => {
+        switch (item.type) {
+          case "v2-pending": {
+            const pendingScopeKey = scopedProjectKey(
+              item.pendingTask.message.environmentId,
+              item.pendingTask.creation.projectId,
+            );
+            return (
+              <ThreadListV2PendingRow
+                pendingTask={item.pendingTask}
+                project={projectByKey.get(pendingScopeKey) ?? null}
+                projectTitle={projectTitleByProjectKey.get(pendingScopeKey)}
+                environmentLabel={
+                  Object.keys(savedConnectionsById).length > 1
+                    ? (savedConnectionsById[item.pendingTask.message.environmentId]
+                        ?.environmentLabel ?? null)
+                    : null
+                }
+                environmentMachine={machineByEnvironmentId.get(
+                  item.pendingTask.message.environmentId,
+                )}
+                pane="sidebar"
+                showPendingDivider={item.showPendingDivider}
+                onSelectPendingTask={openPendingTask}
+                onDeletePendingTask={confirmDeletePendingTask}
+              />
+            );
+          }
+          case "v2-thread": {
+            const thread = item.item.thread;
+            const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
+            return (
+              <ThreadListV2Row
+                thread={thread}
+                variant={item.item.variant}
+                snoozed={item.item.snoozed}
+                pinned={item.item.pinned}
+                snoozePresetMinute={nowMinute}
+                snoozeWakeLabelText={item.snoozeWakeLabelText}
+                project={projectByKey.get(scopeKey) ?? null}
+                projectTitle={projectTitleByProjectKey.get(scopeKey)}
+                // The header above already names the project.
+                showsProjectTitle={!inSection}
+                providerDriver={
+                  serverConfigs
+                    .get(thread.environmentId)
+                    ?.providers.find(
+                      (provider) =>
+                        provider.instanceId ===
+                        (thread.session?.providerInstanceId ?? thread.modelSelection.instanceId),
+                    )?.driver ?? null
+                }
+                environmentLabel={
+                  Object.keys(savedConnectionsById).length > 1
+                    ? (savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
+                    : null
+                }
+                environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
+                searchMatch={threadSearchMatchByKey.get(
+                  threadSearchMatchKey({
+                    environmentId: thread.environmentId,
+                    threadId: thread.id,
+                  }),
+                )}
+                searchQuery={props.searchQuery}
+                pane="sidebar"
+                selected={
+                  scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
+                }
+                fullSwipeWidth={props.width - 20}
+                onSelectThread={handleSelectThread}
+                onDeleteThread={confirmDeleteThread}
+                onArchiveThread={archiveThread}
+                onRegenerateThreadTitle={regenerateThreadTitle}
+                titleRegenerationSupported={titleRegenerationEnvironmentIds.has(
+                  thread.environmentId,
+                )}
+                settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
+                onSettleThread={settleThread}
+                snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
+                pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
+                pinReorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
+                canMovePinnedUp={
+                  arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`) > 0
+                }
+                canMovePinnedDown={(() => {
+                  const index = arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`);
+                  return index !== -1 && index < arrangedPinnedKeys.length - 1;
+                })()}
+                onSnoozeThread={snoozeThread}
+                onUnsnoozeThread={unsnoozeThread}
+                onUnsettleThread={unsettleThread}
+                onPinThread={pinThread}
+                onUnpinThread={unpinThread}
+                onMovePinnedThread={movePinnedThread}
+                projectCwd={projectCwdByKey.get(scopeKey) ?? null}
+                onSwipeableClose={handleSwipeableClose}
+                onSwipeableWillOpen={handleSwipeableWillOpen}
+                simultaneousSwipeGesture={sidebarScrollGesture}
+              />
+            );
+          }
+          case "v2-project-header": {
+            const scope = projectScopes.find((candidate) => candidate.key === item.projectKey);
+            return (
+              <ThreadListV2ProjectHeader
+                projectKey={item.projectKey}
+                title={item.projectTitle}
+                threadCount={item.threadCount}
+                collapsed={item.collapsed}
+                project={scope?.representative ?? null}
+                onToggle={toggleProjectSection}
+                // Same gating as the legacy grouped header: an aggregated scope
+                // spanning several environments has no single target project.
+                newThreadTarget={
+                  scope !== undefined && scope.projects.length === 1 ? scope.representative : null
+                }
+                onNewThread={props.onNewThreadInProject}
+                opensSection={!item.collapsed}
+              />
+            );
+          }
+          case "v2-section-show-more":
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${Math.min(item.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
+                onPress={() => showMoreSettledInSection(item.projectKey)}
+                className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2"
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              >
+                <Text className="text-xs font-t3-medium text-foreground-muted">
+                  Show more ({item.hiddenCount} settled hidden)
+                </Text>
+              </Pressable>
+            );
+          case "v2-snoozed-shelf":
+            return (
+              <ThreadListV2SnoozedShelfHeader
+                count={item.count}
+                disabled={!shelfPreferencesLoaded}
+                expanded={item.expanded}
+                onToggle={toggleSnoozedShelf}
+                pane="sidebar"
+              />
+            );
+          case "v2-settled-shelf":
+            return (
+              <ThreadListV2SettledShelfHeader
+                count={item.count}
+                disabled={!shelfPreferencesLoaded}
+                expanded={item.expanded}
+                onToggle={toggleSettledShelf}
+                pane="sidebar"
+              />
+            );
+          case "v2-show-more":
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${Math.min(item.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
+                onPress={showMoreSettled}
+                className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              >
+                <Text className="text-xs font-t3-medium text-foreground-muted">
+                  Show more ({item.hiddenCount} settled hidden)
+                </Text>
+              </Pressable>
+            );
+          case "header":
+            return (
+              <ThreadListGroupHeader
+                variant="sidebar"
+                collapsed={item.collapsed}
+                isFirst={item.isFirst}
+                groupKey={item.group.key}
+                onGroupAction={updateGroupDisplay}
+                // Same gating as the compact Home list: aggregated groups have no
+                // single target project, and pending-project groups hold a
+                // placeholder shell rather than a real project.
+                newThreadTarget={item.group.newThreadTarget}
+                onNewThread={props.onNewThreadInProject}
+                project={item.group.representative}
+                threadCount={item.group.threads.length + item.group.pendingTasks.length}
+                title={item.group.title}
+              />
+            );
+          case "pending-task":
+            return (
+              <PendingTaskListRow
+                variant="sidebar"
+                pendingTask={item.pendingTask}
+                environmentLabel={
+                  savedConnectionsById[item.pendingTask.message.environmentId]?.environmentLabel ??
+                  null
+                }
+                environmentMachine={machineByEnvironmentId.get(
+                  item.pendingTask.message.environmentId,
+                )}
+                isLast={item.isLast}
+                onSelectPendingTask={openPendingTask}
+                onDeletePendingTask={confirmDeletePendingTask}
+              />
+            );
+          case "thread": {
+            const thread = item.thread;
+            return (
+              <ThreadListRow
+                variant="sidebar"
+                thread={thread}
+                environmentLabel={
+                  savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
+                }
+                environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
+                projectCwd={
+                  projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ??
+                  null
+                }
+                isLast={item.isLast}
+                searchMatch={threadSearchMatchByKey.get(
+                  threadSearchMatchKey({
+                    environmentId: thread.environmentId,
+                    threadId: thread.id,
+                  }),
+                )}
+                searchQuery={props.searchQuery}
+                selected={
+                  scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
+                }
+                fullSwipeWidth={props.width - 20}
+                onArchiveThread={archiveThread}
+                onDeleteThread={confirmDeleteThread}
+                onRegenerateThreadTitle={regenerateThreadTitle}
+                titleRegenerationSupported={titleRegenerationEnvironmentIds.has(
+                  thread.environmentId,
+                )}
+                onSelectThread={handleSelectThread}
+                onSwipeableClose={handleSwipeableClose}
+                onSwipeableWillOpen={handleSwipeableWillOpen}
+                simultaneousSwipeGesture={sidebarScrollGesture}
+              />
+            );
+          }
+          case "show-more":
+            return (
+              <ThreadListShowMoreRow
+                variant="sidebar"
+                hiddenCount={item.hiddenCount}
+                canShowLess={item.canShowLess}
+                groupKey={item.groupKey}
+                onGroupAction={updateGroupDisplay}
+              />
+            );
         }
-        case "v2-thread": {
-          const thread = item.item.thread;
-          const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
-          return (
-            <ThreadListV2Row
-              thread={thread}
-              variant={item.item.variant}
-              snoozed={item.item.snoozed}
-              pinned={item.item.pinned}
-              snoozePresetMinute={nowMinute}
-              snoozeWakeLabelText={item.snoozeWakeLabelText}
-              project={projectByKey.get(scopeKey) ?? null}
-              projectTitle={projectTitleByProjectKey.get(scopeKey)}
-              providerDriver={
-                serverConfigs
-                  .get(thread.environmentId)
-                  ?.providers.find(
-                    (provider) =>
-                      provider.instanceId ===
-                      (thread.session?.providerInstanceId ?? thread.modelSelection.instanceId),
-                  )?.driver ?? null
-              }
-              environmentLabel={
-                Object.keys(savedConnectionsById).length > 1
-                  ? (savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
-                  : null
-              }
-              environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
-              searchMatch={threadSearchMatchByKey.get(
-                threadSearchMatchKey({
-                  environmentId: thread.environmentId,
-                  threadId: thread.id,
-                }),
-              )}
-              searchQuery={props.searchQuery}
-              pane="sidebar"
-              selected={
-                scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
-              }
-              fullSwipeWidth={props.width - 20}
-              onSelectThread={handleSelectThread}
-              onDeleteThread={confirmDeleteThread}
-              onArchiveThread={archiveThread}
-              onRegenerateThreadTitle={regenerateThreadTitle}
-              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
-              settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
-              onSettleThread={settleThread}
-              snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
-              pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
-              pinReorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
-              canMovePinnedUp={
-                arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`) > 0
-              }
-              canMovePinnedDown={(() => {
-                const index = arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`);
-                return index !== -1 && index < arrangedPinnedKeys.length - 1;
-              })()}
-              onSnoozeThread={snoozeThread}
-              onUnsnoozeThread={unsnoozeThread}
-              onUnsettleThread={unsettleThread}
-              onPinThread={pinThread}
-              onUnpinThread={unpinThread}
-              onMovePinnedThread={movePinnedThread}
-              projectCwd={projectCwdByKey.get(scopeKey) ?? null}
-              onSwipeableClose={handleSwipeableClose}
-              onSwipeableWillOpen={handleSwipeableWillOpen}
-              simultaneousSwipeGesture={sidebarScrollGesture}
-            />
-          );
-        }
-        case "v2-project-header": {
-          const scope = projectScopes.find((candidate) => candidate.key === item.projectKey);
-          return (
-            <ThreadListV2ProjectHeader
-              projectKey={item.projectKey}
-              title={item.projectTitle}
-              threadCount={item.threadCount}
-              collapsed={item.collapsed}
-              project={scope?.representative ?? null}
-              onToggle={toggleProjectSection}
-              // Same gating as the legacy grouped header: an aggregated scope
-              // spanning several environments has no single target project.
-              newThreadTarget={
-                scope !== undefined && scope.projects.length === 1 ? scope.representative : null
-              }
-              onNewThread={props.onNewThreadInProject}
-            />
-          );
-        }
-        case "v2-section-show-more":
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Show ${Math.min(item.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
-              onPress={() => showMoreSettledInSection(item.projectKey)}
-              className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2"
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <Text className="text-xs font-t3-medium text-foreground-muted">
-                Show more ({item.hiddenCount} settled hidden)
-              </Text>
-            </Pressable>
-          );
-        case "v2-snoozed-shelf":
-          return (
-            <ThreadListV2SnoozedShelfHeader
-              count={item.count}
-              disabled={!shelfPreferencesLoaded}
-              expanded={item.expanded}
-              onToggle={toggleSnoozedShelf}
-              pane="sidebar"
-            />
-          );
-        case "v2-settled-shelf":
-          return (
-            <ThreadListV2SettledShelfHeader
-              count={item.count}
-              disabled={!shelfPreferencesLoaded}
-              expanded={item.expanded}
-              onToggle={toggleSettledShelf}
-              pane="sidebar"
-            />
-          );
-        case "v2-show-more":
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Show ${Math.min(item.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
-              onPress={showMoreSettled}
-              className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <Text className="text-xs font-t3-medium text-foreground-muted">
-                Show more ({item.hiddenCount} settled hidden)
-              </Text>
-            </Pressable>
-          );
-        case "header":
-          return (
-            <ThreadListGroupHeader
-              variant="sidebar"
-              collapsed={item.collapsed}
-              isFirst={item.isFirst}
-              groupKey={item.group.key}
-              onGroupAction={updateGroupDisplay}
-              // Same gating as the compact Home list: aggregated groups have no
-              // single target project, and pending-project groups hold a
-              // placeholder shell rather than a real project.
-              newThreadTarget={item.group.newThreadTarget}
-              onNewThread={props.onNewThreadInProject}
-              project={item.group.representative}
-              threadCount={item.group.threads.length + item.group.pendingTasks.length}
-              title={item.group.title}
-            />
-          );
-        case "pending-task":
-          return (
-            <PendingTaskListRow
-              variant="sidebar"
-              pendingTask={item.pendingTask}
-              environmentLabel={
-                savedConnectionsById[item.pendingTask.message.environmentId]?.environmentLabel ??
-                null
-              }
-              environmentMachine={machineByEnvironmentId.get(
-                item.pendingTask.message.environmentId,
-              )}
-              isLast={item.isLast}
-              onSelectPendingTask={openPendingTask}
-              onDeletePendingTask={confirmDeletePendingTask}
-            />
-          );
-        case "thread": {
-          const thread = item.thread;
-          return (
-            <ThreadListRow
-              variant="sidebar"
-              thread={thread}
-              environmentLabel={
-                savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
-              }
-              environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
-              projectCwd={
-                projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ??
-                null
-              }
-              isLast={item.isLast}
-              searchMatch={threadSearchMatchByKey.get(
-                threadSearchMatchKey({
-                  environmentId: thread.environmentId,
-                  threadId: thread.id,
-                }),
-              )}
-              searchQuery={props.searchQuery}
-              selected={
-                scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
-              }
-              fullSwipeWidth={props.width - 20}
-              onArchiveThread={archiveThread}
-              onDeleteThread={confirmDeleteThread}
-              onRegenerateThreadTitle={regenerateThreadTitle}
-              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
-              onSelectThread={handleSelectThread}
-              onSwipeableClose={handleSwipeableClose}
-              onSwipeableWillOpen={handleSwipeableWillOpen}
-              simultaneousSwipeGesture={sidebarScrollGesture}
-            />
-          );
-        }
-        case "show-more":
-          return (
-            <ThreadListShowMoreRow
-              variant="sidebar"
-              hiddenCount={item.hiddenCount}
-              canShowLess={item.canShowLess}
-              groupKey={item.groupKey}
-              onGroupAction={updateGroupDisplay}
-            />
-          );
-      }
+      })();
+
+      return withSectionCard(content);
     },
     [
       archiveThread,

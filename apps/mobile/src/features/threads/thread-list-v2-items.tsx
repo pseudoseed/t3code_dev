@@ -8,7 +8,15 @@ import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import { resolveSettledThreadTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type { MenuAction } from "@react-native-menu/menu";
-import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { Alert, Platform, Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
@@ -127,6 +135,8 @@ export const ThreadListV2ProjectHeader = memo(function ThreadListV2ProjectHeader
   /** Null hides the button: aggregated groups have no single target project. */
   readonly newThreadTarget: EnvironmentProject | null;
   readonly onNewThread?: (project: EnvironmentProject) => void;
+  /** False when the section is collapsed and the header is the whole card. */
+  readonly opensSection?: boolean;
 }) {
   const { themeAppearance: colorScheme } = useAppearancePreferences();
   const accent = useMemo(() => projectAccent(props.projectKey), [props.projectKey]);
@@ -139,8 +149,19 @@ export const ThreadListV2ProjectHeader = memo(function ThreadListV2ProjectHeader
 
   return (
     <View
-      className="mx-2 mb-1 mt-3 flex-row items-center gap-1 rounded-xl px-2 py-2"
-      style={{ backgroundColor: colors.tint, borderColor: colors.line, borderWidth: 1 }}
+      className={
+        props.opensSection
+          ? "mx-2 mt-3 flex-row items-center gap-1 rounded-t-xl px-2 py-2"
+          : "mx-2 mb-1 mt-3 flex-row items-center gap-1 rounded-xl px-2 py-2"
+      }
+      style={{
+        backgroundColor: colors.tint,
+        borderColor: colors.line,
+        borderWidth: 1,
+        // The rows below continue the same card, so the header must not close
+        // it with an edge of its own.
+        ...(props.opensSection ? { borderBottomWidth: 0 } : {}),
+      }}
     >
       <Pressable
         accessibilityRole="button"
@@ -425,6 +446,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly snoozePresetMinute: string;
   readonly project: EnvironmentProject | null;
   readonly projectTitle?: string;
+  /** False under a project header, which already names the project. Repeating
+      it on every row is the same word twice in as many lines. */
+  readonly showsProjectTitle?: boolean;
   readonly providerDriver: string | null;
   /** Which machine hosts the thread. Null when only one environment is
       connected — repeating the same label on every row is noise. Mirrors
@@ -768,10 +792,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
 
   // The sidebar pane fills selected rows with the theme's message surface, so
   // every piece of row text must use that surface's paired foreground.
+  const showsProjectTitle = props.showsProjectTitle !== false;
   const cardContent = (
     <>
       <View className="flex-row items-center gap-1.5">
-        {props.project ? (
+        {props.project && showsProjectTitle ? (
           <ProjectFavicon
             environmentId={thread.environmentId}
             faviconPath={props.project.faviconPath}
@@ -787,7 +812,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           )}
           numberOfLines={1}
         >
-          {props.projectTitle ?? props.project?.title ?? ""}
+          {showsProjectTitle ? (props.projectTitle ?? props.project?.title ?? "") : ""}
         </Text>
         {pinnedRow ? (
           <SymbolView
@@ -1071,3 +1096,37 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </>
   );
 });
+
+/**
+ * Continues a project section's card around the rows beneath its header.
+ *
+ * The list is flat, so the card is drawn in pieces: this supplies the left and
+ * right edges every member needs, closes the bottom on the last one, and insets
+ * the content so a nested thread reads as nested.
+ */
+export function ThreadListV2SectionMember(props: {
+  readonly projectKey: string;
+  readonly last: boolean;
+  readonly children: ReactNode;
+}) {
+  const { themeAppearance: colorScheme } = useAppearancePreferences();
+  const accent = useMemo(() => projectAccent(props.projectKey), [props.projectKey]);
+  const colors = colorScheme === "dark" ? accent.dark : accent.light;
+
+  return (
+    <View
+      className={props.last ? "mx-2 mb-1 rounded-b-xl pb-1 pl-4 pr-1.5" : "mx-2 pl-4 pr-1.5"}
+      style={{
+        // The same fill as the header, so the header and its threads read as
+        // one surface rather than a header with a box drawn under it.
+        backgroundColor: colors.tint,
+        borderColor: colors.line,
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderBottomWidth: props.last ? 1 : 0,
+      }}
+    >
+      {props.children}
+    </View>
+  );
+}

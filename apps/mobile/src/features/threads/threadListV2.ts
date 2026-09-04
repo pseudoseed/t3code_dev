@@ -255,13 +255,33 @@ export interface ThreadListV2SectionShowMoreListItem {
   readonly hiddenCount: number;
 }
 
-export type ThreadListV2ListItem =
+/**
+ * Where an item sits inside a project section.
+ *
+ * The list is flat, so one card around a header and the threads under it is
+ * drawn by the rows themselves: the header rounds its top, the members draw
+ * the sides, and the last one rounds the bottom.
+ */
+export type ThreadListV2SectionPlacement = {
+  /**
+   * The section this item belongs to.
+   *
+   * Carried here rather than read off the item, because thread and pending rows
+   * have no project key of their own; only the shelves and the header do.
+   */
+  readonly projectSectionKey?: string;
+  readonly endsProjectSection?: boolean;
+};
+
+export type ThreadListV2ListItem = (
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2SnoozedShelfListItem
   | ThreadListV2SettledShelfListItem
   | ThreadListV2ProjectHeaderListItem
-  | ThreadListV2SectionShowMoreListItem;
+  | ThreadListV2SectionShowMoreListItem
+) &
+  ThreadListV2SectionPlacement;
 
 /**
  * Builds the shared mobile order: active → pending → snoozed shelf → settled.
@@ -358,6 +378,7 @@ export function buildThreadListV2ProjectSectionItems(input: {
     const threadCount =
       section.layout.items.length + section.layout.hiddenSettledCount + section.pendingTasks.length;
     if (threadCount === 0) continue;
+    const sectionStart = items.length;
     items.push({
       type: "v2-project-header",
       key: `v2-project-header:${section.projectKey}`,
@@ -388,6 +409,14 @@ export function buildThreadListV2ProjectSectionItems(input: {
         projectKey: section.projectKey,
         hiddenCount: section.layout.hiddenSettledCount,
       });
+    }
+
+    for (let index = sectionStart; index < items.length; index += 1) {
+      items[index] = {
+        ...items[index]!,
+        projectSectionKey: section.projectKey,
+        endsProjectSection: index === items.length - 1,
+      };
     }
   }
   return items;
