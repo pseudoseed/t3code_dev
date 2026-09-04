@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -1760,21 +1761,44 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry.ProviderRegistry;
+
+            /**
+             * Settles on the first registry state matching `predicate`, whether
+             * it already holds or arrives on `streamChanges`. Subscribing before
+             * the current-state read closes the race in both directions, so this
+             * never depends on how many scheduler turns a probe happens to take.
+             */
+            const awaitProviders = (
+              predicate: (providers: ReadonlyArray<ServerProvider>) => boolean,
+            ) =>
+              Effect.gen(function* () {
+                const matched = yield* registry.streamChanges.pipe(
+                  Stream.filter(predicate),
+                  Stream.runHead,
+                  Effect.forkChild,
+                );
+                yield* Effect.yieldNow;
+                const current = yield* registry.getProviders;
+                if (predicate(current)) {
+                  yield* Fiber.interrupt(matched);
+                  return current;
+                }
+                const providers = yield* Fiber.join(matched);
+                if (Option.isNone(providers)) {
+                  return yield* Effect.die(
+                    new Error("provider registry change stream ended before the state was reached"),
+                  );
+                }
+                return providers.value;
+              });
+
             // Boot-time probe: the default codex instance is enabled with
             // `firstMissing`, so the real spawner yields ENOENT and the
             // snapshot should be `status: "error"`.
-            let initialProviders = yield* registry.getProviders;
-            for (
-              let attempts = 0;
-              attempts < 50 &&
-              initialProviders.find((provider) => provider.instanceId === "codex")?.status !==
-                "error";
-              attempts += 1
-            ) {
-              yield* TestClock.adjust("10 millis");
-              yield* Effect.yieldNow;
-              initialProviders = yield* registry.getProviders;
-            }
+            const initialProviders = yield* awaitProviders(
+              (providers) =>
+                providers.find((provider) => provider.instanceId === "codex")?.status === "error",
+            );
             const initialCodex = initialProviders.find(
               (provider) => provider.instanceId === "codex",
             );
@@ -1796,25 +1820,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               },
             });
 
-            // Poll until the injected process boundary observes the new
+            // Settle once the injected process boundary has observed the new
             // executable. This verifies the public settings-to-probe behavior
             // without depending on timestamps assigned by TestClock.
-            const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
-                const providers = yield* registry.getProviders;
-                const codex = providers.find((provider) => provider.instanceId === "codex");
-                if (
-                  codex !== undefined &&
-                  codex.status === "error" &&
-                  spawnedCommands.includes(secondMissing)
-                ) {
-                  return providers;
-                }
-                yield* TestClock.adjust("50 millis");
-                yield* Effect.yieldNow;
-              }
-              return yield* registry.getProviders;
-            });
+            const refreshed = yield* awaitProviders(
+              (providers) =>
+                providers.find((provider) => provider.instanceId === "codex")?.status === "error" &&
+                spawnedCommands.includes(secondMissing),
+            );
 
             const reprobedCodex = refreshed.find((provider) => provider.instanceId === "codex");
             assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);

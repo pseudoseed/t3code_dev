@@ -44,15 +44,17 @@ const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (
   isIosPersonalTeamBuild &&
-  (!iosBundleIdentifierOverride ||
-    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride))
+  (!iosBundleIdentifierOverride || !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride))
 ) {
   throw new Error(
     "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
   );
 }
 
-if (iosBundleIdentifierOverride && !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride)) {
+if (
+  iosBundleIdentifierOverride &&
+  !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride)
+) {
   throw new Error(
     "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code.",
   );
