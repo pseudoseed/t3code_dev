@@ -14,6 +14,8 @@ export type VoiceInputPhase =
   | "idle"
   | "preparing"
   | "recording"
+  /** Recording is done and the speech model is still loading. */
+  | "waitingForModel"
   | "transcribing"
   | "cleaning"
   | "error";
@@ -34,6 +36,7 @@ export function voiceInputBlocksSubmission(state: VoiceInputState): boolean {
   return (
     state.phase === "preparing" ||
     state.phase === "recording" ||
+    state.phase === "waitingForModel" ||
     state.phase === "transcribing" ||
     state.phase === "cleaning"
   );
@@ -224,7 +227,7 @@ export class VoiceInputController {
   private state: VoiceInputState = IDLE_STATE;
   private operationToken = 0;
   private sessionToken: symbol | null = null;
-  private transcription: PreparedVoiceTranscription | null = null;
+  private transcription: Promise<PreparedVoiceTranscription> | null = null;
   private transcriptionAbortController: AbortController | null = null;
   private capturedDraft: VoiceDraftSnapshot | null = null;
   private recordingUri: string | null = null;
@@ -278,15 +281,16 @@ export class VoiceInputController {
         return;
       }
 
-      try {
-        this.transcription = await runTranscriptionOperation(() =>
-          transcriber.prepare({ signal: abortController.signal }),
-        );
-      } catch (error) {
-        if (this.isCurrent(operationToken)) this.setError(preparationErrorMessage(error), "retry");
-        return;
-      }
-      if (!this.isCurrent(operationToken)) return;
+      // Loading a speech model takes tens of seconds, and making the user watch
+      // that before the microphone opens loses the sentence they were about to
+      // say. Recording starts now and the load runs alongside it; the two only
+      // have to meet when there is audio to transcribe.
+      this.transcription = runTranscriptionOperation(() =>
+        transcriber.prepare({ signal: abortController.signal }),
+      );
+      // Nothing awaits this until the recording stops, so an early failure
+      // would otherwise surface as an unhandled rejection.
+      this.transcription.catch(() => undefined);
 
       await this.dependencies.configureRecording();
       this.recordingConfigured = true;
@@ -338,6 +342,7 @@ export class VoiceInputController {
       case "recording":
         this.discardRecording(null);
         return;
+      case "waitingForModel":
       case "transcribing":
         this.invalidateOperation();
         this.setState(IDLE_STATE);
@@ -370,7 +375,13 @@ export class VoiceInputController {
     // Transcription and cleanup keep running. The implementation holds a
     // background assertion for them, so they finish or stop cleanly; abandoning
     // them here would throw away a recording the user already made.
-    if (this.state.phase === "transcribing" || this.state.phase === "cleaning") return;
+    if (
+      this.state.phase === "waitingForModel" ||
+      this.state.phase === "transcribing" ||
+      this.state.phase === "cleaning"
+    ) {
+      return;
+    }
 
     return this.interruptRecording();
   }
@@ -411,7 +422,11 @@ export class VoiceInputController {
       this.abandonCleaning();
       return;
     }
-    if (this.state.phase === "preparing" || this.state.phase === "transcribing") {
+    if (
+      this.state.phase === "preparing" ||
+      this.state.phase === "waitingForModel" ||
+      this.state.phase === "transcribing"
+    ) {
       this.invalidateOperation();
       this.setState(IDLE_STATE);
     }
@@ -449,8 +464,20 @@ export class VoiceInputController {
       }
 
       const recordingUri = this.recordingUri;
-      const transcription = this.transcription;
       const signal = this.transcriptionAbortController.signal;
+
+      // The load usually finished while the user was still talking. When it did
+      // not, say what is actually happening rather than showing a transcription
+      // spinner over a model that has not loaded.
+      let transcription: PreparedVoiceTranscription;
+      try {
+        transcription = await this.awaitModel(this.transcription);
+      } catch (error) {
+        if (this.isCurrent(operationToken)) this.setError(preparationErrorMessage(error), "retry");
+        return;
+      }
+      if (!this.isCurrent(operationToken)) return;
+
       const capturedDraft = this.capturedDraft;
       let transcript: string;
       let notice: string | null = null;
@@ -520,6 +547,40 @@ export class VoiceInputController {
       this.finishing = false;
       await this.releaseResources();
     }
+  }
+
+  /**
+   * Waits for the speech model, showing that it is waiting.
+   *
+   * The phase only changes when the model is genuinely not ready, so a load
+   * that finished during recording goes straight to transcribing.
+   */
+  private async awaitModel(
+    pending: Promise<PreparedVoiceTranscription>,
+  ): Promise<PreparedVoiceTranscription> {
+    let settled = false;
+    void pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+
+    await Promise.resolve();
+    const waited = !settled;
+    if (waited) {
+      this.setState({ phase: "waitingForModel", error: null, errorAction: null, notice: null });
+    }
+
+    const prepared = await pending;
+    // Only when the phase actually changed. A load that finished during
+    // recording should not emit a second identical state.
+    if (waited) {
+      this.setState({ phase: "transcribing", error: null, errorAction: null, notice: null });
+    }
+    return prepared;
   }
 
   /**

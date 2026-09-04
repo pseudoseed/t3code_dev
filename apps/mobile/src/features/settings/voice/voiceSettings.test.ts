@@ -25,7 +25,7 @@ function snapshot(overrides: Partial<VoiceModelsSnapshot> = {}): VoiceModelsSnap
     installedModelIds: [],
     selectedSpeechModelId: null,
     selectedCleanupModelId: null,
-    download: null,
+    downloads: {},
     failures: {},
     ...overrides,
   };
@@ -94,10 +94,18 @@ describe("model rows", () => {
     });
   });
 
-  it("shows progress for the download in flight", () => {
+  it("shows two downloads running at once, each with its own progress", () => {
     const rows = resolveCleanupModelRows(
-      snapshot({ download: { modelId: "qwen-0-8b", fraction: 0.25 } }),
+      snapshot({ downloads: { "qwen-0-8b": 0.5, "qwen-2b": 0.1 } }),
     );
+
+    expect(rowFor(rows, "qwen-0-8b").state).toEqual({ kind: "downloading", fraction: 0.5 });
+    expect(rowFor(rows, "qwen-2b").state).toEqual({ kind: "downloading", fraction: 0.1 });
+    expect(rowFor(rows, "qwen-4b").state).toEqual({ kind: "downloadable" });
+  });
+
+  it("shows progress for the download in flight", () => {
+    const rows = resolveCleanupModelRows(snapshot({ downloads: { "qwen-0-8b": 0.25 } }));
     expect(rowFor(rows, "qwen-0-8b").state).toEqual({ kind: "downloading", fraction: 0.25 });
   });
 

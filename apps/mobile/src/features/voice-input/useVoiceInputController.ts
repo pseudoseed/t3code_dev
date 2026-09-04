@@ -37,6 +37,7 @@ import {
   type VoiceDraftSnapshot,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
+import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
 /**
@@ -285,6 +286,24 @@ export function useVoiceInputController(input: {
   }, [controller]);
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
+
+  // One key starts and finishes a dictation, so a hardware keyboard never has
+  // to reach for the screen mid-sentence. Declined when the composer is
+  // disabled or transcription is unavailable, which lets another screen's
+  // handler take the key instead.
+  const toggleDictation = useCallback(() => {
+    if (latestInputRef.current.disabled) return false;
+    if (controller.currentState.phase === "recording") {
+      void controller.stop();
+      return true;
+    }
+    if (controller.currentState.phase !== "idle" && controller.currentState.phase !== "error") {
+      return false;
+    }
+    void controller.start();
+    return true;
+  }, [controller]);
+  useHardwareKeyboardCommand("toggleDictation", toggleDictation);
 
   const recoverableTranscript = preferences
     ? resolveRecoverableTranscript(

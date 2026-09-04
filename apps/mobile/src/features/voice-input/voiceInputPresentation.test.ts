@@ -53,6 +53,17 @@ describe("resolveVoiceComposerPresentation", () => {
     });
     expect(
       resolveVoiceComposerPresentation(
+        { phase: "waitingForModel", error: null, errorAction: null, notice: null },
+        0,
+      ),
+    ).toMatchObject({
+      leadingAction: "cancel",
+      showsSend: false,
+      statusLabel: "Loading speech model",
+      confirmationEnabled: false,
+    });
+    expect(
+      resolveVoiceComposerPresentation(
         { phase: "cleaning", error: null, errorAction: null, notice: null },
         0,
       ),

@@ -9,7 +9,6 @@ import {
   downloadModel,
   getInstalledModelIds,
   getStorageUsageBytes,
-  isManagedDownload,
   onModelDownloadProgress,
 } from "../../../native/t3Voice";
 import { readVoiceModelEnvironmentForApp } from "../../../native/voiceTranscription";
@@ -33,9 +32,10 @@ export function useVoiceModels(input: {
     getInstalledModelIds(),
   );
   const [storageBytes, setStorageBytes] = useState(() => getStorageUsageBytes());
-  const [download, setDownload] = useState<VoiceModelsSnapshot["download"]>(null);
+  const [downloads, setDownloads] = useState<Record<string, number | null>>({});
   const [failures, setFailures] = useState<Record<string, string>>({});
-  const operationIdRef = useRef<string | null>(null);
+  /** Model id to native operation id, for every download in flight. */
+  const operationIdsRef = useRef<Record<string, string>>({});
   const allowsCellularRef = useRef(input.allowsCellular);
   allowsCellularRef.current = input.allowsCellular;
 
@@ -52,14 +52,14 @@ export function useVoiceModels(input: {
   useEffect(
     () =>
       onModelDownloadProgress((progress) => {
-        setDownload((current) =>
-          current?.modelId === progress.modelId
-            ? {
-                modelId: progress.modelId,
-                fraction:
+        setDownloads((current) =>
+          current[progress.modelId] === undefined
+            ? current
+            : {
+                ...current,
+                [progress.modelId]:
                   progress.totalBytes > 0 ? progress.completedBytes / progress.totalBytes : null,
-              }
-            : current,
+              },
         );
       }),
     [],
@@ -67,7 +67,7 @@ export function useVoiceModels(input: {
 
   const startDownload = useCallback(
     async (modelId: string) => {
-      if (operationIdRef.current) return;
+      if (operationIdsRef.current[modelId]) return;
 
       if (!allowsCellularRef.current) {
         const state = await Network.getNetworkStateAsync();
@@ -82,15 +82,13 @@ export function useVoiceModels(input: {
 
       nextDownloadId += 1;
       const operationId = `voice-download-${nextDownloadId}`;
-      operationIdRef.current = operationId;
+      operationIdsRef.current = { ...operationIdsRef.current, [modelId]: operationId };
       setFailures((current) => {
         const next = { ...current };
         delete next[modelId];
         return next;
       });
-      // Managed downloads report no progress, so they start at unknown rather
-      // than at zero. A bar that sits at 0% for four minutes reads as broken.
-      setDownload({ modelId, fraction: isManagedDownload(modelId) ? null : 0 });
+      setDownloads((current) => ({ ...current, [modelId]: 0 }));
 
       try {
         await downloadModel(operationId, modelId, {
@@ -99,16 +97,20 @@ export function useVoiceModels(input: {
       } catch (error) {
         setFailures((current) => ({ ...current, [modelId]: describeDownloadError(error) }));
       } finally {
-        operationIdRef.current = null;
-        setDownload(null);
+        const { [modelId]: _finished, ...remaining } = operationIdsRef.current;
+        operationIdsRef.current = remaining;
+        setDownloads((current) => {
+          const { [modelId]: _done, ...rest } = current;
+          return rest;
+        });
         refresh();
       }
     },
     [refresh],
   );
 
-  const cancelDownload = useCallback(() => {
-    const operationId = operationIdRef.current;
+  const cancelDownload = useCallback((modelId: string) => {
+    const operationId = operationIdsRef.current[modelId];
     if (operationId) void cancelOperation(operationId);
   }, []);
 
@@ -130,7 +132,7 @@ export function useVoiceModels(input: {
     installedModelIds,
     selectedSpeechModelId: input.selectedSpeechModelId,
     selectedCleanupModelId: input.selectedCleanupModelId,
-    download,
+    downloads,
     failures,
   };
 

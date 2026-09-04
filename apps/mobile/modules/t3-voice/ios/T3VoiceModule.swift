@@ -1,5 +1,4 @@
 import ExpoModulesCore
-import os
 
 public class T3VoiceModule: Module {
   private let engine = WhisperKitEngine()
@@ -53,7 +52,7 @@ public class T3VoiceModule: Module {
         await self.fluidAudio.evict()
       }
       try ModelStore.delete(modelId: modelId)
-      try await self.downloader.discardPartial(modelId: modelId)
+      try self.downloader.discardPartial(modelId: modelId)
     }
 
     AsyncFunction("downloadModel") { (request: ModelDownloadRequest, promise: Promise) in
@@ -125,7 +124,18 @@ public class T3VoiceModule: Module {
         // FluidAudio fetches its own files: it knows which ones a version needs
         // and we would only be duplicating that list in a manifest that drifts.
         let folder = try ModelStore.folder(forModelId: modelId)
-        try await FluidAudioEngine.download(modelId: modelId, to: folder)
+        try await FluidAudioEngine.download(modelId: modelId, to: folder) { [weak self] fraction in
+          // Reported as a fraction of one, because FluidAudio knows the ratio
+          // but never tells us the byte total.
+          self?.sendEvent(
+            "onModelDownloadProgress",
+            [
+              "modelId": modelId,
+              "completedBytes": fraction,
+              "totalBytes": 1.0,
+            ]
+          )
+        }
         try ModelStore.markInstalled(modelId: modelId)
         return true
       }
@@ -183,14 +193,15 @@ public class T3VoiceModule: Module {
   private static func reportLoadCost(modelId: String, before: UInt64) {
     let after = DeviceMemory.footprint()
     let deltaMB = Double(Int64(after) - Int64(before)) / (1024 * 1024)
-    Logger(subsystem: "codes.t3.voice", category: "memory")
-      .info(
-        """
-        model=\(modelId, privacy: .public) \
-        loadCostMB=\(deltaMB, format: .fixed(precision: 1), privacy: .public) \
-        footprintMB=\(Double(after) / (1024 * 1024), format: .fixed(precision: 1), privacy: .public)
-        """
+    VoiceDiagnostics.report(
+      "memory",
+      String(
+        format: "model=%@ loadCostMB=%.1f footprintMB=%.1f",
+        modelId,
+        deltaMB,
+        Double(after) / (1024 * 1024)
       )
+    )
   }
 
   /// Logs what running a model cost on top of having it loaded.
@@ -201,14 +212,16 @@ public class T3VoiceModule: Module {
   private static func reportRunCost(stage: String, modelId: String, before: UInt64) {
     let after = DeviceMemory.footprint()
     let deltaMB = Double(Int64(after) - Int64(before)) / (1024 * 1024)
-    Logger(subsystem: "codes.t3.voice", category: "memory")
-      .info(
-        """
-        stage=\(stage, privacy: .public) model=\(modelId, privacy: .public) \
-        runCostMB=\(deltaMB, format: .fixed(precision: 1), privacy: .public) \
-        footprintMB=\(Double(after) / (1024 * 1024), format: .fixed(precision: 1), privacy: .public)
-        """
+    VoiceDiagnostics.report(
+      "memory",
+      String(
+        format: "stage=%@ model=%@ runCostMB=%.1f footprintMB=%.1f",
+        stage,
+        modelId,
+        deltaMB,
+        Double(after) / (1024 * 1024)
       )
+    )
   }
 
   private static func encode(_ output: VoiceTranscriptionOutput) -> [String: Any] {

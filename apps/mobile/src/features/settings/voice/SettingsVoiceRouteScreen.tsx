@@ -98,7 +98,7 @@ export function SettingsVoiceRouteScreen() {
               first={index === 0}
               onSelect={() => savePreferences({ voiceSpeechModelId: row.id })}
               onDownload={() => void models.startDownload(row.id)}
-              onCancel={models.cancelDownload}
+              onCancel={() => models.cancelDownload(row.id)}
               onDelete={() => confirmDelete(row)}
             />
           ))}
@@ -119,12 +119,12 @@ export function SettingsVoiceRouteScreen() {
           {speakerFiltering.needsDiarizer ? (
             <ActionRow
               label={
-                models.snapshot.download?.modelId === DIARIZER_MODEL_ID
+                models.snapshot.downloads[DIARIZER_MODEL_ID] !== undefined
                   ? "Downloading voice separation"
                   : "Download voice separation"
               }
               value={formatModelSize(models.diarizerBytes)}
-              busy={models.snapshot.download?.modelId === DIARIZER_MODEL_ID}
+              busy={models.snapshot.downloads[DIARIZER_MODEL_ID] !== undefined}
               onPress={() => void models.startDownload(DIARIZER_MODEL_ID)}
             />
           ) : null}
@@ -150,7 +150,7 @@ export function SettingsVoiceRouteScreen() {
                   first={index === 0}
                   onSelect={() => savePreferences({ voiceCleanupModelId: row.id })}
                   onDownload={() => void models.startDownload(row.id)}
-                  onCancel={models.cancelDownload}
+                  onCancel={() => models.cancelDownload(row.id)}
                   onDelete={() => confirmDelete(row)}
                 />
               ))}
@@ -295,9 +295,27 @@ function ModelRow(props: {
       <View className={disabled ? "min-w-0 flex-1 gap-1 opacity-[0.45]" : "min-w-0 flex-1 gap-1"}>
         <Text className="text-lg text-foreground">{row.label}</Text>
         <Text className="text-sm leading-normal text-foreground-muted">{describeRow(row)}</Text>
+        {row.state.kind === "downloading" ? <DownloadBar fraction={row.state.fraction} /> : null}
       </View>
       <ModelRowAccessory row={row} onCancel={props.onCancel} onDelete={props.onDelete} />
     </Pressable>
+  );
+}
+
+/**
+ * How far along a download is.
+ *
+ * A static track with no fill is what an unknown fraction looks like, rather
+ * than an animation: a bar that moves without meaning is worse than one that
+ * admits it does not know.
+ */
+function DownloadBar(props: { readonly fraction: number | null }) {
+  const percent = props.fraction === null ? 0 : Math.round(props.fraction * 100);
+
+  return (
+    <View className="mt-1 h-1 overflow-hidden rounded-full bg-border-subtle">
+      <View className="h-1 rounded-full bg-accent-icon" style={{ width: `${percent}%` }} />
+    </View>
   );
 }
 

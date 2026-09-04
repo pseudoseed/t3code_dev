@@ -106,6 +106,13 @@ dictation reloads what it needs, which costs one slower turn and is better than 
 Changing the selected model loads the new one before dropping the old one, so a failed switch leaves
 dictation working rather than leaving nothing loaded.
 
+**Recording does not wait for the model.** A cold load runs to 30 seconds on a real device, and
+making the user watch that before the microphone opens loses the sentence they were about to say.
+The recorder starts as soon as it is ready and the load runs alongside it; the two meet only when
+there is audio to transcribe. A load that finishes during recording is invisible. One that does not
+shows `waitingForModel`, which the composer labels "Loading speech model" rather than showing a
+transcription spinner over a model that has not loaded.
+
 ## Cancellation
 
 Each operation passes one `AbortSignal` through preparation, transcription, and cleanup. That signal
@@ -172,6 +179,10 @@ stays off rather than reporting a fallback nobody can act on.
 
 ## Client boundaries
 
+`Cmd+Shift+D` on a hardware keyboard starts a dictation and finishes one, through the existing
+[hardware keyboard commands][keyboard]. The handler declines the key when the composer is disabled
+or a dictation is already past recording, so another screen can take it.
+
 Mobile's [presentation module][presentation] maps shared state to toolbar labels and actions.
 Waveform and toolbar rendering stay in mobile. Recording captures the draft owner, revision, text,
 and selection, so a late transcript cannot overwrite a different or edited draft. Only normal message
@@ -197,4 +208,5 @@ the module's own.
 [manifest]: ../../apps/mobile/src/native/voiceModelManifest.json
 [speaker-filter]: ../../apps/mobile/modules/t3-voice/ios/SpeakerFilter.swift
 [presentation]: ../../apps/mobile/src/features/voice-input/voiceInputPresentation.ts
+[keyboard]: ../../apps/mobile/src/features/keyboard/hardwareKeyboardCommands.ts
 [ios-transcription]: ../../apps/mobile/src/native/voiceTranscription.ios.ts

@@ -9,7 +9,8 @@ export type HardwareKeyboardCommand =
   | "terminal"
   | "review"
   | "copyThreadReference"
-  | "toggleSidebar";
+  | "toggleSidebar"
+  | "toggleDictation";
 
 type CommandHandler = () => boolean | void;
 

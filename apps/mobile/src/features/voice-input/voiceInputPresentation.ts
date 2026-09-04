@@ -54,6 +54,17 @@ export function resolveVoiceComposerPresentation(
         confirmationEnabled: true,
       };
     }
+    case "waitingForModel":
+      // Named for what it is. A transcription spinner over a model that has not
+      // loaded is the lying spinner this whole state exists to avoid.
+      return {
+        leadingAction: "cancel",
+        trailingAction: "confirm",
+        showsSend: false,
+        statusKind: "active",
+        statusLabel: "Loading speech model",
+        confirmationEnabled: false,
+      };
     case "transcribing":
       return {
         leadingAction: "cancel",

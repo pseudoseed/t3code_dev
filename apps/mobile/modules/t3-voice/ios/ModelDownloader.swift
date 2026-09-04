@@ -31,7 +31,11 @@ struct ModelDownloadProgress {
 /// across three CoreML bundles. Progress is reported across the whole set, and
 /// a file already present and verified is skipped, so an interrupted download
 /// resumes at file granularity on the next attempt rather than starting over.
-actor ModelDownloader {
+///
+/// A plain class rather than an actor, so two models download at once. Each
+/// call touches only its own model's directory, and `URLSession` is already
+/// safe to share.
+final class ModelDownloader: Sendable {
   private let session: URLSession
 
   init() {

@@ -32,8 +32,8 @@ export type VoiceModelsSnapshot = {
   readonly installedModelIds: readonly string[];
   readonly selectedSpeechModelId: string | null;
   readonly selectedCleanupModelId: string | null;
-  /** The model currently downloading, with progress when the source reports it. */
-  readonly download: { readonly modelId: string; readonly fraction: number | null } | null;
+  /** Model id to progress fraction, for every download in flight. */
+  readonly downloads: Readonly<Record<string, number | null>>;
   /** Model id to error message, for downloads and loads that failed. */
   readonly failures: Readonly<Record<string, string>>;
 };
@@ -85,8 +85,9 @@ function rowFor(
     };
   }
 
-  if (snapshot.download?.modelId === model.id) {
-    return { ...base, state: { kind: "downloading", fraction: snapshot.download.fraction } };
+  const fraction = snapshot.downloads[model.id];
+  if (fraction !== undefined) {
+    return { ...base, state: { kind: "downloading", fraction } };
   }
 
   // A failure outranks "not installed". The user pressed download; saying

@@ -1,7 +1,6 @@
 import AVFoundation
 import FluidAudio
 import Foundation
-import os
 
 /// What speaker filtering did to a dictation.
 ///
@@ -113,13 +112,23 @@ actor FluidAudioEngine {
   /// FluidAudio fetches its own files because it, not us, knows which ones a
   /// version needs. It writes into the same directory as every other model so
   /// storage accounting, deletion, and the completion marker all still work.
-  static func download(modelId: String, to folder: URL) async throws {
+  ///
+  /// `onProgress` receives a fraction. FluidAudio reports one but never a byte
+  /// count, so the caller has no total to show; a download of several hundred
+  /// megabytes with no visible progress reads as a hang.
+  static func download(
+    modelId: String,
+    to folder: URL,
+    onProgress: @escaping @Sendable (Double) -> Void
+  ) async throws {
     guard let directory = repositoryFolder(forModelId: modelId, in: folder) else {
       throw VoiceEngineError.modelUnavailable("\(modelId) is not a FluidAudio model.")
     }
 
+    let handler: ProgressHandler = { progress in onProgress(progress.fractionCompleted) }
+
     if modelId == diarizerModelId {
-      _ = try await DiarizerModels.download(to: directory)
+      _ = try await DiarizerModels.download(to: directory, progressHandler: handler)
       return
     }
 
@@ -127,7 +136,7 @@ actor FluidAudioEngine {
       throw VoiceEngineError.modelUnavailable("\(modelId) is not a FluidAudio model.")
     }
 
-    _ = try await AsrModels.download(to: directory, version: version)
+    _ = try await AsrModels.download(to: directory, version: version, progressHandler: handler)
   }
 
   func transcribe(
@@ -218,13 +227,10 @@ actor FluidAudioEngine {
     // What the diarizer heard, so a filter that quietly did nothing can be told
     // apart from one that decided not to.
     let speakers = Set(spans.map(\.speakerId)).count
-    Logger(subsystem: "codes.t3.voice", category: "speakers")
-      .info(
-        """
-        spans=\(spans.count, privacy: .public) speakers=\(speakers, privacy: .public) \
-        decision=\(String(describing: decision), privacy: .public)
-        """
-      )
+    VoiceDiagnostics.report(
+      "speakers",
+      "spans=\(spans.count) speakers=\(speakers) decision=\(String(describing: decision))"
+    )
 
     return decision
   }
