@@ -50,6 +50,7 @@ import {
   type GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
+import { terminalAnsiPaletteFromApp, terminalPromptColors } from "~/terminal/theme/ansiPalette";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { isTerminalLinkActivation, isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
 import {
@@ -191,11 +192,14 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
     "--terminal-selection-background",
     isDark ? "rgba(180, 203, 255, 0.25)" : "rgba(37, 63, 99, 0.2)",
   );
+  const resolvedBackground = parseTerminalColor(
+    terminalBackground,
+    isDark ? { r: 14, g: 18, b: 24 } : { r: 255, g: 255, b: 255 },
+  );
   return {
-    background: parseTerminalColor(
-      terminalBackground,
-      isDark ? { r: 14, g: 18, b: 24 } : { r: 255, g: 255, b: 255 },
-    ),
+    background: resolvedBackground,
+    palette: terminalAnsiPaletteFromApp(resolvedBackground),
+    ...terminalPromptColors(resolvedBackground),
     foreground: parseTerminalColor(
       terminalForeground,
       isDark ? { r: 237, g: 241, b: 247 } : { r: 28, g: 33, b: 41 },

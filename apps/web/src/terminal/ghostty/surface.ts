@@ -1727,6 +1727,10 @@ export class GhosttyTerminalSurface {
       ...(this.theme.selectionBackground !== undefined
         ? { selectionBackground: this.theme.selectionBackground }
         : {}),
+      ...(this.theme.promptBackground !== undefined
+        ? { promptBackground: this.theme.promptBackground }
+        : {}),
+      ...(this.theme.promptAccent !== undefined ? { promptAccent: this.theme.promptAccent } : {}),
     });
     this.positionInput();
     this.renderedCursorY =

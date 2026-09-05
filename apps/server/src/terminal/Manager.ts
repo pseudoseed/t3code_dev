@@ -53,6 +53,11 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as ServerConfig from "../config.ts";
 import {
+  applyShellIntegration,
+  materializeShellIntegration,
+  type ShellIntegrationPaths,
+} from "./shell-integration/index.ts";
+import {
   increment,
   terminalRestartsTotal,
   terminalSessionsTotal,
@@ -1152,6 +1157,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const logsDir = options.logsDir;
   const historyLineLimit = options.historyLineLimit ?? DEFAULT_HISTORY_LINE_LIMIT;
   const platform = yield* HostProcessPlatform;
+  // `terminalLogsDir` is `<state>/logs/terminals`, so two levels up is the
+  // environment's state directory; scripts are configuration, not logs, and a
+  // log rotation must not delete them. They are rewritten on every startup, so
+  // a wiped directory heals itself. A failure here only costs the
+  // prompt/input/output separation — terminals still spawn without it.
+  const shellIntegrationPaths: ShellIntegrationPaths | null = yield* materializeShellIntegration(
+    path.resolve(logsDir, "..", "..", "shell-integration"),
+    (...parts: string[]) => path.join(...parts),
+  ).pipe(Effect.orElseSucceed(() => null));
   // Terminals must inherit the user's full environment (minus the blocklist
   // applied in createTerminalSpawnEnv) — an allowlist here silently strips
   // things like PSModulePath, DISPLAY, proxies, and toolchain variables.
@@ -1803,14 +1817,29 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       );
     }
 
+    // Opt the shell into OSC 133 so the client can separate prompt, input, and
+    // output. Unsupported shells fall through with their original spawn.
+    const integration = shellIntegrationPaths
+      ? applyShellIntegration({
+          candidate,
+          env: spawnEnv,
+          platform,
+          paths: shellIntegrationPaths,
+        })
+      : null;
+
     const attempt = yield* Effect.result(
       options.ptyAdapter.spawn({
         shell: candidate.shell,
-        ...(candidate.args ? { args: candidate.args } : {}),
+        ...(integration
+          ? { args: integration.args }
+          : candidate.args
+            ? { args: candidate.args }
+            : {}),
         cwd: session.cwd,
         cols: session.cols,
         rows: session.rows,
-        env: spawnEnv,
+        env: integration ? integration.env : spawnEnv,
       }),
     );
 

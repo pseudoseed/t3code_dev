@@ -1,5 +1,6 @@
 import {
   GHOSTTY_CELL_WIDE,
+  GHOSTTY_ROW_SEMANTIC,
   ghosttyColorsEqual,
   type GhosttyCell,
   type GhosttyColor,
@@ -18,6 +19,8 @@ export interface GhosttyCellRange {
 }
 
 const DEFAULT_SELECTION_BACKGROUND = "rgba(72, 122, 191, 0.35)";
+/** Width of the accent bar drawn beside a prompt row, in CSS pixels. */
+const PROMPT_GUTTER_WIDTH = 2;
 
 function cssColor(color: GhosttyColor): string {
   return `rgb(${color.r}, ${color.g}, ${color.b})`;
@@ -103,6 +106,14 @@ export function renderGhosttySnapshot(options: {
   readonly previousCursorY?: number | null;
   readonly focused?: boolean;
   readonly selectionBackground?: string;
+  /**
+   * Band drawn behind rows the shell marked as prompt via OSC 133, and the
+   * accent bar beside them. Together they separate one command block from the
+   * next without touching the user's prompt. Omitted disables the treatment,
+   * which is also what happens for shells with no integration.
+   */
+  readonly promptBackground?: string;
+  readonly promptAccent?: string;
   readonly hoveredLinkRange?: GhosttyCellRange | null;
   /** Vertical origin of row 0; defaults to the horizontal padding. */
   readonly originY?: number;
@@ -120,6 +131,8 @@ export function renderGhosttySnapshot(options: {
   } = options;
   const focused = options.focused ?? true;
   const selectionBackground = options.selectionBackground ?? DEFAULT_SELECTION_BACKGROUND;
+  const promptBackground = options.promptBackground;
+  const promptAccent = options.promptAccent;
   const hoveredLinkRange = options.hoveredLinkRange ?? null;
   const originY = options.originY ?? padding;
   const rowsToDraw = forceFull
@@ -151,8 +164,24 @@ export function renderGhosttySnapshot(options: {
     if (!row) continue;
     const top = originY + rowIndex * metrics.height;
 
+    // Cleared from x=0 so the prompt gutter never keeps a stale accent bar when
+    // an output row scrolls into a position a prompt row used to hold.
+    const rowWidth = padding + snapshot.cols * metrics.width;
     context.fillStyle = cssColor(snapshot.background);
-    context.fillRect(padding, top, snapshot.cols * metrics.width, metrics.height);
+    context.fillRect(0, top, rowWidth, metrics.height);
+
+    // Painted before cell backgrounds so a program's own colors still win.
+    const semantic = row.semanticPrompt ?? GHOSTTY_ROW_SEMANTIC.none;
+    if (semantic !== GHOSTTY_ROW_SEMANTIC.none) {
+      if (promptBackground !== undefined) {
+        context.fillStyle = promptBackground;
+        context.fillRect(0, top, rowWidth, metrics.height);
+      }
+      if (promptAccent !== undefined && semantic === GHOSTTY_ROW_SEMANTIC.prompt) {
+        context.fillStyle = promptAccent;
+        context.fillRect(0, top, PROMPT_GUTTER_WIDTH, metrics.height);
+      }
+    }
 
     let backgroundStart = 0;
     while (backgroundStart < row.cells.length) {
