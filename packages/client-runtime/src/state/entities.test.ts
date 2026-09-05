@@ -229,6 +229,39 @@ describe("environment entity projections", () => {
     expect(merged?.messages).toBe(messages);
   });
 
+  it("takes the subagent override from the shell so a metadata edit is not masked by the cached detail", () => {
+    const detail = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      subagentModelSelection: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+    } satisfies OrchestrationThread & { readonly environmentId: EnvironmentId };
+    const shell = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      subagentModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5.4-mini",
+      },
+    };
+
+    expect(mergeEnvironmentThread(detail, shell)?.subagentModelSelection).toEqual({
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-5.4-mini",
+    });
+    // Clearing back to inherit has to survive the same way round.
+    expect(
+      mergeEnvironmentThread(
+        { ...detail, subagentModelSelection: shell.subagentModelSelection },
+        { ...shell, subagentModelSelection: null },
+      )?.subagentModelSelection,
+    ).toBeNull();
+  });
+
   it("preserves untouched project and thread identities across unrelated shell updates", () => {
     const harness = makeHarness();
     const projectRefsAtom = harness.projects.environmentProjectRefsAtom(ENVIRONMENT_ID);

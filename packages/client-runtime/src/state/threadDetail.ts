@@ -49,6 +49,13 @@ export function mergeEnvironmentThread(
     projectId: shell.projectId,
     title: shell.title,
     modelSelection: shell.modelSelection,
+    // Metadata edits never reach the detail subscription (see the server's
+    // isThreadDetailEvent), so a cached detail keeps whatever subagent override
+    // it was fetched with. The shell refetches on every thread event, so it is
+    // the only value that tracks the current thread.
+    ...(shell.subagentModelSelection !== undefined
+      ? { subagentModelSelection: shell.subagentModelSelection }
+      : {}),
     runtimeMode: shell.runtimeMode,
     interactionMode: shell.interactionMode,
     branch: shell.branch,
