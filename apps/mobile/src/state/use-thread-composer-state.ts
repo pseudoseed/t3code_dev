@@ -610,7 +610,13 @@ export function useThreadComposerState() {
     onSendMessage,
     onUpdateModelSelection,
     onUpdateSubagentModelSelection,
-    subagentModelSelection: selectedThread?.subagentModelSelection ?? null,
+    // Read from the shell, not the detail: metadata edits never reach the
+    // thread detail subscription, so the detail keeps whatever override it was
+    // fetched with and the row would stay on "Inherit" after every change.
+    subagentModelSelection:
+      selectedThreadShell && selectedThreadShell.subagentModelSelection !== undefined
+        ? selectedThreadShell.subagentModelSelection
+        : (selectedThread?.subagentModelSelection ?? null),
     onUpdateRuntimeMode,
     onUpdateInteractionMode,
   };
