@@ -39,3 +39,6 @@ export * from "./previewAutomation.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./usage.ts";
 export * from "./rpc.ts";
+
+// PseudoCode fork additions. Kept last so upstream merges land above them.
+export * from "./mcpServers.ts";

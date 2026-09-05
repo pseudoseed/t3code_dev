@@ -572,6 +572,7 @@ function GeneralSettingsSection() {
   return (
     <SettingsSection title="General">
       <SettingsRow icon="folder" label="Project Grouping" target="SettingsProjectGrouping" />
+      <SettingsRow icon="powerplug" label="MCP Servers" target="SettingsMcp" />
       <SidebarProjectSectionsSwitch />
       <AutoSettleSettingsRows />
       <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />

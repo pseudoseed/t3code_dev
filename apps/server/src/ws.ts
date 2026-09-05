@@ -105,6 +105,8 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+// PseudoCode fork addition.
+import * as ProviderMcpServers from "./mcp/ProviderMcpServers.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
@@ -2467,6 +2469,23 @@ const makeWsRpcLayer = (
             review.getDiffFileContents(input),
             { "rpc.aggregate": "review" },
           ),
+        // PseudoCode fork addition: per-instance MCP server management.
+        [WS_METHODS.mcpList]: (_input) =>
+          observeRpcEffect(WS_METHODS.mcpList, ProviderMcpServers.listMcpServers(), {
+            "rpc.aggregate": "mcp",
+          }),
+        [WS_METHODS.mcpAdd]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpAdd, ProviderMcpServers.addMcpServer(input), {
+            "rpc.aggregate": "mcp",
+          }),
+        [WS_METHODS.mcpRemove]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpRemove, ProviderMcpServers.removeMcpServer(input), {
+            "rpc.aggregate": "mcp",
+          }),
+        [WS_METHODS.mcpCopy]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpCopy, ProviderMcpServers.copyMcpServer(input), {
+            "rpc.aggregate": "mcp",
+          }),
         [WS_METHODS.terminalOpen]: (input) =>
           observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
             "rpc.aggregate": "terminal",
