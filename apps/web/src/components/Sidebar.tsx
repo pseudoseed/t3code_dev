@@ -831,6 +831,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   projectIcon: ProjectIconOverride | null;
   projectTitle: string | null;
   projectDisplayName: string | null;
+  /**
+   * False inside a project section: the section header already carries the
+   * project's favicon and name, so its rows drop both.
+   */
+  showsProjectTitle?: boolean;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -1061,6 +1066,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // that is every thread, which is the point: the glyph is what tells rows on
   // different machines apart.
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
+
+  const showsProjectTitle = props.showsProjectTitle !== false;
 
   const detailsTooltip = (
     <SidebarThreadTooltip
@@ -1367,22 +1374,24 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           >
             {/* Settled history recedes: dimmed favicon at rest, restored on
               hover so the tail stays scannable when you're hunting. */}
-            <span
-              className={cn(
-                "shrink-0 transition-opacity",
-                !props.isActive &&
-                  "opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
-              )}
-            >
-              <ProjectFavicon
-                environmentId={thread.environmentId}
-                cwd={props.projectCwd ?? ""}
-                projectName={props.projectTitle ?? ""}
-                faviconPath={props.projectFaviconPath}
-                projectIcon={props.projectIcon}
-                className="size-4"
-              />
-            </span>
+            {showsProjectTitle ? (
+              <span
+                className={cn(
+                  "shrink-0 transition-opacity",
+                  !props.isActive &&
+                    "opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+                )}
+              >
+                <ProjectFavicon
+                  environmentId={thread.environmentId}
+                  cwd={props.projectCwd ?? ""}
+                  projectName={props.projectTitle ?? ""}
+                  faviconPath={props.projectFaviconPath}
+                  projectIcon={props.projectIcon}
+                  className="size-4"
+                />
+              </span>
+            ) : null}
             {title}
             {pinIndicator}
             {terminalStatusIcon}
@@ -1530,15 +1539,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         >
           <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
-              <ProjectFavicon
-                environmentId={thread.environmentId}
-                cwd={props.projectCwd ?? ""}
-                projectName={props.projectTitle ?? ""}
-                faviconPath={props.projectFaviconPath}
-                projectIcon={props.projectIcon}
-                className="size-4 shrink-0"
-              />
-              {props.projectDisplayName ? (
+              {showsProjectTitle ? (
+                <ProjectFavicon
+                  environmentId={thread.environmentId}
+                  cwd={props.projectCwd ?? ""}
+                  projectName={props.projectTitle ?? ""}
+                  faviconPath={props.projectFaviconPath}
+                  projectIcon={props.projectIcon}
+                  className="size-4 shrink-0"
+                />
+              ) : null}
+              {showsProjectTitle && props.projectDisplayName ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -1753,6 +1764,7 @@ const SidebarProjectSection = memo(function SidebarProjectSection(props: {
   renderThreadRow: (
     thread: EnvironmentThreadShell,
     section: "pinned" | "active" | "snoozed" | "settled",
+    options?: { inProjectSection?: boolean },
   ) => ReactNode;
 }) {
   const { section, onToggleFlag, onShowMoreSettled, onNewThread, renderThreadRow } = props;
@@ -1858,7 +1870,9 @@ const SidebarProjectSection = memo(function SidebarProjectSection(props: {
         section.visibleSnoozed.length === 0 &&
         section.visibleSettled.length === 0 ? null : (
           <ul role="list" className="flex flex-col gap-px">
-            {section.activeThreads.map((thread) => renderThreadRow(thread, "active"))}
+            {section.activeThreads.map((thread) =>
+              renderThreadRow(thread, "active", { inProjectSection: true }),
+            )}
             {section.snoozedTotal > 0 && !section.collapsed ? (
               <li className="list-none" data-thread-selection-safe>
                 <button
@@ -1881,7 +1895,9 @@ const SidebarProjectSection = memo(function SidebarProjectSection(props: {
                 </button>
               </li>
             ) : null}
-            {section.visibleSnoozed.map((thread) => renderThreadRow(thread, "snoozed"))}
+            {section.visibleSnoozed.map((thread) =>
+              renderThreadRow(thread, "snoozed", { inProjectSection: true }),
+            )}
             {section.settledTotal > 0 && !section.collapsed ? (
               <li className="list-none" data-thread-selection-safe>
                 <button
@@ -1904,7 +1920,9 @@ const SidebarProjectSection = memo(function SidebarProjectSection(props: {
                 </button>
               </li>
             ) : null}
-            {section.visibleSettled.map((thread) => renderThreadRow(thread, "settled"))}
+            {section.visibleSettled.map((thread) =>
+              renderThreadRow(thread, "settled", { inProjectSection: true }),
+            )}
             {section.settledExpanded && !section.collapsed && section.hiddenSettledCount > 0 ? (
               <li className="list-none">
                 <button
@@ -4318,7 +4336,11 @@ export default function Sidebar() {
                   const renderThreadRow = (
                     thread: EnvironmentThreadShell,
                     section: "pinned" | "active" | "snoozed" | "settled",
-                    sortable?: SortablePinnedRowBag,
+                    options?: {
+                      sortable?: SortablePinnedRowBag;
+                      /** Rows under a project header inherit its identity. */
+                      inProjectSection?: boolean;
+                    },
                   ) => {
                     const threadKey = scopedThreadKey(
                       scopeThreadRef(thread.environmentId, thread.id),
@@ -4361,7 +4383,7 @@ export default function Sidebar() {
                             .threadPinning === true
                         }
                         isPinned={thread.pinnedAt != null}
-                        sortable={sortable}
+                        sortable={options?.sortable}
                         snoozeWakeLabelText={
                           section === "snoozed" && thread.snoozedUntil != null
                             ? snoozeWakeLabel(thread.snoozedUntil, {
@@ -4405,6 +4427,8 @@ export default function Sidebar() {
                             `${thread.environmentId}:${thread.projectId}`,
                           ) ?? null
                         }
+                        // The section header above already names the project.
+                        showsProjectTitle={options?.inProjectSection !== true}
                         providerEntryByInstanceId={
                           providerEntriesByEnvironment.get(thread.environmentId) ??
                           EMPTY_PROVIDER_ENTRIES
@@ -4479,7 +4503,7 @@ export default function Sidebar() {
                                 }
                                 return (
                                   <SortablePinnedThreadRow key={threadKey} id={threadKey}>
-                                    {(bag) => renderThreadRow(thread, "pinned", bag)}
+                                    {(bag) => renderThreadRow(thread, "pinned", { sortable: bag })}
                                   </SortablePinnedThreadRow>
                                 );
                               })}
