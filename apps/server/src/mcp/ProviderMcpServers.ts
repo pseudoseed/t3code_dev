@@ -20,11 +20,16 @@ import {
   McpInstanceNotFoundError,
   McpServerNotFoundError,
   type McpInstanceInventory,
+  type McpInventory,
+  type McpMutationResult,
   type McpMutationOutcome,
   type McpServerEntry,
   type ProviderInstanceId,
+  type ServerSettingsError,
 } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -38,6 +43,39 @@ import { ServerSettingsService } from "../serverSettings.ts";
 
 // The Claude driver registers itself as `claudeAgent`; `claude` is the CLI
 // name, not the driver kind. See Drivers/ClaudeDriver.ts.
+export class ProviderMcpServers extends Context.Service<
+  ProviderMcpServers,
+  {
+    readonly list: () => Effect.Effect<McpInventory, ServerSettingsError>;
+    readonly add: (input: {
+      readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
+      readonly name: string;
+      readonly json: string;
+    }) => Effect.Effect<
+      McpMutationResult,
+      McpCliUnavailableError | McpInstanceNotFoundError | ServerSettingsError
+    >;
+    readonly remove: (input: {
+      readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
+      readonly name: string;
+    }) => Effect.Effect<
+      McpMutationResult,
+      McpCliUnavailableError | McpInstanceNotFoundError | ServerSettingsError
+    >;
+    readonly copy: (input: {
+      readonly fromInstanceId: ProviderInstanceId;
+      readonly toInstanceIds: ReadonlyArray<ProviderInstanceId>;
+      readonly name: string;
+    }) => Effect.Effect<
+      McpMutationResult,
+      | McpCliUnavailableError
+      | McpInstanceNotFoundError
+      | McpServerNotFoundError
+      | ServerSettingsError
+    >;
+  }
+>()("t3/mcp/ProviderMcpServers") {}
+
 const CLAUDE_DRIVER_KIND = "claudeAgent";
 /** Decoder for the JSON blobs this module reads out of `.claude.json`. */
 const UnknownFromJsonString = Schema.fromJsonString(Schema.Unknown);
@@ -190,7 +228,7 @@ const readInstanceInventory = Effect.fn("ProviderMcpServers.readInstanceInventor
   };
 });
 
-export const listMcpServers = Effect.fn("ProviderMcpServers.list")(function* () {
+const listMcpServers = Effect.fn("ProviderMcpServers.list")(function* () {
   const instances = yield* resolveClaudeInstances();
   const inventories: Array<McpInstanceInventory> = [];
   for (const instance of instances) {
@@ -239,7 +277,7 @@ const runClaudeMcp = Effect.fn("ProviderMcpServers.runClaudeMcp")(function* (inp
  * sequence rather than in parallel: `claude mcp` rewrites a whole JSON file,
  * and two instances that share a home would race each other.
  */
-export const addMcpServer = Effect.fn("ProviderMcpServers.add")(function* (input: {
+const addMcpServer = Effect.fn("ProviderMcpServers.add")(function* (input: {
   readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
   readonly name: string;
   readonly json: string;
@@ -295,7 +333,7 @@ const readRawServerDefinition = Effect.fn("ProviderMcpServers.readRawServerDefin
  * configured a server once, in a terminal or in Claude Desktop, and want the
  * other accounts to match without retyping credentials.
  */
-export const copyMcpServer = Effect.fn("ProviderMcpServers.copy")(function* (input: {
+const copyMcpServer = Effect.fn("ProviderMcpServers.copy")(function* (input: {
   readonly fromInstanceId: ProviderInstanceId;
   readonly toInstanceIds: ReadonlyArray<ProviderInstanceId>;
   readonly name: string;
@@ -317,7 +355,7 @@ export const copyMcpServer = Effect.fn("ProviderMcpServers.copy")(function* (inp
   return { outcomes };
 });
 
-export const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* (input: {
+const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* (input: {
   readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
   readonly name: string;
 }) {
@@ -330,3 +368,27 @@ export const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* 
   }
   return { outcomes };
 });
+
+export const make = Effect.fn("ProviderMcpServers.make")(function* () {
+  // Captured once so the service's operations carry no requirements of their
+  // own. `ProcessRunner` in particular must stop here: leaking it upward puts
+  // it in the context of every RPC handler and, from there, the whole server.
+  const context = yield* Effect.context<
+    | FileSystem.FileSystem
+    | Path.Path
+    | ProcessRunner.ProcessRunner
+    | ServerConfig
+    | ServerSettingsService
+  >();
+
+  // Every operation re-reads settings. Accounts are added and signed out while
+  // the app runs, and this backs a settings page, not a hot path.
+  return ProviderMcpServers.of({
+    list: () => listMcpServers().pipe(Effect.provide(context)),
+    add: (input) => addMcpServer(input).pipe(Effect.provide(context)),
+    remove: (input) => removeMcpServer(input).pipe(Effect.provide(context)),
+    copy: (input) => copyMcpServer(input).pipe(Effect.provide(context)),
+  });
+});
+
+export const layer = Layer.effect(ProviderMcpServers, make());

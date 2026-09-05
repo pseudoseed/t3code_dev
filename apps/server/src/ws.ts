@@ -467,6 +467,7 @@ const makeWsRpcLayer = (
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
+  providerMcpServers: ProviderMcpServers.ProviderMcpServers["Service"],
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -2471,19 +2472,19 @@ const makeWsRpcLayer = (
           ),
         // PseudoCode fork addition: per-instance MCP server management.
         [WS_METHODS.mcpList]: (_input) =>
-          observeRpcEffect(WS_METHODS.mcpList, ProviderMcpServers.listMcpServers(), {
+          observeRpcEffect(WS_METHODS.mcpList, providerMcpServers.list(), {
             "rpc.aggregate": "mcp",
           }),
         [WS_METHODS.mcpAdd]: (input) =>
-          observeRpcEffect(WS_METHODS.mcpAdd, ProviderMcpServers.addMcpServer(input), {
+          observeRpcEffect(WS_METHODS.mcpAdd, providerMcpServers.add(input), {
             "rpc.aggregate": "mcp",
           }),
         [WS_METHODS.mcpRemove]: (input) =>
-          observeRpcEffect(WS_METHODS.mcpRemove, ProviderMcpServers.removeMcpServer(input), {
+          observeRpcEffect(WS_METHODS.mcpRemove, providerMcpServers.remove(input), {
             "rpc.aggregate": "mcp",
           }),
         [WS_METHODS.mcpCopy]: (input) =>
-          observeRpcEffect(WS_METHODS.mcpCopy, ProviderMcpServers.copyMcpServer(input), {
+          observeRpcEffect(WS_METHODS.mcpCopy, providerMcpServers.copy(input), {
             "rpc.aggregate": "mcp",
           }),
         [WS_METHODS.terminalOpen]: (input) =>
@@ -2782,6 +2783,7 @@ const makeWsRpcLayer = (
 export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+    const providerMcpServers = yield* ProviderMcpServers.ProviderMcpServers;
     const baseServerSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const config = yield* ServerConfig.ServerConfig;
     const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
@@ -2842,6 +2844,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               clientOrigin,
               clientAnalyticsProps,
               previewAutomationBroker,
+              providerMcpServers,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(ProviderMaintenanceRunner.layer),
