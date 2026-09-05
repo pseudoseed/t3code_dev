@@ -10,6 +10,8 @@ import { GhosttyRuntime, loadGhosttyRuntime } from "./runtime";
 const GHOSTTY_SUCCESS = 0;
 const GHOSTTY_OUT_OF_SPACE = -3;
 const MAX_SCROLLBACK_ROWS = 10_000;
+/** Entry count libghostty requires for GHOSTTY_TERMINAL_OPT_COLOR_PALETTE. */
+const GHOSTTY_PALETTE_ENTRIES = 256;
 // wasm32 C ABI layout for GhosttyTerminalSelectionFormatOptions at the
 // libghostty-vt revision pinned alongside this module.
 const SELECTION_FORMAT_OPTIONS_SIZE = 16;
@@ -51,6 +53,19 @@ const RAW_CELL_DATA = {
   wide: 3,
 } as const;
 
+/**
+ * Row-level OSC 133 state. Shells that opt into shell integration mark their
+ * prompt rows, which is what separates one command block from the next.
+ */
+export const GHOSTTY_ROW_SEMANTIC = {
+  none: 0,
+  prompt: 1,
+  promptContinuation: 2,
+} as const;
+
+/** `GHOSTTY_ROW_DATA_SEMANTIC_PROMPT`. */
+const ROW_DATA_SEMANTIC_PROMPT = 6;
+
 export const GHOSTTY_CELL_WIDE = {
   narrow: 0,
   wide: 1,
@@ -70,6 +85,17 @@ export interface GhosttyTheme {
   readonly cursor: GhosttyColor;
   /** CSS color the renderer overlays on selected cells; not sent to Ghostty. */
   readonly selectionBackground?: string;
+  /**
+   * Default 256-color palette. Omitted leaves Ghostty's built-in palette, which
+   * assumes a dark background. See `~/terminal/theme/ansiPalette`.
+   */
+  readonly palette?: readonly GhosttyColor[];
+  /**
+   * CSS colors for the band and accent bar the renderer draws on rows the shell
+   * marked as prompt via OSC 133. Not sent to Ghostty.
+   */
+  readonly promptBackground?: string;
+  readonly promptAccent?: string;
 }
 
 export interface GhosttyCell {
@@ -92,6 +118,11 @@ export interface GhosttyRow {
   readonly isWrapContinuation: boolean;
   /** Whether this row soft-wraps onto the next row. */
   readonly wrapsToNext: boolean;
+  /**
+   * One of `GHOSTTY_ROW_SEMANTIC`. Optional so callers that build rows by hand
+   * (tests, blank-row fills) do not have to care; absent means `none`.
+   */
+  readonly semanticPrompt?: number;
 }
 
 export interface GhosttySnapshot {
@@ -385,6 +416,27 @@ export class GhosttyTerminalCore {
       this.runtime.call("ghostty_terminal_set", this.terminal, option, color);
     }
     this.runtime.free(color, 3);
+    this.setPalette(theme.palette);
+  }
+
+  /**
+   * Writes the default 256-color palette (option 14). Ghostty preserves any
+   * per-index OSC 4 override a program has applied, so this only moves slots
+   * the running program has not claimed.
+   */
+  private setPalette(palette: readonly GhosttyColor[] | undefined): void {
+    if (!palette || palette.length !== GHOSTTY_PALETTE_ENTRIES) return;
+    const size = GHOSTTY_PALETTE_ENTRIES * 3;
+    const pointer = this.runtime.alloc(size);
+    const bytes = this.runtime.bytes(pointer, size);
+    for (let index = 0; index < GHOSTTY_PALETTE_ENTRIES; index += 1) {
+      const entry = palette[index]!;
+      bytes[index * 3] = entry.r;
+      bytes[index * 3 + 1] = entry.g;
+      bytes[index * 3 + 2] = entry.b;
+    }
+    this.runtime.call("ghostty_terminal_set", this.terminal, 14, pointer);
+    this.runtime.free(pointer, size);
   }
 
   scroll(deltaRows: number): void {
@@ -742,6 +794,7 @@ export class GhosttyTerminalCore {
         text: "",
         isWrapContinuation: false,
         wrapsToNext: false,
+        semanticPrompt: GHOSTTY_ROW_SEMANTIC.none,
       }));
     }
 
@@ -933,6 +986,14 @@ export class GhosttyTerminalCore {
       this.runtime.call("ghostty_row_get", rawRow, 1, this.scratch + 8),
     );
     const wrapsToNext = this.runtime.bytes(this.scratch + 8, 1)[0] !== 0;
+    this.runtime.bytes(this.scratch + 8, 1)[0] = GHOSTTY_ROW_SEMANTIC.none;
+    // Older artifacts predate the accessor, so a failure means "no markers"
+    // rather than a broken frame.
+    const semanticPrompt =
+      this.runtime.call("ghostty_row_get", rawRow, ROW_DATA_SEMANTIC_PROMPT, this.scratch + 8) ===
+      GHOSTTY_SUCCESS
+        ? this.runtime.bytes(this.scratch + 8, 1)[0]!
+        : GHOSTTY_ROW_SEMANTIC.none;
 
     this.assertSuccess(
       "ghostty_render_state_row_get(cells)",
@@ -1027,6 +1088,7 @@ export class GhosttyTerminalCore {
         .trimEnd(),
       isWrapContinuation,
       wrapsToNext,
+      semanticPrompt,
     };
   }
 

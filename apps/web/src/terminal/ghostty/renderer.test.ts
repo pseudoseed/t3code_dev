@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { GHOSTTY_CELL_WIDE, type GhosttyCell, type GhosttySnapshot } from "./core";
+import {
+  GHOSTTY_CELL_WIDE,
+  GHOSTTY_ROW_SEMANTIC,
+  type GhosttyCell,
+  type GhosttySnapshot,
+} from "./core";
 import {
   ghosttyTextRunEnd,
   measureGhosttyCell,
@@ -281,5 +286,93 @@ describe("renderGhosttySnapshot", () => {
     });
 
     expect(clearedRows).toEqual([4, 36, 36]);
+  });
+});
+
+describe("renderGhosttySnapshot prompt rows", () => {
+  const promptSnapshot = (semantics: readonly number[]): GhosttySnapshot => ({
+    cols: 2,
+    rows: semantics.length,
+    foreground: { r: 255, g: 255, b: 255 },
+    background: { r: 0, g: 0, b: 0 },
+    cursor: { r: 255, g: 255, b: 255 },
+    cursorX: -1,
+    cursorY: -1,
+    cursorVisible: false,
+    cursorBlinking: false,
+    cursorStyle: 1,
+    dirtyRows: new Set(semantics.map((_, index) => index)),
+    rowData: semantics.map((semanticPrompt) => ({
+      cells: [cell("a"), cell("b")],
+      text: "ab",
+      isWrapContinuation: false,
+      wrapsToNext: false,
+      semanticPrompt,
+    })),
+  });
+
+  function render(semantics: readonly number[], colors: Record<string, string> = {}) {
+    const fills: Array<{ style: string; rect: number[] }> = [];
+    let style = "";
+    const context = {
+      canvas: { width: 200, height: 80 },
+      beginPath: () => {},
+      clip: () => {},
+      fillRect: (...rect: number[]) => fills.push({ style, rect }),
+      fillText: () => {},
+      rect: () => {},
+      resetTransform: () => {},
+      restore: () => {},
+      save: () => {},
+      set fillStyle(value: string) {
+        style = value;
+      },
+      set font(_value: string) {},
+      set textBaseline(_value: string) {},
+    } as unknown as CanvasRenderingContext2D;
+
+    renderGhosttySnapshot({
+      context,
+      snapshot: promptSnapshot(semantics),
+      metrics: { width: 10, height: 20, baseline: 15 },
+      fontSize: 12,
+      fontFamily: "monospace",
+      padding: 4,
+      forceFull: false,
+      cursorOn: false,
+      ...colors,
+    });
+    return fills;
+  }
+
+  it("bands prompt rows and leaves output rows on the plain background", () => {
+    const fills = render([GHOSTTY_ROW_SEMANTIC.prompt, GHOSTTY_ROW_SEMANTIC.none], {
+      promptBackground: "rgba(0, 0, 255, 0.07)",
+      promptAccent: "rgb(0, 0, 255)",
+    });
+    const banded = fills.filter((fill) => fill.style === "rgba(0, 0, 255, 0.07)");
+    expect(banded).toEqual([{ style: "rgba(0, 0, 255, 0.07)", rect: [0, 4, 24, 20] }]);
+    // The accent bar sits in the left padding, beside the prompt row only.
+    const accents = fills.filter((fill) => fill.style === "rgb(0, 0, 255)");
+    expect(accents).toEqual([{ style: "rgb(0, 0, 255)", rect: [0, 4, 2, 20] }]);
+  });
+
+  it("clears each row from x=0 so a scrolled-away accent bar cannot linger", () => {
+    const fills = render([GHOSTTY_ROW_SEMANTIC.none]);
+    expect(fills[0]).toEqual({ style: "rgb(0, 0, 0)", rect: [0, 4, 24, 20] });
+  });
+
+  it("gives a continuation row the band but no accent bar", () => {
+    const fills = render([GHOSTTY_ROW_SEMANTIC.promptContinuation], {
+      promptBackground: "rgba(0, 0, 255, 0.07)",
+      promptAccent: "rgb(0, 0, 255)",
+    });
+    expect(fills.some((fill) => fill.style === "rgba(0, 0, 255, 0.07)")).toBe(true);
+    expect(fills.some((fill) => fill.style === "rgb(0, 0, 255)")).toBe(false);
+  });
+
+  it("draws nothing extra when the shell has no integration", () => {
+    const fills = render([GHOSTTY_ROW_SEMANTIC.prompt]);
+    expect(fills.every((fill) => fill.style === "rgb(0, 0, 0)")).toBe(true);
   });
 });
