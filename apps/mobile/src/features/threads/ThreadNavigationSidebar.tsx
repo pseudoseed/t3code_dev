@@ -979,6 +979,8 @@ function ThreadNavigationSidebarPane(
                   item.pendingTask.message.environmentId,
                 )}
                 pane="sidebar"
+                // The header above already names the project.
+                showsProjectTitle={!inSection}
                 showPendingDivider={item.showPendingDivider}
                 onSelectPendingTask={openPendingTask}
                 onDeletePendingTask={confirmDeletePendingTask}

@@ -327,6 +327,8 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   /** Drawn beside the label; ignored while the label is null. */
   readonly environmentMachine?: EnvironmentMachineKind;
   readonly pane?: "screen" | "sidebar";
+  /** False inside a project section: its header already names the project. */
+  readonly showsProjectTitle?: boolean;
   /** Draws the "Pending" divider above the first queued row. */
   readonly showPendingDivider: boolean;
   /** Keeps row hairlines inside a section; section headers draw their own rule. */
@@ -338,6 +340,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const sidebarPane = props.pane === "sidebar";
   const projectTitle =
     props.projectTitle ?? props.project?.title ?? pendingTask.creation.projectTitle ?? "";
+  const showsProjectTitle = props.showsProjectTitle !== false;
   const branch = pendingTask.creation.branch;
 
   const handleMenuAction = useCallback(
@@ -350,7 +353,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const rowContent = (
     <>
       <View className="flex-row items-center gap-1.5">
-        {props.project ? (
+        {props.project && showsProjectTitle ? (
           <ProjectFavicon
             environmentId={pendingTask.message.environmentId}
             faviconPath={props.project.faviconPath}
@@ -360,7 +363,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
           />
         ) : null}
         <Text className="flex-1 text-sm font-t3-medium text-foreground-muted" numberOfLines={1}>
-          {projectTitle}
+          {showsProjectTitle ? projectTitle : ""}
         </Text>
         <Text className="text-xs text-foreground-tertiary">Queued</Text>
       </View>
