@@ -31,6 +31,7 @@ export {
   type PreferredSpelling,
   type PreparedVoiceCleanup,
   type VoiceCleanup,
+  type VoiceCleanupResult,
   type VoiceCorrections,
 } from "./cleanup.ts";
 export {

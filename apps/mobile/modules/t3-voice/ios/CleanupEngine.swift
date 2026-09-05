@@ -48,7 +48,7 @@ final class CleanupEngine: @unchecked Sendable {
   /// that has stopped rewriting and started talking.
   private static let maximumOutputTokens = 1_024
 
-  private typealias TextContinuation = CheckedContinuation<String, Error>
+  private typealias RewriteContinuation = CheckedContinuation<LlamaCleanupSession.Rewrite, Error>
 
   private let queue = DispatchQueue(label: "codes.t3.voice.cleanup", qos: .userInitiated)
   private let cancellation = CancellationFlag()
@@ -89,12 +89,21 @@ final class CleanupEngine: @unchecked Sendable {
     }
   }
 
-  func clean(transcript: String, systemPrompt: String, timeout: TimeInterval) async throws -> String {
+  /// Rewrites one transcript, reporting whether the model finished it.
+  ///
+  /// An unfinished rewrite is still returned rather than thrown away here. The
+  /// caller decides what to do with it, and the only honest thing to say about
+  /// it is that it stops wherever generation ran out of tokens or time.
+  func clean(
+    transcript: String,
+    systemPrompt: String,
+    timeout: TimeInterval
+  ) async throws -> LlamaCleanupSession.Rewrite {
     cancellation.reset()
     let deadline = Date().addingTimeInterval(timeout)
 
     let output = try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { (continuation: TextContinuation) in
+      try await withCheckedThrowingContinuation { (continuation: RewriteContinuation) in
         queue.async {
           guard let session = self.session else {
             continuation.resume(
@@ -104,14 +113,14 @@ final class CleanupEngine: @unchecked Sendable {
           }
 
           do {
-            let text = try session.generate(
+            let rewrite = try session.generate(
               systemPrompt: systemPrompt,
               transcript: transcript,
               maximumOutputTokens: Self.maximumOutputTokens,
               deadline: deadline,
               shouldStop: { self.cancellation.isStopped }
             )
-            continuation.resume(returning: text)
+            continuation.resume(returning: rewrite)
           } catch {
             continuation.resume(throwing: error)
           }
@@ -122,7 +131,17 @@ final class CleanupEngine: @unchecked Sendable {
     }
 
     try Task.checkCancellation()
-    return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !output.isComplete {
+      VoiceDiagnostics.report(
+        "cleanup",
+        "rewrite stopped early: characters=\(output.text.count) transcript=\(transcript.count)"
+      )
+    }
+
+    return LlamaCleanupSession.Rewrite(
+      text: output.text.trimmingCharacters(in: .whitespacesAndNewlines),
+      isComplete: output.isComplete
+    )
   }
 
   /// Releases the resident model. This is the larger of the two models we hold,

@@ -586,10 +586,11 @@ export class VoiceInputController {
   /**
    * Runs the cleanup stage, degrading to the raw transcript rather than failing.
    *
-   * Every exit lands on text. A throw, a cancel, a timeout, an empty result,
-   * and a result whose length says the model answered the transcript instead of
-   * rewriting it all commit what the user actually said. Cleanup is an
-   * improvement on the transcript; it is never a gate on getting one.
+   * Every exit lands on text. A throw, a cancel, a rewrite the model never
+   * finished, an empty result, and a result whose length says the model
+   * answered the transcript instead of rewriting it all commit what the user
+   * actually said. Cleanup is an improvement on the transcript; it is never a
+   * gate on getting one, and it never silently shortens one.
    *
    * The timeout is enforced by the implementation rather than here. Generation
    * stops between tokens, so only the side running it can end a run early; a

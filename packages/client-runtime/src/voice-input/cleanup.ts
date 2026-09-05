@@ -11,9 +11,25 @@
 
 import type { VoiceTranscriptionOptions } from "./transcription.ts";
 
+/**
+ * One rewrite, and whether the model reached the end of it.
+ *
+ * `complete` is false when generation stopped at the output cap or the timeout
+ * instead of at the model's own end of turn. The text that comes back then is a
+ * rewrite of everything up to wherever it stopped, so what is missing is always
+ * the end of what the user said.
+ */
+export type VoiceCleanupResult = {
+  readonly text: string;
+  readonly complete: boolean;
+};
+
 /** Binds a loaded cleanup model to the call that rewrites one transcript. */
 export type PreparedVoiceCleanup = {
-  readonly clean: (transcript: string, options: VoiceTranscriptionOptions) => Promise<string>;
+  readonly clean: (
+    transcript: string,
+    options: VoiceTranscriptionOptions,
+  ) => Promise<VoiceCleanupResult>;
 };
 
 export type VoiceCleanup = {
@@ -83,7 +99,7 @@ const CLEANUP_RATIO_MINIMUM_LENGTH = 24;
 const CLEANUP_MINIMUM_RATIO = 0.6;
 const CLEANUP_MAXIMUM_RATIO = 1.6;
 
-export type CleanupDegradeReason = "failed" | "cancelled" | "empty" | "length-ratio";
+export type CleanupDegradeReason = "failed" | "cancelled" | "empty" | "incomplete" | "length-ratio";
 
 export type CleanupOutcome =
   | { readonly kind: "cleaned"; readonly text: string }
@@ -97,13 +113,22 @@ export type CleanupOutcome =
  * translate it, or return an apology. All three are longer or shorter than the
  * input by a wide margin, which is what the ratio catches. Degrading is always
  * safe: the raw transcript is what the user actually said.
+ *
+ * A rewrite the model did not finish is thrown away whole rather than measured.
+ * It reads as a complete message that stops mid-sentence, and the ratio cannot
+ * see that: a rewrite cut a sentence or two from the end still lands well
+ * inside the band, so it would be committed as if the user never said the rest.
  */
-export function resolveCleanupOutcome(raw: string, cleaned: string): CleanupOutcome {
+export function resolveCleanupOutcome(raw: string, cleaned: VoiceCleanupResult): CleanupOutcome {
   const trimmedRaw = raw.trim();
-  const trimmedCleaned = cleaned.trim();
+  const trimmedCleaned = cleaned.text.trim();
 
   if (trimmedCleaned.length === 0) {
     return { kind: "raw", text: trimmedRaw, reason: "empty" };
+  }
+
+  if (!cleaned.complete) {
+    return { kind: "raw", text: trimmedRaw, reason: "incomplete" };
   }
 
   if (trimmedRaw.length >= CLEANUP_RATIO_MINIMUM_LENGTH) {
