@@ -14,6 +14,7 @@ import {
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
+  PlugIcon,
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
@@ -54,6 +55,8 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/appearance": PaletteIcon,
   "/settings/keybindings": KeyboardIcon,
   "/settings/providers": BotIcon,
+  // PseudoCode fork addition.
+  "/settings/mcp": PlugIcon,
   "/settings/integrations": BlocksIcon,
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,

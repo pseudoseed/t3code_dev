@@ -59,6 +59,8 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+// PseudoCode fork addition.
+import * as ProviderMcpServers from "./mcp/ProviderMcpServers.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -569,6 +571,8 @@ export const makeRoutesLayer = Layer.mergeAll(
   Layer.provide(PullRequestServiceLive),
   Layer.provide(IssueServiceLive),
   Layer.provide(PreviewAutomationBroker.layer),
+  // PseudoCode fork addition: shells out to `claude mcp`, so it owns its runner.
+  Layer.provide(ProviderMcpServers.layer.pipe(Layer.provide(ProcessRunner.layer))),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(DesktopAppUpdateLayerLive))),
   Layer.provide(commandReadinessLayer),
   Layer.provide(browserApiCorsLayer),

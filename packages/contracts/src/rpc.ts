@@ -167,6 +167,15 @@ import {
   TerminalSessionSnapshot,
   TerminalWriteInput,
 } from "./terminal.ts";
+// PseudoCode fork addition.
+import {
+  McpAddInput,
+  McpCopyInput,
+  McpError,
+  McpInventory,
+  McpMutationResult,
+  McpRemoveInput,
+} from "./mcpServers.ts";
 import {
   DiscoveredLocalServerList,
   ConfiguredLocalServerUrls,
@@ -313,6 +322,12 @@ export const WS_METHODS = {
   previewAutomationFocusHost: "previewAutomation.focusHost",
 
   // Server meta
+  // PseudoCode fork addition: per-instance MCP server management.
+  mcpList: "mcp.list",
+  mcpAdd: "mcp.add",
+  mcpRemove: "mcp.remove",
+  mcpCopy: "mcp.copy",
+
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
@@ -1228,6 +1243,31 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
   stream: true,
 });
 
+// PseudoCode fork addition.
+export const WsMcpListRpc = Rpc.make(WS_METHODS.mcpList, {
+  payload: Schema.Struct({}),
+  success: McpInventory,
+  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpAddRpc = Rpc.make(WS_METHODS.mcpAdd, {
+  payload: McpAddInput,
+  success: McpMutationResult,
+  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpRemoveRpc = Rpc.make(WS_METHODS.mcpRemove, {
+  payload: McpRemoveInput,
+  success: McpMutationResult,
+  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpCopyRpc = Rpc.make(WS_METHODS.mcpCopy, {
+  payload: McpCopyInput,
+  success: McpMutationResult,
+  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -1352,4 +1392,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  // PseudoCode fork additions. Kept last so upstream merges land above them.
+  WsMcpListRpc,
+  WsMcpAddRpc,
+  WsMcpRemoveRpc,
+  WsMcpCopyRpc,
 );
