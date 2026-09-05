@@ -12,18 +12,37 @@ import {
 } from "./cleanup.ts";
 
 describe("resolveCleanupOutcome", () => {
+  const finished = (text: string) => ({ text, complete: true });
+
   it("keeps a cleaned transcript of a plausible length", () => {
     const raw = "um so i think we should fix the thing in the composer";
     const cleaned = "So I think we should fix the thing in the composer.";
 
-    expect(resolveCleanupOutcome(raw, cleaned)).toEqual({ kind: "cleaned", text: cleaned });
+    expect(resolveCleanupOutcome(raw, finished(cleaned))).toEqual({
+      kind: "cleaned",
+      text: cleaned,
+    });
   });
 
   it("degrades when the model returns nothing", () => {
-    expect(resolveCleanupOutcome("the quick brown fox jumped", "   ")).toEqual({
+    expect(resolveCleanupOutcome("the quick brown fox jumped", finished("   "))).toEqual({
       kind: "raw",
       text: "the quick brown fox jumped",
       reason: "empty",
+    });
+  });
+
+  it("degrades when the model stopped before finishing the rewrite", () => {
+    const raw =
+      "um so add a retry button to the connection settings screen and then tell me when it lands";
+    // Long enough that the ratio alone reads it as a normal rewrite: only the
+    // last clause is missing.
+    const truncated = "So add a retry button to the connection settings screen and then";
+
+    expect(resolveCleanupOutcome(raw, { text: truncated, complete: false })).toEqual({
+      kind: "raw",
+      text: raw,
+      reason: "incomplete",
     });
   });
 
@@ -32,7 +51,7 @@ describe("resolveCleanupOutcome", () => {
     const answered =
       "The capital of France is Paris, a city on the Seine with a population of over two million people in the city proper.";
 
-    expect(resolveCleanupOutcome(raw, answered)).toMatchObject({
+    expect(resolveCleanupOutcome(raw, finished(answered))).toMatchObject({
       kind: "raw",
       text: raw,
       reason: "length-ratio",
@@ -42,14 +61,14 @@ describe("resolveCleanupOutcome", () => {
   it("degrades when the model dropped most of the transcript", () => {
     const raw = "add a retry button to the connection settings screen please";
 
-    expect(resolveCleanupOutcome(raw, "Add a retry.")).toMatchObject({
+    expect(resolveCleanupOutcome(raw, finished("Add a retry."))).toMatchObject({
       kind: "raw",
       reason: "length-ratio",
     });
   });
 
   it("does not apply the ratio to short transcripts that legitimately change length", () => {
-    expect(resolveCleanupOutcome("um yeah ok", "Yeah, OK.")).toEqual({
+    expect(resolveCleanupOutcome("um yeah ok", finished("Yeah, OK."))).toEqual({
       kind: "cleaned",
       text: "Yeah, OK.",
     });

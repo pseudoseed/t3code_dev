@@ -2,6 +2,7 @@ import { requireOptionalNativeModule } from "expo-modules-core";
 import { Platform } from "react-native";
 
 import type {
+  VoiceCleanupResult,
   VoiceModelBackend,
   VoiceModelEnvironment,
   VoiceTranscriptionResult,
@@ -49,7 +50,7 @@ type T3VoiceNativeModule = {
     text: string,
     systemPrompt: string,
     timeoutMs: number,
-  ): Promise<string>;
+  ): Promise<VoiceCleanupResult>;
   evictModels(): Promise<void>;
   cancel(operationId: string): Promise<void>;
   downloadModel(request: {
@@ -161,7 +162,7 @@ export function cleanupWithModel(
   text: string,
   systemPrompt: string,
   timeoutMs: number,
-): Promise<string> {
+): Promise<VoiceCleanupResult> {
   if (!nativeModule) throw new Error("Local voice models are unavailable on this platform.");
   return nativeModule.cleanup(operationId, text, systemPrompt, timeoutMs);
 }

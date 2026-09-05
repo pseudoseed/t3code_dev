@@ -12,7 +12,7 @@ import {
 } from "./controller.ts";
 import type { PendingVoiceTranscript } from "./controller.ts";
 import type { DictationAnchor } from "./learning.ts";
-import type { PreparedVoiceCleanup, VoiceCleanup } from "./cleanup.ts";
+import type { PreparedVoiceCleanup, VoiceCleanup, VoiceCleanupResult } from "./cleanup.ts";
 import {
   resolveSpeakerFilteringNotice,
   type PreparedVoiceTranscription,
@@ -581,6 +581,7 @@ describe("VoiceInputController cleanup stage", () => {
   beforeEach(() => resetVoiceInputGlobalsForTests());
 
   const RAW = "um so add a retry button to the connection settings screen";
+  const rewrote = async (text: string) => ({ text, complete: true });
 
   function cleanupHarness(clean: PreparedVoiceCleanup["clean"]) {
     const phases: string[] = [];
@@ -614,7 +615,7 @@ describe("VoiceInputController cleanup stage", () => {
   }
 
   it("commits the cleaned transcript and reports a cleaning phase while it runs", async () => {
-    const harness = cleanupHarness(async () => "Add a retry button to the connection settings.");
+    const harness = cleanupHarness(() => rewrote("Add a retry button to the connection settings."));
     await recordAndStop(harness);
 
     expect(harness.phases).toEqual(["preparing", "recording", "transcribing", "cleaning", "idle"]);
@@ -627,7 +628,7 @@ describe("VoiceInputController cleanup stage", () => {
   });
 
   it("persists the raw transcript before cleanup and clears it once the app has responded", async () => {
-    const harness = cleanupHarness(async () => "Add a retry button to the connection settings.");
+    const harness = cleanupHarness(() => rewrote("Add a retry button to the connection settings."));
     await recordAndStop(harness);
 
     expect(harness.persisted).toEqual([{ ownerKey: "environment:thread", revision: 1, text: RAW }]);
@@ -645,10 +646,24 @@ describe("VoiceInputController cleanup stage", () => {
     ]);
   });
 
+  it("commits the raw transcript when the model stopped before finishing the rewrite", async () => {
+    const harness = cleanupHarness(async () => ({
+      // Plausible length, missing the end: only the model knows it stopped.
+      text: "Add a retry button to the connection",
+      complete: false,
+    }));
+    await recordAndStop(harness);
+
+    expect(harness.commits).toEqual([
+      { text: `hello ${RAW}`, selection: { start: 6 + RAW.length, end: 6 + RAW.length } },
+    ]);
+  });
+
   it("commits the raw transcript when the model answers instead of rewriting", async () => {
-    const harness = cleanupHarness(
-      async () =>
+    const harness = cleanupHarness(() =>
+      rewrote(
         "Sure! Here is a plan for adding a retry button, including where to put it, what to call it, and how to wire up the handler.",
+      ),
     );
     await recordAndStop(harness);
 
@@ -658,7 +673,7 @@ describe("VoiceInputController cleanup stage", () => {
   });
 
   it("keeps the raw transcript when the user cancels the rewrite", async () => {
-    const cleaning = deferred<string>();
+    const cleaning = deferred<VoiceCleanupResult>();
     const cleaningEntered = deferred<AbortSignal>();
     const harness = cleanupHarness((_transcript, { signal }) => {
       cleaningEntered.resolve(signal);
@@ -681,7 +696,7 @@ describe("VoiceInputController cleanup stage", () => {
   });
 
   it("drops the transcript when the draft owner changes during the rewrite", async () => {
-    const cleaning = deferred<string>();
+    const cleaning = deferred<VoiceCleanupResult>();
     const cleaningEntered = deferred<AbortSignal>();
     const harness = cleanupHarness((_transcript, { signal }) => {
       cleaningEntered.resolve(signal);
@@ -859,9 +874,9 @@ describe("backgrounding after the recording is made", () => {
       const entered = deferred<void>();
       const cleanup: VoiceCleanup = {
         prepare: async () => ({
-          clean: () => {
+          clean: async () => {
             entered.resolve();
-            return work.promise;
+            return { text: await work.promise, complete: true };
           },
         }),
       };

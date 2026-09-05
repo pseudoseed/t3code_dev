@@ -133,10 +133,18 @@ multi-hundred-megabyte model, and an allocation that gets the app jetsam-killed 
 catch. On the next launch the record is offered back into the draft it belongs to, matched on owner,
 and discarded once the user accepts or dismisses it.
 
-Cleanup degrades to the raw transcript on a throw, a cancel, a timeout, empty output, or an
-output-to-input length ratio outside a defined band. A local model given a transcript it does not
-understand will answer it, translate it, or apologize; all three miss the ratio. The timeout is
-enforced natively, between generated tokens, because nothing in JS can interrupt a running model.
+Cleanup degrades to the raw transcript on a throw, a cancel, a rewrite the model never finished,
+empty output, or an output-to-input length ratio outside a defined band. A local model given a
+transcript it does not understand will answer it, translate it, or apologize; all three miss the
+ratio. The timeout is enforced natively, between generated tokens, because nothing in JS can
+interrupt a running model.
+
+**A rewrite carries whether the model finished it, and an unfinished one is never committed.**
+Generation stops at the model's end of turn, at the output-token cap, or at the timeout. The last two
+return a rewrite of everything up to that point, which reads as finished text that stops
+mid-sentence, and the length ratio cannot see it: a rewrite missing only the last sentence or two
+lands well inside the band. Only the native side knows which ending happened, so `complete` travels
+with the text instead of being inferred from it.
 
 ## Preference scoping
 

@@ -13,7 +13,7 @@ public class T3VoiceModule: Module {
     // Bumped whenever the native surface changes shape, so a stale native
     // binary is distinguishable from a broken JS binding.
     Constants([
-      "nativeRevision": 5,
+      "nativeRevision": 6,
     ])
 
     Events("onModelDownloadProgress")
@@ -160,11 +160,12 @@ public class T3VoiceModule: Module {
         let before = DeviceMemory.footprint()
         defer { Self.reportRunCost(stage: "cleanup", modelId: "cleanup", before: before) }
 
-        return try await self.cleanupEngine.clean(
+        let rewrite = try await self.cleanupEngine.clean(
           transcript: text,
           systemPrompt: systemPrompt,
           timeout: timeoutMs / 1_000
         )
+        return Self.encode(rewrite)
       }
     }
 
@@ -222,6 +223,16 @@ public class T3VoiceModule: Module {
         Double(after) / (1024 * 1024)
       )
     )
+  }
+
+  /// A rewrite the model did not finish reads as finished text that stops
+  /// mid-sentence, so `complete` travels with it rather than being inferred
+  /// from its length on the other side.
+  private static func encode(_ rewrite: LlamaCleanupSession.Rewrite) -> [String: Any] {
+    [
+      "text": rewrite.text,
+      "complete": rewrite.isComplete,
+    ]
   }
 
   private static func encode(_ output: VoiceTranscriptionOutput) -> [String: Any] {

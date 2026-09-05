@@ -92,20 +92,30 @@ final class LlamaCleanupSession {
     llama_model_free(model)
   }
 
+  /// One rewrite, and whether the model reached the end of it.
+  ///
+  /// `isComplete` is false when generation ran out of tokens or time. The text
+  /// is then a rewrite of everything up to that point, so what is missing is
+  /// the end of what the user said, and the caller has to throw it away rather
+  /// than commit a message that stops mid-sentence.
+  struct Rewrite: Sendable {
+    let text: String
+    let isComplete: Bool
+  }
+
   /// Rewrites one transcript.
   ///
   /// The context is cleared first, so no previous dictation influences this
   /// one. `deadline` and `shouldStop` are both checked between tokens, which is
   /// the only place generation can be interrupted: a single `llama_decode` is
-  /// not cancellable. Stopping early returns the partial rewrite, which the
-  /// shared length-ratio guard then rejects in favour of the raw transcript.
+  /// not cancellable.
   func generate(
     systemPrompt: String,
     transcript: String,
     maximumOutputTokens: Int,
     deadline: Date,
     shouldStop: () -> Bool
-  ) throws -> String {
+  ) throws -> Rewrite {
     llama_memory_clear(llama_get_memory(context), true)
 
     let prompt = applyChatTemplate(systemPrompt: systemPrompt, transcript: transcript)
@@ -127,12 +137,18 @@ final class LlamaCleanupSession {
     // accented word and emoji into replacement characters.
     var output: [UInt8] = []
     var generated = 0
+    var isComplete = false
 
     while generated < maximumOutputTokens {
       if shouldStop() || Date() >= deadline { break }
 
       var token = llama_sampler_sample(sampler, context, -1)
-      if llama_vocab_is_eog(vocab, token) { break }
+      // The model's own end of turn is the only ending that means the rewrite
+      // covers the whole transcript.
+      if llama_vocab_is_eog(vocab, token) {
+        isComplete = true
+        break
+      }
 
       output.append(contentsOf: piece(for: token))
       generated += 1
@@ -142,7 +158,7 @@ final class LlamaCleanupSession {
       }
     }
 
-    return ReasoningText.strip(Self.decodeUTF8(output))
+    return Rewrite(text: ReasoningText.strip(Self.decodeUTF8(output)), isComplete: isComplete)
   }
 
   private func applyChatTemplate(systemPrompt: String, transcript: String) -> String {
