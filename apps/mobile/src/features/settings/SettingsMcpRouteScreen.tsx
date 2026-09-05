@@ -22,6 +22,15 @@ import { SettingsSection } from "./components/SettingsSection";
 const PRIVATE_COMMAND_OPTIONS = { reportFailure: false, reportDefect: false } as const;
 const ADD_JSON_PLACEHOLDER = '{"type":"http","url":"https://mcp.example.com/mcp"}';
 
+const DRIVER_LABELS: Readonly<Record<string, string>> = {
+  claudeAgent: "Claude",
+  codex: "Codex",
+};
+
+function driverLabel(driver: string): string {
+  return DRIVER_LABELS[driver] ?? driver;
+}
+
 /**
  * One server, plus which accounts on this machine have it. Grouping this way
  * is the point of the screen: with several signed-in accounts the question is
@@ -108,7 +117,7 @@ function AccountChips(props: {
                 present ? "text-foreground" : "text-foreground-muted opacity-60",
               )}
             >
-              {instance.displayName}
+              {driverLabel(instance.driver)} · {instance.displayName}
             </Text>
           </View>
         );
@@ -166,7 +175,7 @@ function EnvironmentMcpSection(props: {
       <SettingsSection title={props.label}>
         <View className="p-4">
           <Text className="text-base text-foreground-muted">
-            No Claude accounts are configured on this machine.
+            No Claude or Codex accounts are configured on this machine.
           </Text>
         </View>
       </SettingsSection>
@@ -255,7 +264,8 @@ function EnvironmentMcpSection(props: {
             className="min-h-24 rounded-2xl border-continuous border border-border px-3 py-2 text-base text-foreground"
           />
           <Text className="text-sm text-foreground-muted">
-            Applied to every Claude account on this machine.
+            Applied to every Claude and Codex account on this machine. Codex gets it translated into
+            its own format.
           </Text>
           <ActionButton
             label="Add"
@@ -289,7 +299,9 @@ function EnvironmentMcpSection(props: {
             className="flex-row items-center gap-3 p-4 active:opacity-70"
           >
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-base text-foreground">{instance.displayName}</Text>
+              <Text className="text-base text-foreground">
+                {driverLabel(instance.driver)} · {instance.displayName}
+              </Text>
               <Text className="text-sm text-foreground-muted" numberOfLines={1}>
                 {instance.cliPrefix}
               </Text>
