@@ -16,6 +16,7 @@
  */
 import {
   ClaudeSettings,
+  CodexSettings,
   McpCliUnavailableError,
   McpInstanceNotFoundError,
   McpServerNotFoundError,
@@ -39,6 +40,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { resolveProviderCredentialHome } from "../provider/providerCredentialHome.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
+import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 
 // The Claude driver registers itself as `claudeAgent`; `claude` is the CLI
@@ -77,11 +79,13 @@ export class ProviderMcpServers extends Context.Service<
 >()("t3/mcp/ProviderMcpServers") {}
 
 const CLAUDE_DRIVER_KIND = "claudeAgent";
+const CODEX_DRIVER_KIND = "codex";
 /** Decoder for the JSON blobs this module reads out of `.claude.json`. */
 const UnknownFromJsonString = Schema.fromJsonString(Schema.Unknown);
 const decodeJson = Schema.decodeUnknownEffect(UnknownFromJsonString);
 const encodeJson = Schema.encodeUnknownEffect(UnknownFromJsonString);
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
+const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 /**
  * `claude mcp` writes and reads a small JSON file. Two seconds is generous for
@@ -91,11 +95,12 @@ const CLI_TIMEOUT_MS = 20_000;
 
 interface ResolvedInstance {
   readonly instanceId: ProviderInstanceId;
+  readonly driver: typeof CLAUDE_DRIVER_KIND | typeof CODEX_DRIVER_KIND;
   readonly displayName: string;
   readonly binaryPath: string;
-  /** Empty when the instance uses Claude's own default home. */
+  /** Empty when the instance uses the CLI's own default home. */
   readonly configDir: string;
-  /** Absolute directory holding `.claude.json`, default home included. */
+  /** Absolute config directory, the CLI's default home included. */
   readonly resolvedHome: string;
   /**
    * The instance's own environment merged over the server's. Accounts signed
@@ -113,9 +118,11 @@ interface ResolvedInstance {
  * can run stay reachable without guessing at paths.
  */
 function cliPrefixFor(instance: ResolvedInstance): string {
-  const binary = instance.binaryPath.trim() || "claude";
+  const isClaude = instance.driver === CLAUDE_DRIVER_KIND;
+  const binary = instance.binaryPath.trim() || (isClaude ? "claude" : "codex");
   if (instance.configDir.length === 0) return binary;
-  return `CLAUDE_CONFIG_DIR=${instance.configDir} ${binary}`;
+  const variable = isClaude ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
+  return `${variable}=${instance.configDir} ${binary}`;
 }
 
 const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstances")(function* () {
@@ -137,6 +144,7 @@ const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstan
     const resolvedHome = yield* resolveClaudeHomePath({ homePath: configDir });
     resolved.push({
       instanceId,
+      driver: CLAUDE_DRIVER_KIND,
       displayName: entry.displayName?.trim() || rawInstanceId,
       binaryPath: config.binaryPath,
       configDir,
@@ -146,47 +154,164 @@ const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstan
     });
   }
 
-  return resolved.sort((left, right) => left.displayName.localeCompare(right.displayName));
+  return resolved;
+});
+
+const resolveCodexInstances = Effect.fn("ProviderMcpServers.resolveCodexInstances")(function* () {
+  const settings = yield* ServerSettingsService;
+  const current = yield* settings.getSettings;
+
+  const resolved: Array<ResolvedInstance> = [];
+  for (const [rawInstanceId, entry] of Object.entries(current.providerInstances)) {
+    if (entry.driver !== CODEX_DRIVER_KIND) continue;
+    const config = decodeCodexSettings(entry.config ?? {});
+    const layout = yield* resolveCodexHomeLayout(config);
+    // Codex keeps auth.json private to a shadow home but symlinks config.toml
+    // back to the shared one, so a write through the shadow lands in the
+    // shared server list. That is the intent: sign-ins are per account,
+    // servers are not.
+    resolved.push({
+      instanceId: rawInstanceId as ProviderInstanceId,
+      driver: CODEX_DRIVER_KIND,
+      displayName: entry.displayName?.trim() || rawInstanceId,
+      binaryPath: config.binaryPath,
+      configDir: layout.effectiveHomePath ?? "",
+      resolvedHome: layout.sharedHomePath,
+      environment: mergeProviderInstanceEnvironment(entry.environment),
+      requiredEnvNames: (entry.environment ?? []).map((variable) => variable.name),
+    });
+  }
+
+  return resolved;
+});
+
+const resolveInstances = Effect.fn("ProviderMcpServers.resolveInstances")(function* () {
+  const claude = yield* resolveClaudeInstances();
+  const codex = yield* resolveCodexInstances();
+  return [...claude, ...codex].sort(
+    (left, right) =>
+      left.driver.localeCompare(right.driver) || left.displayName.localeCompare(right.displayName),
+  );
 });
 
 const findInstance = Effect.fn("ProviderMcpServers.findInstance")(function* (
   instanceId: ProviderInstanceId,
 ) {
-  const instances = yield* resolveClaudeInstances();
+  const instances = yield* resolveInstances();
   const match = instances.find((instance) => instance.instanceId === instanceId);
   if (!match) return yield* new McpInstanceNotFoundError({ instanceId });
   return match;
 });
 
 /**
- * Reduce a raw config entry to what the UI needs. Env and header *values* are
- * dropped here rather than in the UI: `.claude.json` routinely holds bearer
- * tokens, and this payload crosses the websocket to every paired browser and
- * phone.
+ * The shape both CLIs are translated through. It is Claude Code's `.claude.json`
+ * entry, because that is the richest of the two and the form the add box takes,
+ * so a definition never has to be typed twice.
  */
-export function toServerEntry(name: string, raw: unknown): McpServerEntry {
-  const record = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-  const declaredType = typeof record.type === "string" ? record.type : undefined;
-  const url = typeof record.url === "string" ? record.url : undefined;
-  const command = typeof record.command === "string" ? record.command : undefined;
-  const args = Array.isArray(record.args) ? record.args.filter((a) => typeof a === "string") : [];
-  const env =
-    typeof record.env === "object" && record.env !== null ? (record.env as object) : undefined;
-  const headers =
-    typeof record.headers === "object" && record.headers !== null
-      ? (record.headers as object)
-      : undefined;
+interface CanonicalServer {
+  readonly type: string | undefined;
+  readonly url: string | undefined;
+  readonly command: string | undefined;
+  readonly args: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string>>;
+  readonly headers: Readonly<Record<string, string>>;
+}
 
+function readStringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null) return {};
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry === "string") result[key] = entry;
+  }
+  return result;
+}
+
+export function toCanonicalServer(raw: unknown): CanonicalServer {
+  const record = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   return {
-    name,
-    transport: declaredType ?? (url ? "http" : command ? "stdio" : "unknown"),
-    target: url ?? [command ?? "", ...args].join(" ").trim(),
-    envKeys: env ? Object.keys(env) : [],
-    headerKeys: headers ? Object.keys(headers) : [],
+    type: typeof record.type === "string" ? record.type : undefined,
+    url: typeof record.url === "string" ? record.url : undefined,
+    command: typeof record.command === "string" ? record.command : undefined,
+    args: Array.isArray(record.args)
+      ? record.args.filter((entry): entry is string => typeof entry === "string")
+      : [],
+    env: readStringRecord(record.env),
+    headers: readStringRecord(record.headers),
   };
 }
 
-const readInstanceInventory = Effect.fn("ProviderMcpServers.readInstanceInventory")(function* (
+/** One entry of `codex mcp list --json`, rewritten into the canonical shape. */
+export function codexEntryToCanonical(raw: unknown): CanonicalServer {
+  const record = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const transport =
+    typeof record.transport === "object" && record.transport !== null
+      ? (record.transport as Record<string, unknown>)
+      : {};
+  const isStdio = transport.type === "stdio";
+  return {
+    type: isStdio ? "stdio" : "http",
+    url: typeof transport.url === "string" ? transport.url : undefined,
+    command: typeof transport.command === "string" ? transport.command : undefined,
+    args: Array.isArray(transport.args)
+      ? transport.args.filter((entry): entry is string => typeof entry === "string")
+      : [],
+    env: readStringRecord(transport.env),
+    headers: readStringRecord(transport.http_headers),
+  };
+}
+
+export function canonicalToEntry(name: string, server: CanonicalServer): McpServerEntry {
+  return {
+    name,
+    transport: server.type ?? (server.url ? "http" : server.command ? "stdio" : "unknown"),
+    target: server.url ?? [server.command ?? "", ...server.args].join(" ").trim(),
+    envKeys: Object.keys(server.env),
+    headerKeys: Object.keys(server.headers),
+  };
+}
+
+/**
+ * Build the CLI arguments that install `server` under `name` on one account.
+ * Returns a reason string when the provider cannot express the definition,
+ * which is reported per account rather than silently dropping the part that
+ * does not fit.
+ */
+export function addArgsFor(
+  instance: ResolvedInstance,
+  name: string,
+  server: CanonicalServer,
+  rawJson: string,
+): { readonly args: ReadonlyArray<string> } | { readonly reason: string } {
+  if (instance.driver === CLAUDE_DRIVER_KIND) {
+    return { args: ["add-json", "--scope", "user", name, rawJson] };
+  }
+
+  if (server.command) {
+    const env = Object.entries(server.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
+    return { args: ["add", name, ...env, "--", server.command, ...server.args] };
+  }
+
+  if (!server.url) {
+    return { reason: "Needs a url or a command." };
+  }
+
+  // `codex mcp add` exposes only --bearer-token-env-var for remote auth, so a
+  // definition carrying literal headers would install without its credentials.
+  // Refusing is better than a server that silently fails to authenticate.
+  if (Object.keys(server.headers).length > 0) {
+    return { reason: "Codex cannot store request headers; add it with a bearer token env var." };
+  }
+
+  return { args: ["add", name, "--url", server.url] };
+}
+
+function removeArgsFor(instance: ResolvedInstance, name: string): ReadonlyArray<string> {
+  return instance.driver === CLAUDE_DRIVER_KIND
+    ? ["remove", "--scope", "user", name]
+    : ["remove", name];
+}
+
+const readClaudeInventory = Effect.fn("ProviderMcpServers.readClaudeInventory")(function* (
   instance: ResolvedInstance,
 ): Effect.fn.Return<McpInstanceInventory, never, FileSystem.FileSystem | Path.Path> {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -195,6 +320,7 @@ const readInstanceInventory = Effect.fn("ProviderMcpServers.readInstanceInventor
 
   const base = {
     instanceId: instance.instanceId,
+    driver: instance.driver,
     displayName: instance.displayName,
     configDir: instance.configDir,
     cliPrefix: cliPrefixFor(instance),
@@ -223,26 +349,78 @@ const readInstanceInventory = Effect.fn("ProviderMcpServers.readInstanceInventor
   return {
     ...base,
     servers: Object.entries(servers)
-      .map(([name, raw]) => toServerEntry(name, raw))
+      .map(([name, raw]) => canonicalToEntry(name, toCanonicalServer(raw)))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  };
+});
+
+/**
+ * Codex ships `mcp list --json`, so its inventory comes from the CLI rather
+ * than from parsing `config.toml`. That keeps TOML out of this module and
+ * means Codex decides what its own config means.
+ */
+const readCodexInventory = Effect.fn("ProviderMcpServers.readCodexInventory")(function* (
+  instance: ResolvedInstance,
+): Effect.fn.Return<McpInstanceInventory, never, ProcessRunner.ProcessRunner> {
+  const base = {
+    instanceId: instance.instanceId,
+    driver: instance.driver,
+    displayName: instance.displayName,
+    configDir: instance.configDir,
+    cliPrefix: cliPrefixFor(instance),
+    requiredEnvNames: instance.requiredEnvNames,
+  } as const;
+
+  const result = yield* runProviderMcp({ instance, args: ["list", "--json"] }).pipe(Effect.option);
+  if (result._tag === "None" || !result.value.outcome.ok) {
+    return {
+      ...base,
+      servers: [],
+      readError:
+        result._tag === "None" ? "Could not run the Codex CLI." : result.value.outcome.message,
+    };
+  }
+
+  const parsed = yield* decodeJson(result.value.stdout).pipe(Effect.option);
+  if (parsed._tag === "None" || !Array.isArray(parsed.value)) {
+    return { ...base, servers: [], readError: "Could not read the Codex server list." };
+  }
+
+  return {
+    ...base,
+    servers: parsed.value
+      .map((raw) => {
+        const record =
+          typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+        const name = typeof record.name === "string" ? record.name : "";
+        return canonicalToEntry(name, codexEntryToCanonical(record));
+      })
+      .filter((entry) => entry.name.length > 0)
       .sort((left, right) => left.name.localeCompare(right.name)),
   };
 });
 
 const listMcpServers = Effect.fn("ProviderMcpServers.list")(function* () {
-  const instances = yield* resolveClaudeInstances();
+  const instances = yield* resolveInstances();
   const inventories: Array<McpInstanceInventory> = [];
   for (const instance of instances) {
-    inventories.push(yield* readInstanceInventory(instance));
+    inventories.push(
+      yield* instance.driver === CLAUDE_DRIVER_KIND
+        ? readClaudeInventory(instance)
+        : readCodexInventory(instance),
+    );
   }
   return { instances: inventories };
 });
 
-const runClaudeMcp = Effect.fn("ProviderMcpServers.runClaudeMcp")(function* (input: {
+const runProviderMcp = Effect.fn("ProviderMcpServers.runProviderMcp")(function* (input: {
   readonly instance: ResolvedInstance;
   readonly args: ReadonlyArray<string>;
 }) {
   const runner = yield* ProcessRunner.ProcessRunner;
-  const binaryPath = input.instance.binaryPath.trim() || "claude";
+  const isClaude = input.instance.driver === CLAUDE_DRIVER_KIND;
+  const binaryPath = input.instance.binaryPath.trim() || (isClaude ? "claude" : "codex");
+  const homeVariable = isClaude ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
   const result = yield* runner
     .run({
       command: binaryPath,
@@ -251,7 +429,7 @@ const runClaudeMcp = Effect.fn("ProviderMcpServers.runClaudeMcp")(function* (inp
       env: {
         ...input.instance.environment,
         ...(input.instance.configDir.length > 0
-          ? { CLAUDE_CONFIG_DIR: input.instance.configDir }
+          ? { [homeVariable]: input.instance.configDir }
           : {}),
       },
       outputMode: "truncate",
@@ -263,36 +441,54 @@ const runClaudeMcp = Effect.fn("ProviderMcpServers.runClaudeMcp")(function* (inp
     );
 
   return {
-    instanceId: input.instance.instanceId,
-    ok: result.code === 0,
-    // Claude reports "already exists" and validation failures on stderr; the
-    // user needs the real text or the row just says "failed".
-    message:
-      result.code === 0 ? "" : (result.stderr.trim() || result.stdout.trim()).slice(0, 2_000),
-  } satisfies McpMutationOutcome;
+    outcome: {
+      instanceId: input.instance.instanceId,
+      ok: result.code === 0,
+      // Both CLIs report "already exists" and validation failures on stderr;
+      // the user needs the real text or the row just says "failed".
+      message:
+        result.code === 0 ? "" : (result.stderr.trim() || result.stdout.trim()).slice(0, 2_000),
+    } satisfies McpMutationOutcome,
+    /** Read commands (`mcp list --json`, `mcp get --json`) answer on stdout. */
+    stdout: result.stdout,
+  };
 });
 
 /**
- * Add one server definition to several instances. Instances are applied in
- * sequence rather than in parallel: `claude mcp` rewrites a whole JSON file,
- * and two instances that share a home would race each other.
+ * Install one definition across several accounts, translating it per provider.
+ * Accounts are applied in sequence rather than in parallel: each CLI rewrites
+ * a whole config file, and two accounts that share a home would race.
  */
+const applyServerToInstances = Effect.fn("ProviderMcpServers.applyServerToInstances")(
+  function* (input: {
+    readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
+    readonly name: string;
+    readonly json: string;
+  }) {
+    const server = toCanonicalServer(
+      yield* decodeJson(input.json).pipe(Effect.orElseSucceed(() => ({}))),
+    );
+
+    const outcomes: Array<McpMutationOutcome> = [];
+    for (const instanceId of input.instanceIds) {
+      const instance = yield* findInstance(instanceId);
+      const plan = addArgsFor(instance, input.name, server, input.json);
+      if ("reason" in plan) {
+        outcomes.push({ instanceId, ok: false, message: plan.reason });
+        continue;
+      }
+      outcomes.push((yield* runProviderMcp({ instance, args: plan.args })).outcome);
+    }
+    return { outcomes };
+  },
+);
+
 const addMcpServer = Effect.fn("ProviderMcpServers.add")(function* (input: {
   readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
   readonly name: string;
   readonly json: string;
 }) {
-  const outcomes: Array<McpMutationOutcome> = [];
-  for (const instanceId of input.instanceIds) {
-    const instance = yield* findInstance(instanceId);
-    outcomes.push(
-      yield* runClaudeMcp({
-        instance,
-        args: ["add-json", "--scope", "user", input.name, input.json],
-      }),
-    );
-  }
-  return { outcomes };
+  return yield* applyServerToInstances(input);
 });
 
 /**
@@ -303,7 +499,27 @@ const addMcpServer = Effect.fn("ProviderMcpServers.add")(function* (input: {
 const readRawServerDefinition = Effect.fn("ProviderMcpServers.readRawServerDefinition")(function* (
   instance: ResolvedInstance,
   name: string,
-) {
+): Effect.fn.Return<
+  string,
+  McpServerNotFoundError | McpCliUnavailableError,
+  FileSystem.FileSystem | Path.Path | ProcessRunner.ProcessRunner
+> {
+  if (instance.driver === CODEX_DRIVER_KIND) {
+    const result = yield* runProviderMcp({ instance, args: ["get", name, "--json"] }).pipe(
+      Effect.option,
+    );
+    const parsed =
+      result._tag === "Some" && result.value.outcome.ok
+        ? yield* decodeJson(result.value.stdout).pipe(Effect.option)
+        : { _tag: "None" as const };
+    if (parsed._tag === "None") {
+      return yield* new McpServerNotFoundError({ instanceId: instance.instanceId, name });
+    }
+    return yield* encodeJson(codexEntryToCanonical(parsed.value)).pipe(
+      Effect.orElseSucceed(() => ""),
+    );
+  }
+
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const configPath = path.join(instance.resolvedHome, ".claude.json");
@@ -340,19 +556,11 @@ const copyMcpServer = Effect.fn("ProviderMcpServers.copy")(function* (input: {
 }) {
   const source = yield* findInstance(input.fromInstanceId);
   const json = yield* readRawServerDefinition(source, input.name);
-
-  const outcomes: Array<McpMutationOutcome> = [];
-  for (const instanceId of input.toInstanceIds) {
-    if (instanceId === input.fromInstanceId) continue;
-    const instance = yield* findInstance(instanceId);
-    outcomes.push(
-      yield* runClaudeMcp({
-        instance,
-        args: ["add-json", "--scope", "user", input.name, json],
-      }),
-    );
-  }
-  return { outcomes };
+  return yield* applyServerToInstances({
+    instanceIds: input.toInstanceIds.filter((id) => id !== input.fromInstanceId),
+    name: input.name,
+    json,
+  });
 });
 
 const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* (input: {
@@ -363,7 +571,7 @@ const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* (input:
   for (const instanceId of input.instanceIds) {
     const instance = yield* findInstance(instanceId);
     outcomes.push(
-      yield* runClaudeMcp({ instance, args: ["remove", "--scope", "user", input.name] }),
+      (yield* runProviderMcp({ instance, args: removeArgsFor(instance, input.name) })).outcome,
     );
   }
   return { outcomes };

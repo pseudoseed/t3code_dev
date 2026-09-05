@@ -23,6 +23,15 @@ import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 
 const ADD_JSON_PLACEHOLDER = `{"type":"http","url":"https://mcp.example.com/mcp"}`;
 
+const DRIVER_LABELS: Readonly<Record<string, string>> = {
+  claudeAgent: "Claude",
+  codex: "Codex",
+};
+
+function driverLabel(driver: string): string {
+  return DRIVER_LABELS[driver] ?? driver;
+}
+
 /**
  * One server, plus which instances currently have it. Grouping this way is the
  * point of the page: with several signed-in accounts the useful question is
@@ -85,7 +94,7 @@ function InstanceChips({
             variant={present ? "default" : "outline"}
             className={cn(!present && "text-muted-foreground/70 line-through")}
           >
-            {instance.displayName}
+            {driverLabel(instance.driver)} · {instance.displayName}
           </Badge>
         );
       })}
@@ -162,7 +171,7 @@ export function McpSettingsPanel() {
       <SettingsSection
         id="mcp-servers"
         title="MCP servers"
-        description="Each signed-in Claude account keeps its own configuration directory, so a server has to be added per account. Changes here run through the Claude CLI."
+        description="Claude and Codex each store servers in their own format, and every signed-in account keeps its own configuration directory. Add a server once here and it is installed on the accounts you pick. Changes run through each provider's own CLI."
         headerAction={
           <Button variant="ghost" size="sm" onClick={refresh} disabled={isPending}>
             <RefreshCwIcon className={cn("size-3.5", isPending && "animate-spin")} />
@@ -174,7 +183,7 @@ export function McpSettingsPanel() {
         {status ? <p className="px-3 text-sm text-muted-foreground sm:px-4">{status}</p> : null}
         {instances.length === 0 && !isPending ? (
           <p className="px-3 text-sm text-muted-foreground sm:px-4">
-            No Claude provider instances are configured on this environment.
+            No Claude or Codex accounts are configured on this environment.
           </p>
         ) : null}
 
@@ -247,7 +256,7 @@ export function McpSettingsPanel() {
       <SettingsSection
         id="mcp-add"
         title="Add a server"
-        description="Paste the same JSON you would pass to claude mcp add-json."
+        description="Paste the same JSON you would pass to claude mcp add-json. Codex accounts get it translated into their own format, and any account that cannot express it says so instead of installing a broken entry."
       >
         <div className="space-y-3 px-3 py-3 sm:px-4">
           <div className="space-y-1.5">
@@ -278,7 +287,7 @@ export function McpSettingsPanel() {
                     checked={!excluded.has(instance.instanceId)}
                     onCheckedChange={() => toggleInstance(instance.instanceId)}
                   />
-                  {instance.displayName}
+                  {driverLabel(instance.driver)} · {instance.displayName}
                 </label>
               ))}
             </div>
@@ -315,7 +324,9 @@ export function McpSettingsPanel() {
               className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4"
             >
               <div className="min-w-0">
-                <p className="text-sm">{instance.displayName}</p>
+                <p className="text-sm">
+                  {driverLabel(instance.driver)} · {instance.displayName}
+                </p>
                 <code className="block truncate text-[12px] text-muted-foreground/80">
                   {instance.cliPrefix}
                 </code>

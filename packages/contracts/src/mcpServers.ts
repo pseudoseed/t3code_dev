@@ -35,8 +35,14 @@ export type McpServerEntry = typeof McpServerEntry.Type;
 
 export const McpInstanceInventory = Schema.Struct({
   instanceId: ProviderInstanceId,
+  /** `claudeAgent` or `codex`. The two store servers in different formats. */
+  driver: Schema.String,
   displayName: Schema.String,
-  /** Resolved `CLAUDE_CONFIG_DIR`, or the user's default home when unset. */
+  /**
+   * Resolved `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, empty when the account uses
+   * the CLI's own default home. Accounts that share a directory share a server
+   * list, which is why this is shown rather than assumed unique.
+   */
   configDir: Schema.String,
   /** Ready-to-paste shell prefix that reproduces this instance's context. */
   cliPrefix: Schema.String,
@@ -96,7 +102,10 @@ export type McpRemoveInput = Schema.Codec.Encoded<typeof McpRemoveInput>;
 export const McpMutationOutcome = Schema.Struct({
   instanceId: ProviderInstanceId,
   ok: Schema.Boolean,
-  /** CLI stderr on failure, empty on success. */
+  /**
+   * CLI stderr on failure, or the reason a definition could not be translated
+   * for this provider. Empty on success.
+   */
   message: Schema.String,
 });
 export type McpMutationOutcome = typeof McpMutationOutcome.Type;
