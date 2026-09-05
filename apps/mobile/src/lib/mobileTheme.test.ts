@@ -153,7 +153,7 @@ describe("mobile themes", () => {
 
   it("maps semantic palette roles onto every mobile color variable", () => {
     const variables = createMobileThemeVariables(BUILT_IN_THEMES[0].colors, "light");
-    expect(Object.keys(variables)).toHaveLength(65);
+    expect(Object.keys(variables)).toHaveLength(70);
     expect(variables["--color-sheet-solid"]).toBe(
       themeColorToNativeColor(BUILT_IN_THEMES[0].colors.chrome),
     );
@@ -162,6 +162,17 @@ describe("mobile themes", () => {
     expect(variables["--color-backdrop"]).toBe("rgba(0, 0, 0, 0.22)");
     expect(variables["--color-drawer-shadow"]).toBe("rgba(0, 0, 0, 0.12)");
     expect(variables["--color-user-bubble-foreground"]).toMatch(/^#/);
+    // The usage dial strokes these through react-native-svg, which cannot take
+    // a className, so a custom theme has to carry them like any other role.
+    expect(variables["--color-usage-warn"]).toBe(
+      themeColorToNativeColor(BUILT_IN_THEMES[0].colors.warning),
+    );
+    expect(variables["--color-usage-critical"]).toBe(
+      themeColorToNativeColor(BUILT_IN_THEMES[0].colors.error),
+    );
+    expect(variables["--color-usage-good"]).toMatch(/^#/);
+    expect(variables["--color-usage-overall"]).toMatch(/^#/);
+    expect(variables["--color-usage-track"]).toMatch(/^rgba\(/);
   });
 
   it("keeps every built-in shadow and backdrop black-based in dark mode", () => {
