@@ -18,10 +18,30 @@ provider health-check interval and update live while a turn runs. API-key accoun
 subscription windows and say so; that includes a Claude Code that reaches Anthropic through a proxy
 via `ANTHROPIC_AUTH_TOKEN`, since the CLI then treats itself as an API-key client.
 
-If you pool accounts behind a CLIProxyAPI hub, **Add CLIProxyAPI hub** on the Limits view shows
-every account the hub manages, each marked _via CLIProxyAPI_ so it is not mistaken for the provider
-signed in on this machine. Enter the hub's URL and management key; the key is stored on the server
-and never sent back to a client. Emails are blurred until clicked, as in provider settings.
+**Add source** on the Limits view brings in quota from outside this machine's own providers. Each
+added account is marked with the source it came from, so it is not mistaken for the provider signed
+in here, and emails are blurred until clicked as in provider settings.
+
+- A **CLIProxyAPI hub** shows every account the hub pools. Enter its URL and management key; the
+  key is stored on the server and never sent back to a client.
+- A **usage dashboard** shows every subscription it polls, including accounts nothing on this
+  machine is signed into. Enter its URL; there is no key, so point this only at a dashboard you
+  trust on your own network. When the dashboard reports banked rate-limit reset credits on an
+  account, the card offers to spend one. Redeeming asks first and cannot be undone.
+
+The **Limits** button in the bottom-left corner opens the same accounts as one dial per account.
+Each dial carries two rings: the inner one is the session window, which decides whether you can
+start a turn right now and takes the colour of how close it is to full; the outer one is the weekly
+window, which is how much of the cycle is left, and stays a steady blue because a large weekly is
+not the same kind of news as a nearly-spent session. The number in the middle is the session. Every
+window is also listed as a bar underneath with its exact percent and reset, and the reset-credit
+control sits at the bottom of accounts that have credits banked.
+
+The overlay opens over your current thread and dismisses without navigating away, so you can check
+where a subscription stands mid-turn. Its countdowns are measured from the moment it opened and do
+not tick; **Refresh** re-reads every environment and re-anchors them.
+
+On phones and tablets the same dials are under **Settings → Limits**.
 
 Use **Past 24h** for an hourly chart covering the exact rolling 24-hour period. The **7 days**,
 **30 days**, and **90 days** ranges use daily resolution. Cost and token toggles update both the

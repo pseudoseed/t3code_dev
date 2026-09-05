@@ -7,7 +7,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
-import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
+import { UsageLimitSourceId, UsageLimitSourceKind } from "./usageLimitSourceId.ts";
 
 /**
  * One rolling quota window a subscription provider reports for the signed-in
@@ -77,6 +77,12 @@ export type ProviderUsageLimitsUpdate = typeof ProviderUsageLimitsUpdate.Type;
 export const UsageLimitSourceAccount = Schema.Struct({
   id: TrimmedNonEmptyString,
   driver: ProviderDriverKind,
+  /**
+   * The name the source gives this account (`aws`, `support`). Sources that
+   * only key accounts by file or email leave it unset and clients fall back
+   * to the driver's label.
+   */
+  label: Schema.optional(TrimmedNonEmptyString),
   /** The signed-in address, when the source names one; clients blur it like provider auth. */
   email: Schema.optional(TrimmedNonEmptyString),
   /** Plan as the matching provider would label it (`ChatGPT Pro 20x Subscription`). */
@@ -92,7 +98,7 @@ export type UsageLimitSourceAccount = typeof UsageLimitSourceAccount.Type;
  */
 export const UsageLimitSourceSnapshot = Schema.Struct({
   id: UsageLimitSourceId,
-  kind: Schema.Literal("cliproxy"),
+  kind: UsageLimitSourceKind,
   label: TrimmedNonEmptyString,
   checkedAt: IsoDateTime,
   accounts: ForwardCompatibleArray(UsageLimitSourceAccount),
@@ -107,6 +113,35 @@ export const ProviderConsumeResetCreditInput = Schema.Struct({
   instanceId: ProviderInstanceId,
 });
 export type ProviderConsumeResetCreditInput = typeof ProviderConsumeResetCreditInput.Type;
+
+/**
+ * Redeem a reset credit on an account a usage-limit source pools rather than
+ * one this environment runs turns on. The source performs the redemption, so
+ * the server only has to name which of its accounts to spend it on.
+ */
+export const UsageLimitSourceConsumeResetCreditInput = Schema.Struct({
+  sourceId: UsageLimitSourceId,
+  accountId: TrimmedNonEmptyString,
+});
+export type UsageLimitSourceConsumeResetCreditInput =
+  typeof UsageLimitSourceConsumeResetCreditInput.Type;
+
+/**
+ * Why a source could not spend a credit. `reason` is written for the user
+ * because the source is the authority here: its own cooldown, its own credit
+ * balance, its own reachability.
+ */
+export class UsageLimitSourceError extends Schema.TaggedErrorClass<UsageLimitSourceError>()(
+  "UsageLimitSourceError",
+  {
+    sourceId: UsageLimitSourceId,
+    reason: TrimmedNonEmptyString,
+  },
+) {
+  override get message(): string {
+    return `Usage source ${this.sourceId}: ${this.reason}`;
+  }
+}
 
 /** Mirrors Codex's own outcome set; other providers map onto it. */
 export const ProviderConsumeResetCreditOutcome = Schema.Literals([

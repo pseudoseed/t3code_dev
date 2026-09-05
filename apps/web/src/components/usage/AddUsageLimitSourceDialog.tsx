@@ -1,4 +1,8 @@
-import { type EnvironmentId, UsageLimitSourceId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  UsageLimitSourceId,
+  type UsageLimitSourceKind,
+} from "@t3tools/contracts";
 import { useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -14,13 +18,14 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 
 /**
- * Stable per hub and readable in settings.json. Dots and dashes in the host
- * are kept so `foo-bar.com` and `foo.bar.com` do not collide; anything else
- * (a port's colon, a path) is folded to a dash.
+ * Stable per source and readable in settings.json. Dots and dashes in the
+ * host are kept so `foo-bar.com` and `foo.bar.com` do not collide; anything
+ * else (a port's colon, a path) is folded to a dash.
  */
-function sourceIdFromUrl(url: string): UsageLimitSourceId {
+function sourceIdFromUrl(kind: UsageLimitSourceKind, url: string): UsageLimitSourceId {
   let host = url;
   try {
     host = new URL(url).host;
@@ -31,13 +36,42 @@ function sourceIdFromUrl(url: string): UsageLimitSourceId {
     .toLowerCase()
     .replace(/[^a-z0-9.-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return UsageLimitSourceId.make(`cliproxy-${slug || "hub"}`);
+  return UsageLimitSourceId.make(`${kind}-${slug || "source"}`);
 }
 
+const KINDS: ReadonlyArray<{
+  readonly kind: UsageLimitSourceKind;
+  readonly label: string;
+  readonly urlLabel: string;
+  readonly urlPlaceholder: string;
+  readonly needsKey: boolean;
+  readonly description: string;
+}> = [
+  {
+    kind: "cliproxy",
+    label: "CLIProxyAPI hub",
+    urlLabel: "Hub URL",
+    urlPlaceholder: "https://hub.example.ts.net:8318",
+    needsKey: true,
+    description: "Every account the hub pools, read through its management API.",
+  },
+  {
+    kind: "aiusage",
+    label: "Usage dashboard",
+    urlLabel: "Dashboard URL",
+    urlPlaceholder: "http://127.0.0.1:8787",
+    needsKey: false,
+    // It holds the credentials itself and answers on loopback, so there is
+    // nothing for T3 Code to authenticate with.
+    description:
+      "Every subscription the dashboard polls, including accounts nothing here is signed into.",
+  },
+];
+
 /**
- * Adds a CLIProxyAPI hub as a usage-limit source on one environment. The
- * management key is sent once and kept in that server's secret store;
- * settings only ever carry a redaction marker for it afterwards.
+ * Adds a usage-limit source on one environment. A key, when the kind needs
+ * one, is sent once and kept in that server's secret store; settings only
+ * ever carry a redaction marker for it afterwards.
  */
 export function AddUsageLimitSourceDialog({
   open,
@@ -51,13 +85,16 @@ export function AddUsageLimitSourceDialog({
   readonly environmentLabel: string;
 }) {
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const [kind, setKind] = useState<UsageLimitSourceKind>("cliproxy");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [managementKey, setManagementKey] = useState("");
+  const spec = KINDS.find((entry) => entry.kind === kind) ?? KINDS[0]!;
   const trimmedUrl = url.trim();
-  const canSave = trimmedUrl.length > 0 && managementKey.trim().length > 0;
+  const canSave = trimmedUrl.length > 0 && (!spec.needsKey || managementKey.trim().length > 0);
 
   const reset = () => {
+    setKind("cliproxy");
     setLabel("");
     setUrl("");
     setManagementKey("");
@@ -65,15 +102,15 @@ export function AddUsageLimitSourceDialog({
 
   const save = () => {
     if (!canSave) return;
-    const id = sourceIdFromUrl(trimmedUrl);
+    const id = sourceIdFromUrl(kind, trimmedUrl);
     // The patch names only this entry; the server merges it into its map.
     updateSettings({
       usageLimitSources: {
         [id]: {
-          kind: "cliproxy",
+          kind,
           ...(label.trim() ? { label: label.trim() } : {}),
           url: trimmedUrl,
-          managementKey: managementKey.trim(),
+          managementKey: spec.needsKey ? managementKey.trim() : "",
           enabled: true,
         },
       },
@@ -92,10 +129,10 @@ export function AddUsageLimitSourceDialog({
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add a CLIProxyAPI hub</DialogTitle>
+          <DialogTitle>Add a usage source</DialogTitle>
           <DialogDescription>
-            Show the quota of every account the hub pools, next to the providers on{" "}
-            {environmentLabel}. The key stays on that server.
+            Show quota from outside {environmentLabel}&apos;s own providers, beside them. Anything
+            secret stays on that server.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -107,30 +144,49 @@ export function AddUsageLimitSourceDialog({
             }}
           >
             <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-url">Hub URL</Label>
+              <Label>Kind</Label>
+              <ToggleGroup
+                value={[kind]}
+                onValueChange={(next) => {
+                  const picked = next[0];
+                  if (picked !== undefined) setKind(picked as UsageLimitSourceKind);
+                }}
+              >
+                {KINDS.map((entry) => (
+                  <Toggle key={entry.kind} value={entry.kind} className="flex-1">
+                    {entry.label}
+                  </Toggle>
+                ))}
+              </ToggleGroup>
+              <span className="text-xs text-muted-foreground">{spec.description}</span>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="usage-source-url">{spec.urlLabel}</Label>
               <Input
                 id="usage-source-url"
-                placeholder="https://hub.example.ts.net:8318"
+                placeholder={spec.urlPlaceholder}
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
                 autoFocus
               />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-key">Management key</Label>
-              <Input
-                id="usage-source-key"
-                type="password"
-                autoComplete="off"
-                value={managementKey}
-                onChange={(event) => setManagementKey(event.target.value)}
-              />
-            </div>
+            {spec.needsKey ? (
+              <div className="grid gap-1.5">
+                <Label htmlFor="usage-source-key">Management key</Label>
+                <Input
+                  id="usage-source-key"
+                  type="password"
+                  autoComplete="off"
+                  value={managementKey}
+                  onChange={(event) => setManagementKey(event.target.value)}
+                />
+              </div>
+            ) : null}
             <div className="grid gap-1.5">
               <Label htmlFor="usage-source-label">Label (optional)</Label>
               <Input
                 id="usage-source-label"
-                placeholder="Defaults to the hub's host name"
+                placeholder="Defaults to the host name"
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
               />
@@ -148,7 +204,7 @@ export function AddUsageLimitSourceDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={!canSave}>
-            Add hub
+            Add source
           </Button>
         </DialogFooter>
       </DialogPopup>

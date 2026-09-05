@@ -1,11 +1,12 @@
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
+  GaugeIcon,
   GitPullRequestIcon,
   SettingsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
@@ -31,6 +32,7 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { UsageOverlay } from "../usage/UsageOverlay";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 
@@ -178,6 +180,14 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/usage" });
   }, [isMobile, navigate, setOpenMobile]);
 
+  // The overlay is a glance, not a destination: it opens over the current
+  // thread so checking limits mid-turn costs no navigation.
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const handleLimitsClick = useCallback(() => {
+    closeMobileSidebar();
+    setLimitsOpen(true);
+  }, [closeMobileSidebar]);
+
   const handleBackClick = useCallback(() => {
     closeMobileSidebar();
     if (canGoBack) {
@@ -215,9 +225,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Usage"
             onClick={handleUsageClick}
           />
+          <SidebarUtilityItem icon={<GaugeIcon />} label="Limits" onClick={handleLimitsClick} />
         </>
       )}
       <SidebarUpdatePill />
+      <UsageOverlay open={limitsOpen} onOpenChange={setLimitsOpen} />
     </SidebarMenu>
   );
 });

@@ -176,3 +176,98 @@ export function formatResetsIn(window: ServerProviderUsageWindow, now: number): 
   if (resetsAt === null) return null;
   return resetsAt <= now ? "resets now" : `resets in ${formatDuration(resetsAt - now)}`;
 }
+
+export type LimitSeverity = "good" | "warn" | "critical";
+
+/**
+ * How loud a window should read. The thresholds match what a user actually
+ * reacts to: under 60% is background information, 60-85% is worth planning
+ * around, and past 85% the window is about to stop being usable.
+ */
+export function limitSeverity(usedPercent: number): LimitSeverity {
+  if (usedPercent >= 85) return "critical";
+  return usedPercent >= 60 ? "warn" : "good";
+}
+
+/**
+ * The two windows a dial draws as concentric rings, plus every window the card
+ * lists as a bar underneath.
+ *
+ *   - `current` is the short window that decides whether a turn can start now:
+ *     the session window when the account reports one, else the first.
+ *   - `overall` is the long window that decides how much of the subscription
+ *     is left this cycle: the first weekly, else the first monthly, else the
+ *     next window after `current`.
+ *
+ * `rest` is every window except `current`, so the long window keeps its exact
+ * percent and reset in the list even though the outer ring already shows its
+ * shape. A single-window account gets a lone inner ring and no outer one.
+ */
+export function splitDialWindows(windows: readonly ServerProviderUsageWindow[]): {
+  readonly current: ServerProviderUsageWindow | null;
+  readonly overall: ServerProviderUsageWindow | null;
+  readonly rest: readonly ServerProviderUsageWindow[];
+} {
+  const current = windows.find((window) => window.kind === "session") ?? windows[0] ?? null;
+  if (current === null) return { current: null, overall: null, rest: [] };
+  const rest = windows.filter((window) => window !== current);
+  const overall =
+    rest.find((window) => window.kind === "weekly") ??
+    rest.find((window) => window.kind === "monthly") ??
+    rest[0] ??
+    null;
+  return { current, overall, rest };
+}
+
+/**
+ * The dial's measurements, in CSS pixels, shared so the web (SVG in the DOM)
+ * and mobile (react-native-svg) dials cannot drift apart. The SVG viewBox is
+ * `size` too, so one unit is one pixel and nothing has to be scaled by hand.
+ *
+ * The outer ring's far edge (`radius + width / 2`) stays inside `size / 2`,
+ * which is what keeps the stroke from being clipped by the viewBox.
+ */
+export const DIAL = {
+  size: 176,
+  outer: { radius: 78, width: 6 },
+  inner: { radius: 60, width: 12 },
+} as const;
+
+/**
+ * The largest square that fits inside the inner ring, which is what the
+ * reading in the middle of the dial is allowed to occupy.
+ *
+ * A circle's usable width is a chord, not its diameter: a line of text sitting
+ * away from the centre has far less room than one across the middle, so sizing
+ * the text against the diameter is how it ends up crossing the stroke. The
+ * inscribed square is the one box every line can occupy at any height, so
+ * constraining the whole block to it makes the overlap impossible rather than
+ * unlikely.
+ */
+export function dialSafeBoxSize(dial: typeof DIAL = DIAL): number {
+  return Math.floor((dial.inner.radius - dial.inner.width / 2) * Math.SQRT2);
+}
+
+/**
+ * Stroke geometry for one ring of the dial.
+ *
+ * The arc is a dash the length of the used share with the remainder as the
+ * gap, which draws a partial circle without a path. `rotation` starts it at
+ * twelve o'clock instead of three.
+ */
+export function dialRing(usedPercent: number, radius: number) {
+  const circumference = 2 * Math.PI * radius;
+  const used = Math.max(0, Math.min(100, usedPercent)) / 100;
+  return {
+    circumference,
+    /** Zero-length dashes disappear even with a round cap, so keep a visible minimum. */
+    dash: used === 0 ? 0 : Math.max(circumference * used, 1.5),
+    rotation: -90,
+  };
+}
+
+/** What a source kind is called in a heading, shared by web and mobile. */
+export const USAGE_LIMIT_SOURCE_KIND_LABEL: Record<UsageLimitSourceSnapshot["kind"], string> = {
+  cliproxy: "CLIProxyAPI",
+  aiusage: "usage dashboard",
+};

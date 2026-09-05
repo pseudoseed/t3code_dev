@@ -242,6 +242,14 @@ export function createMobileThemeVariables(
     "--color-danger": c.errorSurface,
     "--color-danger-border": withAlpha(c.error, 0.32),
     "--color-danger-foreground": c.errorForeground,
+    // Usage severity. A custom theme has no "quota is fine" role, so only the
+    // two alarm levels follow its palette; "good" takes a fixed green that
+    // reads on either appearance. Mirrors the standard theme's global.css.
+    "--color-usage-good": appearance === "dark" ? "#34d399" : "#059669",
+    "--color-usage-warn": c.warning,
+    "--color-usage-critical": c.error,
+    "--color-usage-overall": appearance === "dark" ? "#60a5fa" : "#3b82f6",
+    "--color-usage-track": withAlpha(c.text, appearance === "dark" ? 0.1 : 0.08),
     "--color-input": c.surfaceRaised,
     "--color-input-border": c.input,
     "--color-sidebar-search": c.sidebarControlSurface,

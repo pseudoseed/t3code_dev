@@ -575,6 +575,7 @@ function GeneralSettingsSection() {
       <SidebarProjectSectionsSwitch />
       <AutoSettleSettingsRows />
       <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
+      <SettingsRow icon="gauge.with.needle" label="Limits" target="SettingsLimits" />
     </SettingsSection>
   );
 }
