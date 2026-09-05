@@ -17,6 +17,7 @@ import {
   limitsNotice,
   paceOf,
   providerLimitsLabel,
+  USAGE_LIMIT_SOURCE_KIND_LABEL,
 } from "@t3tools/shared/usageLimits";
 import { type ReactNode, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
@@ -225,7 +226,7 @@ function SourceAccountLimits(props: {
   const { account } = props;
   return (
     <AccountLimits
-      label={DRIVER_LABEL[account.driver] ?? String(account.driver)}
+      label={account.label ?? DRIVER_LABEL[account.driver] ?? String(account.driver)}
       detail={account.plan}
       limits={account.usageLimits}
       now={props.now}
@@ -250,7 +251,11 @@ export function UsageLimitsSection() {
   return (
     <>
       {sources.map((source) => (
-        <SettingsSection key={source.key} title={`${source.label} · CLIProxyAPI`} card>
+        <SettingsSection
+          key={source.key}
+          title={`${source.label} · ${USAGE_LIMIT_SOURCE_KIND_LABEL[source.kind]}`}
+          card
+        >
           {source.error ? (
             <Text className="p-4 text-sm text-foreground-muted">{source.error}</Text>
           ) : source.accounts.length === 0 ? (

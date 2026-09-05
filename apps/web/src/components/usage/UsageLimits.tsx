@@ -20,6 +20,7 @@ import {
   type LimitPace,
   paceOf,
   providerLimitsLabel,
+  USAGE_LIMIT_SOURCE_KIND_LABEL,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon, PlusIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -393,7 +394,7 @@ function SourceAccountLimits({
     <section className="flex flex-col gap-3">
       <AccountHeading
         driver={account.driver}
-        label={getDriverOption(account.driver)?.label ?? String(account.driver)}
+        label={account.label ?? getDriverOption(account.driver)?.label ?? String(account.driver)}
         plan={account.plan}
         email={account.email}
         badge={`via ${sourceKind}`}
@@ -406,15 +407,6 @@ function SourceAccountLimits({
     </section>
   );
 }
-
-/**
- * Accounts a configured source (a CLIProxyAPI hub) pools, grouped under the
- * source's name. Unlike provider rows these are read-only: nothing on this
- * environment can run a turn against them.
- */
-const SOURCE_KIND_LABEL: Record<UsageLimitSourceSnapshot["kind"], string> = {
-  cliproxy: "CLIProxyAPI",
-};
 
 /**
  * Removing a hub also deletes its management key from the server, so it
@@ -462,6 +454,11 @@ function RemoveSourceButton({
   );
 }
 
+/**
+ * Accounts a configured source pools, grouped under the source's name. Unlike
+ * provider rows these are read-only: nothing on this environment can run a
+ * turn against them.
+ */
 function SourceLimits({
   source,
   now,
@@ -471,7 +468,7 @@ function SourceLimits({
   readonly now: number;
   readonly onRemove: (() => void) | null;
 }) {
-  const kind = SOURCE_KIND_LABEL[source.kind];
+  const kind = USAGE_LIMIT_SOURCE_KIND_LABEL[source.kind];
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -587,7 +584,8 @@ export function UsageLimitsSection() {
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium text-foreground">Usage sources</h2>
           <p className="text-xs text-muted-foreground">
-            Quota from a CLIProxyAPI hub shows beside the providers signed in on this machine.
+            Quota from a CLIProxyAPI hub or a usage dashboard shows beside the providers signed in
+            on this machine.
           </p>
         </div>
         {/* The picker stays whenever several environments are connected, so
@@ -622,7 +620,7 @@ export function UsageLimitsSection() {
             {canOperateTarget ? (
               <Button size="xs" variant="outline" onClick={() => setAdding(true)}>
                 <PlusIcon className="size-3" aria-hidden />
-                Add hub
+                Add source
               </Button>
             ) : (
               <Tooltip>
@@ -637,7 +635,7 @@ export function UsageLimitsSection() {
                   <span className="inline-flex" inert>
                     <Button size="xs" variant="outline" disabled>
                       <PlusIcon className="size-3" aria-hidden />
-                      Add hub
+                      Add source
                     </Button>
                   </span>
                 </TooltipTrigger>

@@ -221,6 +221,8 @@ import {
 import {
   ProviderConsumeResetCreditInput,
   ProviderConsumeResetCreditResult,
+  UsageLimitSourceConsumeResetCreditInput,
+  UsageLimitSourceError,
 } from "./providerUsageLimits.ts";
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
@@ -260,6 +262,7 @@ export const WS_METHODS = {
   providerUploadFeedback: "provider.uploadFeedback",
   providerAuthStart: "provider.auth.start",
   providerConsumeResetCredit: "provider.consumeResetCredit",
+  usageLimitSourceConsumeResetCredit: "usageLimitSource.consumeResetCredit",
   providerAuthComplete: "provider.auth.complete",
   providerAuthCancel: "provider.auth.cancel",
   providerAuthLogout: "provider.auth.logout",
@@ -437,6 +440,15 @@ export const WsProviderConsumeResetCreditRpc = Rpc.make(WS_METHODS.providerConsu
   success: ProviderConsumeResetCreditResult,
   error: ProviderSetupRpcError,
 });
+
+export const WsUsageLimitSourceConsumeResetCreditRpc = Rpc.make(
+  WS_METHODS.usageLimitSourceConsumeResetCredit,
+  {
+    payload: UsageLimitSourceConsumeResetCreditInput,
+    success: ProviderConsumeResetCreditResult,
+    error: Schema.Union([UsageLimitSourceError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsProviderAuthStartRpc = Rpc.make(WS_METHODS.providerAuthStart, {
   payload: ProviderSetupInput,
@@ -1222,6 +1234,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsProviderConsumeResetCreditRpc,
+  WsUsageLimitSourceConsumeResetCreditRpc,
   WsProviderAuthStartRpc,
   WsProviderAuthCompleteRpc,
   WsProviderAuthCancelRpc,

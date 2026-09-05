@@ -911,6 +911,16 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId, input }) => JSON.stringify([environmentId, input.instanceId]),
       },
     }),
+    consumeSourceResetCredit: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:consume-source-reset-credit",
+      tag: WS_METHODS.usageLimitSourceConsumeResetCredit,
+      concurrency: {
+        mode: "singleFlight",
+        // Both ids are free-form strings; a delimiter could collide.
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.sourceId, input.accountId]),
+      },
+    }),
     refreshProviders: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:refresh-providers",
       tag: WS_METHODS.serverRefreshProviders,

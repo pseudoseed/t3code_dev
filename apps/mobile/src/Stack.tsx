@@ -58,6 +58,7 @@ import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRoute
 import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
 import { SettingsProviderSetupRouteScreen } from "./features/settings/SettingsProviderSetupRouteScreen";
 import { SettingsVoiceRouteScreen } from "./features/settings/voice/SettingsVoiceRouteScreen";
+import { UsageLimitsRouteScreen } from "./features/usage/UsageLimitsRouteScreen";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { ShowcaseCaptureCoordinator } from "./features/showcase/ShowcaseCaptureCoordinator";
@@ -213,6 +214,13 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "usage",
       options: {
         title: "Usage",
+      },
+    }),
+    SettingsLimits: createNativeStackScreen({
+      screen: UsageLimitsRouteScreen,
+      linking: "limits",
+      options: {
+        title: "Limits",
       },
     }),
   },

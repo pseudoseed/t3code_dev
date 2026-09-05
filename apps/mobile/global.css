@@ -57,6 +57,15 @@
       --color-danger-border: rgba(239, 68, 68, 0.12);
       --color-danger-foreground: #dc2626;
 
+      /* Usage severity. Fixed hues rather than palette roles, so a quota that
+         is nearly spent reads the same on every theme, and the dial's rings
+         can be drawn by react-native-svg, which needs a literal colour. */
+      --color-usage-good: #059669;
+      --color-usage-warn: #d97706;
+      --color-usage-critical: #dc2626;
+      --color-usage-overall: #3b82f6;
+      --color-usage-track: rgba(0, 0, 0, 0.08);
+
       /* Inputs */
       --color-input: #ffffff;
       --color-input-border: rgba(0, 0, 0, 0.1);
@@ -155,6 +164,14 @@
       --color-danger: rgba(239, 68, 68, 0.14);
       --color-danger-border: rgba(248, 113, 113, 0.18);
       --color-danger-foreground: #fca5a5;
+
+      /* Usage severity, lightened so each hue keeps its contrast on a dark
+         card while staying recognisably the same signal. */
+      --color-usage-good: #34d399;
+      --color-usage-warn: #fbbf24;
+      --color-usage-critical: #f87171;
+      --color-usage-overall: #60a5fa;
+      --color-usage-track: rgba(255, 255, 255, 0.1);
 
       /* Inputs */
       --color-input: #141414;
