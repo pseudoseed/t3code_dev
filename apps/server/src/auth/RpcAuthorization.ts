@@ -153,6 +153,12 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.mcpAdd]: AuthOrchestrationOperateScope,
   [WS_METHODS.mcpRemove]: AuthOrchestrationOperateScope,
   [WS_METHODS.mcpCopy]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpRepair]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpAuthStart]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpAuthComplete]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpAuthCancel]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpAuthLogout]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpAuthSubscribe]: AuthOrchestrationOperateScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

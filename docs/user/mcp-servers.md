@@ -1,74 +1,73 @@
 # MCP servers
 
-Settings, MCP lists the MCP servers each of your Claude and Codex accounts loads, and lets you add,
-copy, or remove them without opening a terminal. It is on web, desktop, and the phone app.
-
-Every account you sign into keeps its own configuration directory, and Claude and Codex store
-servers in different formats. A server added from a terminal only reaches whichever account owns
-that directory, which is why running several accounts used to mean repeating the same setup once
-per account, per provider. This page does that part for you.
-
-## Seeing what is configured
-
-Each row is one server. The chips underneath it show which accounts have it, labelled with their
-provider, and any account without it is greyed out and struck through. A row that lists credentials is telling you the entry
-carries an API key or bearer token; the values themselves stay on the machine that runs T3 Code and
-are never sent to the app.
+Settings → MCP Servers lets you add, copy, remove, and authorize servers for your Claude and Codex
+accounts. Web, desktop, and mobile show a separate section for each connected machine.
 
 ## Adding a server
 
-Fill in a name, paste the server definition as JSON, and tick the accounts to apply it to. The JSON
-is the same shape Claude Code accepts:
-
-```json
-{ "type": "http", "url": "https://mcp.example.com/mcp" }
-```
+Enter a name and server URL, select the accounts that should use it, and choose **Add**. For local
+commands or custom headers, choose **Use JSON definition**:
 
 ```json
 { "command": "npx", "args": ["-y", "some-mcp-server"], "env": { "API_KEY": "..." } }
 ```
 
-Write it in Claude's format. Codex accounts get it translated into theirs. Each account is updated
-in turn, and the result line tells you which ones succeeded.
+Definitions use Claude's format and are translated for Codex. If an account cannot support a
+setting, its result explains why. Failed additions keep your form contents so you can correct
+and retry them.
 
-A few definitions cannot cross providers. Codex has no place to store arbitrary request headers, so
-a remote server carrying them is refused on Codex accounts with a reason, rather than installed
-without its credentials and left to fail at connect time.
+## Managing accounts
 
-## Copying a server to your other accounts
+Each server lists the accounts that have it, with a separate **Remove** action for each account.
+Accounts sharing a configuration directory also share its server list, so removing a server from
+one of those accounts affects the others.
 
-When a row is missing from some accounts, it offers **Copy to N more**. This takes the full
-definition, credentials included, from an account that already has it and writes it to the rest,
-translating between Claude and Codex where needed. Nothing is retyped and no secret leaves the
-machine.
+**Copy to N more** copies the definition to accounts missing it. Embedded environment variables and
+headers stay on the machine. Between Claude accounts, copying includes the complete connector
+sign-in, including refresh credentials. Existing complete destination sign-ins are kept. Sign-ins
+are not translated between Claude and Codex; authorize the connector in each provider.
 
 ## Signing in to a connector
 
-Some servers authorize through a browser instead of an API key. Those sign-ins only work from the
-interactive Claude CLI, so the last section gives you a ready-made command for each account. Copy
-it, run it in a terminal, and use `/mcp` there.
+Choose **Manage sign-in** under the account, then **Sign in** and **Open sign-in page**. Approve the
+connector in your browser. You can copy the link to another browser if needed.
 
-If an account lists a variable such as `CLAUDE_CODE_OAUTH_TOKEN`, its sign-in lives in T3 Code's
-settings rather than on disk. Set that variable in your shell as well, or the CLI starts as a
-signed-out account and asks you to log in. Logging in there is a separate sign-in and does not
-touch the one T3 Code uses.
+When connecting remotely or using your phone, the final localhost page may not load. Copy that
+page's full address, paste it into the sign-in form, and choose **Complete sign-in**. Leave the
+sign-in running until it finishes, or choose **Cancel sign-in** to stop it. Only the client that
+started a sign-in can view its link or submit its response.
 
-`/mcp` typed into a T3 Code conversation does nothing. It is a command the Claude terminal handles
-itself, and conversations run Claude without a terminal attached.
+**Sign out** clears that connector's stored authorization for the account. It does not sign out
+your Claude or Codex subscription. Choose **Sign in** again to reconnect.
 
-## On your phone
+Claude connector sign-in requires a CLI version with `mcp login --no-browser`. This flow runs
+directly and does not require opening a Claude conversation or reaching `/mcp` first.
 
-Settings, MCP Servers shows the same thing, one block per machine you are connected to. Accounts
-and their configuration directories belong to a single machine, so nothing is shared across them.
+After changing a connection, start a new conversation to load its tools.
 
-## What this page does not cover
+## Understanding status and repairing credentials
 
-Claude and Codex accounts appear here. Cursor, Grok, OpenCode, and Antigravity still need their own
-configuration files.
+Status describes saved credentials, not a live connectivity check:
 
-Servers are written at each provider's user scope. Per-project servers from a repository's
-`.mcp.json` are still loaded by your conversations, but they are managed in the repository, not
-here.
+- **Sign-in stored**: the account has stored authorization.
+- **Refresh credentials missing**: Claude has an OAuth record without complete refresh material.
+- **Authorization required**: the provider reports that authorization is needed.
+- **Not checked**: no OAuth status is available; the server may use an API key or need no sign-in.
 
-Codex keeps sign-ins per account but shares one server list across accounts that share a home
-directory, so those accounts always show the same servers.
+For incomplete Claude records, **Repair from default Claude** restores complete credentials from
+the same machine's default Claude configuration. It only repairs existing records with the same
+server and configuration identifier, preserves the account's subscription sign-in, and clears the
+repaired server's cached authorization failure. It leaves complete destination records untouched.
+
+If the default configuration has no matching refresh credentials, use **Sign in** instead. Signing
+in independently is also useful if the connector rotates refresh tokens and a shared sign-in stops
+working. Credential-store errors appear beside the affected account; **Refresh** reads its status again.
+
+## Scope
+
+Claude plugin connectors with saved authorization or a cached authorization failure appear here
+for sign-in and repair. Their definitions remain managed by the plugin, so they have no copy or
+remove control here.
+
+Servers are added at the provider's user scope. Repository-specific servers remain managed by the
+repository. Cursor, Grok, OpenCode, and Antigravity use their own configuration tools.

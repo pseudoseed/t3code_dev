@@ -30,6 +30,34 @@ const URL_TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/;
 
 const URL_PATTERN = /https:\/\/[^\s<>"'`]+/g;
 
+/** OSC 8 links may display a label instead of their URL. Keep the URL before stripping ANSI. */
+function authorizationText(line: string): string {
+  // eslint-disable-next-line no-control-regex
+  return stripAnsi(line.replace(/\u001B\]8;[^;]*;([^\u0007\u001B]+)(?:\u0007|\u001B\\)/g, "$1 "));
+}
+
+/** MCP issuers are discovered by the CLI; require an OAuth code flow instead of fixed hosts. */
+export function findMcpAuthorizationUrl(line: string): string | undefined {
+  for (const match of authorizationText(line).matchAll(URL_PATTERN)) {
+    const candidate = match[0].replace(URL_TRAILING_PUNCTUATION, "");
+    try {
+      const url = new URL(candidate);
+      if (
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        url.searchParams.get("response_type") === "code" &&
+        url.searchParams.get("state") &&
+        url.searchParams.get("redirect_uri")
+      )
+        return candidate;
+    } catch {
+      /* Ignore non-URL output. */
+    }
+  }
+  return undefined;
+}
+
 function hostIsAllowed(host: string, allowedHosts: ReadonlyArray<string>): boolean {
   const normalized = host.toLowerCase();
   return allowedHosts.some(
@@ -46,7 +74,7 @@ export function findAuthorizationUrl(
   line: string,
   allowedHosts: ReadonlyArray<string>,
 ): string | undefined {
-  for (const match of stripAnsi(line).matchAll(URL_PATTERN)) {
+  for (const match of authorizationText(line).matchAll(URL_PATTERN)) {
     const candidate = match[0].replace(URL_TRAILING_PUNCTUATION, "");
     let parsed: URL;
     try {

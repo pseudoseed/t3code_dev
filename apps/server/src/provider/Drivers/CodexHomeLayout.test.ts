@@ -6,12 +6,13 @@ import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
-import { CodexSettings } from "@t3tools/contracts";
+import { CodexSettings, ProviderInstanceId } from "@t3tools/contracts";
 import {
   CodexShadowHomeEntryConflictError,
   CodexShadowHomePathConflictError,
   materializeCodexShadowHome,
   resolveCodexHomeLayout,
+  resolveCodexInstanceHomeLayout,
 } from "./CodexHomeLayout.ts";
 const decodeCodexSettingsValue = Schema.decodeSync(CodexSettings);
 
@@ -82,6 +83,39 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
       }),
     );
   });
+
+  it.effect(
+    "gives MCP management the same private credential home and shared config as the driver",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const root = yield* makeTempDir("t3code-mcp-codex-");
+        const homePath = `${root}/shared`;
+        const shadowHomePath = `${root}/private`;
+        yield* writeTextFile(
+          `${homePath}/config.toml`,
+          '[mcp_servers.fixture]\nurl = "https://example.com/mcp"\n',
+        );
+        yield* writeTextFile(`${shadowHomePath}/auth.json`, '{"fixture":"private-account"}');
+        const config = decodeCodexSettings({ homePath, shadowHomePath });
+        const first = yield* resolveCodexInstanceHomeLayout(
+          config,
+          ProviderInstanceId.make("codex_work"),
+          `${root}/homes`,
+        );
+        const second = yield* resolveCodexInstanceHomeLayout(
+          config,
+          ProviderInstanceId.make("codex_work"),
+          `${root}/homes`,
+        );
+        expect(second).toEqual(first);
+        expect(second.effectiveHomePath).toBe(shadowHomePath);
+        expect(yield* fs.readLink(`${shadowHomePath}/config.toml`)).toBe(`${homePath}/config.toml`);
+        expect(yield* fs.readFileString(`${shadowHomePath}/auth.json`)).toBe(
+          '{"fixture":"private-account"}',
+        );
+      }),
+  );
 
   describe("materializeCodexShadowHome", () => {
     it.effect("materializes a shadow home with shared state links and private auth", () =>

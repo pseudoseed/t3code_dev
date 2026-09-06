@@ -1,18 +1,22 @@
-import { CopyIcon, PlusIcon, RefreshCwIcon, TrashIcon } from "lucide-react";
+import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import type {
+  EnvironmentId,
   McpInstanceInventory,
   McpMutationResult,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
-import { useCallback, useMemo, useState } from "react";
+import { mcpAuthStatusLabel, mcpOutcomeSummary } from "@t3tools/client-runtime/state/mcp";
+import {
+  squashAtomCommandFailure,
+  type AtomCommandResult,
+} from "@t3tools/client-runtime/state/runtime";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 
-import { cn } from "../../lib/utils";
 import { mcpEnvironment } from "../../state/mcp";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentQuery } from "../../state/query";
-import { usePrimaryEnvironment } from "../../state/environments";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { useEnvironments } from "../../state/environments";
+import { McpAuthControls } from "./McpAuthControls";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -71,53 +75,57 @@ function buildServerRows(instances: ReadonlyArray<McpInstanceInventory>): Server
   return [...rows.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function outcomeSummary(outcomes: ReadonlyArray<{ ok: boolean; message: string }>): string {
-  const failures = outcomes.filter((outcome) => !outcome.ok);
-  if (failures.length === 0) return `Applied to ${outcomes.length} instance(s).`;
-  return failures.map((failure) => failure.message || "Failed").join(" · ");
-}
-
-function InstanceChips({
-  instances,
-  presentIn,
-}: {
-  instances: ReadonlyArray<McpInstanceInventory>;
-  presentIn: ReadonlyArray<ProviderInstanceId>;
-}) {
+export function McpSettingsPanel() {
+  const { environments } = useEnvironments();
   return (
-    <div className="flex flex-wrap gap-1">
-      {instances.map((instance) => {
-        const present = presentIn.includes(instance.instanceId);
-        return (
-          <Badge
-            key={instance.instanceId}
-            variant={present ? "default" : "outline"}
-            className={cn(!present && "text-muted-foreground/70 line-through")}
-          >
-            {driverLabel(instance.driver)} · {instance.displayName}
-          </Badge>
-        );
-      })}
-    </div>
+    <>
+      {environments.map((environment) => (
+        <EnvironmentMcpSettings
+          key={environment.environmentId}
+          environmentId={environment.environmentId}
+          label={environment.label}
+        />
+      ))}
+      {environments.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">
+          Connect to an environment to manage MCP servers.
+        </p>
+      ) : null}
+    </>
   );
 }
 
-export function McpSettingsPanel() {
-  const primaryEnvironment = usePrimaryEnvironment();
-  const environmentId = primaryEnvironment?.environmentId ?? null;
+function EnvironmentMcpSettings({
+  environmentId,
+  label,
+}: {
+  environmentId: EnvironmentId;
+  label: string;
+}) {
   const { data, error, isPending, refresh } = useEnvironmentQuery(
     environmentId === null ? null : mcpEnvironment.inventory({ environmentId, input: {} }),
   );
+  const formId = useId();
+  const pending = useRef(false);
   const addServer = useAtomCommand(mcpEnvironment.add, { reportFailure: false });
   const copyServer = useAtomCommand(mcpEnvironment.copy, { reportFailure: false });
   const removeServer = useAtomCommand(mcpEnvironment.remove, { reportFailure: false });
-  const { copyToClipboard } = useCopyToClipboard<string>();
+  const repair = useAtomCommand(mcpEnvironment.repair, {
+    reportFailure: false,
+    reportDefect: false,
+  });
+  const [authTarget, setAuthTarget] = useState<{
+    instanceId: ProviderInstanceId;
+    name: string;
+  } | null>(null);
 
   const instances = useMemo(() => data?.instances ?? [], [data]);
   const rows = useMemo(() => buildServerRows(instances), [instances]);
 
   const [name, setName] = useState("");
   const [json, setJson] = useState("");
+  const [url, setUrl] = useState("");
+  const [advanced, setAdvanced] = useState(false);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -144,53 +152,80 @@ export function McpSettingsPanel() {
   const runMutation = async (
     operation: () => Promise<AtomCommandResult<McpMutationResult, unknown>>,
   ) => {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setStatus(null);
     try {
       const result = await operation();
       setStatus(
         result._tag === "Success"
-          ? outcomeSummary(result.value.outcomes)
-          : "Failed. Check that this instance's Claude binary path is correct.",
+          ? mcpOutcomeSummary(result.value.outcomes, instances)
+          : String(squashAtomCommandFailure(result)),
       );
       refresh();
+    } catch {
+      setStatus("Could not update this server. Try again.");
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
 
+  const definition = advanced ? json.trim() : JSON.stringify({ type: "http", url: url.trim() });
   const canSubmit =
     environmentId !== null &&
     name.trim().length > 0 &&
-    json.trim().length > 0 &&
+    (advanced ? json.trim().length > 0 : /^https?:\/\//.test(url.trim())) &&
     selectedInstanceIds.length > 0 &&
     !busy;
 
   return (
     <SettingsPageContainer>
       <SettingsSection
-        id="mcp-servers"
-        title="MCP servers"
-        description="Claude and Codex each store servers in their own format, and every signed-in account keeps its own configuration directory. Add a server once here and it is installed on the accounts you pick. Changes run through each provider's own CLI."
+        id={`mcp-servers-${formId}`}
+        title={`MCP servers · ${label}`}
+        description="Add servers, manage connector sign-ins, and repair missing refresh credentials for each account. After changing a connection, start a new conversation to load its tools."
         headerAction={
           <Button variant="ghost" size="sm" onClick={refresh} disabled={isPending}>
-            <RefreshCwIcon className={cn("size-3.5", isPending && "animate-spin")} />
+            <RefreshCwIcon className="size-3.5" />
             Refresh
           </Button>
         }
       >
         {error ? <p className="px-3 text-sm text-destructive sm:px-4">{error}</p> : null}
-        {status ? <p className="px-3 text-sm text-muted-foreground sm:px-4">{status}</p> : null}
+        {status ? (
+          <p role="status" className="px-3 text-sm text-muted-foreground sm:px-4">
+            {status}
+          </p>
+        ) : null}
         {instances.length === 0 && !isPending ? (
           <p className="px-3 text-sm text-muted-foreground sm:px-4">
             No Claude or Codex accounts are configured on this environment.
           </p>
         ) : null}
 
+        {instances
+          .filter((instance) => instance.readError)
+          .map((instance) => (
+            <p role="alert" key={instance.instanceId} className="px-4 text-sm text-destructive">
+              {instance.displayName}: {instance.readError}
+            </p>
+          ))}
+        {rows.length === 0 && !isPending && instances.length > 0 ? (
+          <p className="px-4 text-sm text-muted-foreground">
+            No servers configured. Add a URL below to get started.
+          </p>
+        ) : null}
         <div className="divide-y divide-border/60">
           {rows.map((row) => {
+            const source = instances.find((instance) =>
+              instance.servers.some(
+                (server) => server.name === row.name && server.canManageDefinition !== false,
+              ),
+            );
             const missing = instances.filter(
-              (instance) => !row.presentIn.includes(instance.instanceId),
+              (instance) => !instance.readError && !row.presentIn.includes(instance.instanceId),
             );
             return (
               <div key={row.name} className="space-y-2 px-3 py-3 sm:px-4">
@@ -202,7 +237,7 @@ export function McpSettingsPanel() {
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    {missing.length > 0 ? (
+                    {source && missing.length > 0 ? (
                       <Button
                         variant="outline"
                         size="sm"
@@ -212,7 +247,7 @@ export function McpSettingsPanel() {
                             copyServer({
                               environmentId: environmentId!,
                               input: {
-                                fromInstanceId: row.presentIn[0]!,
+                                fromInstanceId: source.instanceId,
                                 toInstanceIds: missing.map((instance) => instance.instanceId),
                                 name: row.name,
                               },
@@ -223,25 +258,95 @@ export function McpSettingsPanel() {
                         Copy to {missing.length} more
                       </Button>
                     ) : null}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      aria-label={`Remove ${row.name} everywhere`}
-                      onClick={() =>
-                        void runMutation(() =>
-                          removeServer({
-                            environmentId: environmentId!,
-                            input: { instanceIds: row.presentIn, name: row.name },
-                          }),
-                        )
-                      }
-                    >
-                      <TrashIcon className="size-3.5" />
-                    </Button>
                   </div>
                 </div>
-                <InstanceChips instances={instances} presentIn={row.presentIn} />
+                {instances
+                  .filter((instance) => row.presentIn.includes(instance.instanceId))
+                  .map((instance) => {
+                    const server = instance.servers.find((server) => server.name === row.name)!;
+                    const canAuth = server.transport !== "stdio";
+                    const selected =
+                      authTarget?.instanceId === instance.instanceId &&
+                      authTarget.name === row.name;
+                    return (
+                      <div
+                        key={instance.instanceId}
+                        className="space-y-2 rounded-md bg-muted/30 p-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">
+                            {driverLabel(instance.driver)} · {instance.displayName}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {mcpAuthStatusLabel(server.authStatus)}
+                          </span>
+                          {canAuth ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() =>
+                                setAuthTarget({ instanceId: instance.instanceId, name: row.name })
+                              }
+                            >
+                              Manage sign-in
+                            </Button>
+                          ) : null}
+                          {instance.driver === "claudeAgent" &&
+                          (server.authStatus === "incomplete" ||
+                            server.authStatus === "needsAuth") ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() =>
+                                void runMutation(() =>
+                                  repair({
+                                    environmentId,
+                                    input: { instanceIds: [instance.instanceId], name: row.name },
+                                  }),
+                                )
+                              }
+                            >
+                              Repair from default Claude
+                            </Button>
+                          ) : null}
+                          {server.canManageDefinition !== false ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy}
+                              onClick={() =>
+                                void runMutation(() =>
+                                  removeServer({
+                                    environmentId,
+                                    input: { instanceIds: [instance.instanceId], name: row.name },
+                                  }),
+                                )
+                              }
+                            >
+                              Remove
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Managed by a plugin or connector
+                            </span>
+                          )}
+                        </div>
+                        {server.target !== row.target ? (
+                          <p className="break-all text-xs text-muted-foreground">{server.target}</p>
+                        ) : null}
+                        {selected ? (
+                          <McpAuthControls
+                            key={`${instance.instanceId}:${row.name}`}
+                            environmentId={environmentId}
+                            input={authTarget}
+                            onChanged={refresh}
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 {row.envKeys.length > 0 || row.headerKeys.length > 0 ? (
                   <p className="text-[12px] text-muted-foreground/70">
                     Carries credentials: {[...row.envKeys, ...row.headerKeys].join(", ")}
@@ -254,29 +359,47 @@ export function McpSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection
-        id="mcp-add"
+        id={`mcp-add-${formId}`}
         title="Add a server"
-        description="Paste the same JSON you would pass to claude mcp add-json. Codex accounts get it translated into their own format, and any account that cannot express it says so instead of installing a broken entry."
+        description="Enter a server URL and choose its accounts. Use JSON for a local command or custom headers."
       >
         <div className="space-y-3 px-3 py-3 sm:px-4">
           <div className="space-y-1.5">
-            <Label htmlFor="mcp-name">Name</Label>
+            <Label htmlFor={`mcp-name-${formId}`}>Name</Label>
             <Input
-              id="mcp-name"
+              id={`mcp-name-${formId}`}
               value={name}
               placeholder="sentry"
               onChange={(event) => setName(event.target.value)}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="mcp-json">Definition</Label>
-            <Textarea
-              id="mcp-json"
-              rows={4}
-              value={json}
-              placeholder={ADD_JSON_PLACEHOLDER}
-              onChange={(event) => setJson(event.target.value)}
-            />
+            <Button size="sm" variant="ghost" onClick={() => setAdvanced(!advanced)}>
+              {advanced ? "Use server URL" : "Use JSON definition"}
+            </Button>
+            {advanced ? (
+              <>
+                <Label htmlFor={`mcp-json-${formId}`}>Definition</Label>
+                <Textarea
+                  id={`mcp-json-${formId}`}
+                  rows={4}
+                  value={json}
+                  placeholder={ADD_JSON_PLACEHOLDER}
+                  onChange={(event) => setJson(event.target.value)}
+                />
+              </>
+            ) : (
+              <>
+                <Label htmlFor={`mcp-url-${formId}`}>Server URL</Label>
+                <Input
+                  id={`mcp-url-${formId}`}
+                  type="url"
+                  value={url}
+                  placeholder="https://mcp.example.com/mcp"
+                  onChange={(event) => setUrl(event.target.value)}
+                />
+              </>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Apply to</Label>
@@ -298,10 +421,16 @@ export function McpSettingsPanel() {
               void runMutation(async () => {
                 const result = await addServer({
                   environmentId: environmentId!,
-                  input: { instanceIds: selectedInstanceIds, name: name.trim(), json: json.trim() },
+                  input: { instanceIds: selectedInstanceIds, name: name.trim(), json: definition },
                 });
-                setName("");
-                setJson("");
+                if (
+                  result._tag === "Success" &&
+                  result.value.outcomes.every((outcome) => outcome.ok)
+                ) {
+                  setName("");
+                  setJson("");
+                  setUrl("");
+                }
                 return result;
               })
             }
@@ -309,44 +438,6 @@ export function McpSettingsPanel() {
             <PlusIcon className="size-3.5" />
             Add
           </Button>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        id="mcp-terminal"
-        title="Sign in to a connector"
-        description="Servers that authorize through a browser need the interactive Claude CLI, which T3 Code cannot run for you. Copy an account's command, run it in a terminal, then use /mcp there."
-      >
-        <div className="divide-y divide-border/60">
-          {instances.map((instance) => (
-            <div
-              key={instance.instanceId}
-              className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4"
-            >
-              <div className="min-w-0">
-                <p className="text-sm">
-                  {driverLabel(instance.driver)} · {instance.displayName}
-                </p>
-                <code className="block truncate text-[12px] text-muted-foreground/80">
-                  {instance.cliPrefix}
-                </code>
-                {instance.requiredEnvNames.length > 0 ? (
-                  <p className="text-[12px] text-muted-foreground/70">
-                    Signed in through {instance.requiredEnvNames.join(", ")}. Set that in your shell
-                    too, or the CLI starts as a signed-out account and asks you to log in.
-                  </p>
-                ) : null}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={`Copy command for ${instance.displayName}`}
-                onClick={() => copyToClipboard(instance.cliPrefix, instance.cliPrefix)}
-              >
-                <CopyIcon className="size-3.5" />
-              </Button>
-            </div>
-          ))}
         </div>
       </SettingsSection>
     </SettingsPageContainer>

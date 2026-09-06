@@ -1,16 +1,21 @@
-import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import { mcpAuthStatusLabel, mcpOutcomeSummary } from "@t3tools/client-runtime/state/mcp";
+import {
+  squashAtomCommandFailure,
+  type AtomCommandResult,
+} from "@t3tools/client-runtime/state/runtime";
 import type {
+  McpAuthInput,
   EnvironmentId,
   McpInstanceInventory,
   McpMutationResult,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { cn } from "../../lib/cn";
 import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useEnvironments } from "../../state/environments";
@@ -64,12 +69,6 @@ function buildServerRows(instances: ReadonlyArray<McpInstanceInventory>): Server
   return [...rows.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function outcomeSummary(outcomes: ReadonlyArray<{ ok: boolean; message: string }>): string {
-  const failures = outcomes.filter((outcome) => !outcome.ok);
-  if (failures.length === 0) return `Applied to ${outcomes.length} account(s).`;
-  return failures.map((failure) => failure.message || "Failed").join(" · ");
-}
-
 function ActionButton(props: {
   readonly label: string;
   readonly disabled?: boolean;
@@ -95,33 +94,133 @@ function ActionButton(props: {
   );
 }
 
-function AccountChips(props: {
-  readonly instances: ReadonlyArray<McpInstanceInventory>;
-  readonly presentIn: ReadonlyArray<ProviderInstanceId>;
+function McpAuthControls({
+  environmentId,
+  input,
+  onChanged,
+}: {
+  environmentId: EnvironmentId;
+  input: McpAuthInput;
+  onChanged: () => void;
 }) {
+  const target = { environmentId, input };
+  const query = useEnvironmentQuery(mcpEnvironment.authSubscribe(target));
+  const auth = query.data;
+  const start = useAtomCommand(mcpEnvironment.authStart, PRIVATE_COMMAND_OPTIONS);
+  const complete = useAtomCommand(mcpEnvironment.authComplete, PRIVATE_COMMAND_OPTIONS);
+  const cancel = useAtomCommand(mcpEnvironment.authCancel, PRIVATE_COMMAND_OPTIONS);
+  const logout = useAtomCommand(mcpEnvironment.authLogout, PRIVATE_COMMAND_OPTIONS);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const [callback, setCallback] = useState({ flowId: "", value: "" });
+  const callbackUrl = callback.flowId === auth?.flowId ? callback.value : "";
+  const active = auth && ["starting", "waiting", "verifying"].includes(auth.phase);
+  useEffect(() => {
+    if (auth?.phase === "succeeded") onChanged();
+  }, [auth?.phase, onChanged]);
+
+  async function run<A, E>(operation: () => Promise<AtomCommandResult<A, E>>) {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await operation();
+      if (result._tag === "Failure") {
+        const failure = squashAtomCommandFailure(result);
+        setError(failure instanceof Error ? failure.message : "Connector sign-in failed.");
+      } else onChanged();
+    } catch {
+      setError("Connector sign-in failed. Try again.");
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
   return (
-    <View className="flex-row flex-wrap gap-1.5">
-      {props.instances.map((instance) => {
-        const present = props.presentIn.includes(instance.instanceId);
-        return (
-          <View
-            key={instance.instanceId}
-            className={cn(
-              "rounded-full px-2 py-0.5",
-              present ? "bg-foreground/12" : "bg-transparent border border-border",
-            )}
-          >
-            <Text
-              className={cn(
-                "text-xs",
-                present ? "text-foreground" : "text-foreground-muted opacity-60",
-              )}
-            >
-              {driverLabel(instance.driver)} · {instance.displayName}
-            </Text>
-          </View>
-        );
-      })}
+    <View className="gap-2">
+      <Text className="text-sm text-foreground-muted">
+        {auth?.message ?? "Sign in to this connector for this account."}
+      </Text>
+      {auth?.phase === "succeeded" ? (
+        <Text className="text-sm text-foreground-muted">
+          Start a new conversation to reconnect its tools.
+        </Text>
+      ) : null}
+      {auth?.authorizationUrl ? (
+        <>
+          <ActionButton
+            label="Open sign-in page"
+            onPress={() => void tryOpenExternalUrl(auth.authorizationUrl!, "provider-auth")}
+          />
+          <ActionButton
+            label="Copy sign-in link"
+            onPress={() =>
+              void tryCopyTextWithHaptic(auth.authorizationUrl!, { target: "command" })
+            }
+          />
+          {auth.completion !== "none" ? (
+            <>
+              <Text className="text-sm text-foreground-muted">
+                If the final localhost page does not load, paste its full URL here.
+              </Text>
+              <TextInput
+                accessibilityLabel="Sign-in redirect URL"
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={16_384}
+                value={callbackUrl}
+                onChangeText={(value) => setCallback({ flowId: auth.flowId ?? "", value })}
+                placeholder="http://localhost:…"
+                className="min-h-11 rounded-2xl border border-border px-3 text-base text-foreground"
+              />
+              <ActionButton
+                label="Complete sign-in"
+                disabled={busy || !callbackUrl.trim()}
+                onPress={() => {
+                  if (auth.flowId)
+                    void run(() =>
+                      complete({
+                        environmentId,
+                        input: { ...input, flowId: auth.flowId!, callbackUrl: callbackUrl.trim() },
+                      }),
+                    );
+                }}
+              />
+            </>
+          ) : null}
+        </>
+      ) : null}
+      <View className="flex-row flex-wrap gap-2">
+        {active ? (
+          auth?.flowId ? (
+            <ActionButton
+              label="Cancel sign-in"
+              disabled={busy}
+              onPress={() =>
+                void run(() => cancel({ environmentId, input: { ...input, flowId: auth.flowId! } }))
+              }
+            />
+          ) : null
+        ) : (
+          <>
+            <ActionButton
+              label="Sign in"
+              disabled={busy || !auth}
+              onPress={() => void run(() => start(target))}
+            />
+            <ActionButton
+              label="Sign out"
+              disabled={busy || !auth}
+              onPress={() => void run(() => logout(target))}
+            />
+          </>
+        )}
+      </View>
+      {error || query.error ? (
+        <Text className="text-sm text-red-400">{error ?? query.error}</Text>
+      ) : null}
     </View>
   );
 }
@@ -140,15 +239,23 @@ function EnvironmentMcpSection(props: {
   );
   const addServer = useAtomCommand(mcpEnvironment.add, PRIVATE_COMMAND_OPTIONS);
   const copyServer = useAtomCommand(mcpEnvironment.copy, PRIVATE_COMMAND_OPTIONS);
+  const repair = useAtomCommand(mcpEnvironment.repair, PRIVATE_COMMAND_OPTIONS);
+  const [authTarget, setAuthTarget] = useState<McpAuthInput | null>(null);
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const removeServer = useAtomCommand(mcpEnvironment.remove, PRIVATE_COMMAND_OPTIONS);
 
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [json, setJson] = useState("");
+  const [url, setUrl] = useState("");
+  const [advanced, setAdvanced] = useState(false);
 
   const instances = data?.instances ?? [];
   const rows = buildServerRows(instances);
+  const selectedInstanceIds = instances
+    .filter((instance) => !excluded.has(instance.instanceId))
+    .map((instance) => instance.instanceId);
 
   // Every mutation ends with a refresh: the write goes through the Claude CLI,
   // so the config on disk is the only thing that knows what actually landed.
@@ -161,10 +268,12 @@ function EnvironmentMcpSection(props: {
       const result = await operation();
       setStatus(
         result._tag === "Success"
-          ? outcomeSummary(result.value.outcomes)
-          : "Failed. Check that this account's Claude binary path is correct.",
+          ? mcpOutcomeSummary(result.value.outcomes, instances)
+          : String(squashAtomCommandFailure(result)),
       );
       refresh();
+    } catch {
+      setStatus("Could not update the server. Try again.");
     } finally {
       setBusy(false);
     }
@@ -195,9 +304,29 @@ function EnvironmentMcpSection(props: {
             <Text className="text-sm text-foreground-muted">{status}</Text>
           </View>
         ) : null}
+        <View className="p-4">
+          <ActionButton label="Refresh" disabled={busy || isPending} onPress={refresh} />
+        </View>
+        {instances
+          .filter((instance) => instance.readError)
+          .map((instance) => (
+            <Text key={instance.instanceId} className="px-4 text-sm text-red-400">
+              {instance.displayName}: {instance.readError}
+            </Text>
+          ))}
+        {rows.length === 0 && !isPending ? (
+          <Text className="px-4 text-sm text-foreground-muted">
+            No servers configured. Add a URL below.
+          </Text>
+        ) : null}
         {rows.map((row) => {
+          const source = instances.find((instance) =>
+            instance.servers.some(
+              (server) => server.name === row.name && server.canManageDefinition !== false,
+            ),
+          );
           const missing = instances.filter(
-            (instance) => !row.presentIn.includes(instance.instanceId),
+            (instance) => !instance.readError && !row.presentIn.includes(instance.instanceId),
           );
           return (
             <View key={row.name} className="gap-2 p-4">
@@ -205,9 +334,9 @@ function EnvironmentMcpSection(props: {
               <Text className="text-sm text-foreground-muted" numberOfLines={1}>
                 {row.transport} · {row.target}
               </Text>
-              <AccountChips instances={instances} presentIn={row.presentIn} />
+
               <View className="flex-row gap-2">
-                {missing.length > 0 ? (
+                {source && missing.length > 0 ? (
                   <ActionButton
                     label={`Copy to ${missing.length} more`}
                     disabled={busy}
@@ -216,7 +345,7 @@ function EnvironmentMcpSection(props: {
                         copyServer({
                           environmentId: props.environmentId,
                           input: {
-                            fromInstanceId: row.presentIn[0]!,
+                            fromInstanceId: source.instanceId,
                             toInstanceIds: missing.map((instance) => instance.instanceId),
                             name: row.name,
                           },
@@ -225,20 +354,84 @@ function EnvironmentMcpSection(props: {
                     }
                   />
                 ) : null}
-                <ActionButton
-                  label="Remove"
-                  destructive
-                  disabled={busy}
-                  onPress={() =>
-                    void runMutation(() =>
-                      removeServer({
-                        environmentId: props.environmentId,
-                        input: { instanceIds: row.presentIn, name: row.name },
-                      }),
-                    )
-                  }
-                />
               </View>
+              {instances
+                .filter((instance) => row.presentIn.includes(instance.instanceId))
+                .map((instance) => {
+                  const server = instance.servers.find((server) => server.name === row.name)!;
+                  const selected =
+                    authTarget?.instanceId === instance.instanceId && authTarget.name === row.name;
+                  return (
+                    <View
+                      key={instance.instanceId}
+                      className="gap-2 rounded-2xl border border-border p-3"
+                    >
+                      <Text className="text-sm text-foreground">
+                        {driverLabel(instance.driver)} · {instance.displayName}
+                      </Text>
+                      <Text className="text-xs text-foreground-muted">
+                        {mcpAuthStatusLabel(server.authStatus)}
+                      </Text>
+                      {server.target !== row.target ? (
+                        <Text className="text-xs text-foreground-muted">{server.target}</Text>
+                      ) : null}
+                      <View className="flex-row flex-wrap gap-2">
+                        {server.transport !== "stdio" ? (
+                          <ActionButton
+                            label="Manage sign-in"
+                            disabled={busy}
+                            onPress={() =>
+                              setAuthTarget({ instanceId: instance.instanceId, name: row.name })
+                            }
+                          />
+                        ) : null}
+                        {instance.driver === "claudeAgent" &&
+                        (server.authStatus === "incomplete" ||
+                          server.authStatus === "needsAuth") ? (
+                          <ActionButton
+                            label="Repair from default Claude"
+                            disabled={busy}
+                            onPress={() =>
+                              void runMutation(() =>
+                                repair({
+                                  environmentId: props.environmentId,
+                                  input: { instanceIds: [instance.instanceId], name: row.name },
+                                }),
+                              )
+                            }
+                          />
+                        ) : null}
+                        {server.canManageDefinition !== false ? (
+                          <ActionButton
+                            label="Remove"
+                            destructive
+                            disabled={busy}
+                            onPress={() =>
+                              void runMutation(() =>
+                                removeServer({
+                                  environmentId: props.environmentId,
+                                  input: { instanceIds: [instance.instanceId], name: row.name },
+                                }),
+                              )
+                            }
+                          />
+                        ) : (
+                          <Text className="text-xs text-foreground-muted">
+                            Managed by a plugin or connector
+                          </Text>
+                        )}
+                      </View>
+                      {selected ? (
+                        <McpAuthControls
+                          key={`${instance.instanceId}:${row.name}`}
+                          environmentId={props.environmentId}
+                          input={{ instanceId: instance.instanceId, name: row.name }}
+                          onChanged={refresh}
+                        />
+                      ) : null}
+                    </View>
+                  );
+                })}
             </View>
           );
         })}
@@ -254,66 +447,88 @@ function EnvironmentMcpSection(props: {
             autoCorrect={false}
             className="min-h-11 rounded-2xl border-continuous border border-border px-3 text-base text-foreground"
           />
-          <TextInput
-            value={json}
-            onChangeText={setJson}
-            placeholder={ADD_JSON_PLACEHOLDER}
-            autoCapitalize="none"
-            autoCorrect={false}
-            multiline
-            className="min-h-24 rounded-2xl border-continuous border border-border px-3 py-2 text-base text-foreground"
+          <ActionButton
+            label={advanced ? "Use server URL" : "Use JSON definition"}
+            onPress={() => setAdvanced(!advanced)}
           />
-          <Text className="text-sm text-foreground-muted">
-            Applied to every Claude and Codex account on this machine. Codex gets it translated into
-            its own format.
-          </Text>
+          {advanced ? (
+            <TextInput
+              accessibilityLabel="Server definition"
+              value={json}
+              onChangeText={setJson}
+              placeholder={ADD_JSON_PLACEHOLDER}
+              autoCapitalize="none"
+              autoCorrect={false}
+              multiline
+              className="min-h-24 rounded-2xl border border-border px-3 py-2 text-base text-foreground"
+            />
+          ) : (
+            <TextInput
+              accessibilityLabel="Server URL"
+              value={url}
+              onChangeText={setUrl}
+              placeholder="https://mcp.example.com/mcp"
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="min-h-11 rounded-2xl border border-border px-3 text-base text-foreground"
+            />
+          )}
+          <Text className="text-sm text-foreground-muted">Apply to</Text>
+          {instances.map((instance) => (
+            <Pressable
+              key={instance.instanceId}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: !excluded.has(instance.instanceId) }}
+              onPress={() =>
+                setExcluded((current) => {
+                  const next = new Set(current);
+                  if (next.has(instance.instanceId)) next.delete(instance.instanceId);
+                  else next.add(instance.instanceId);
+                  return next;
+                })
+              }
+              className="min-h-11 justify-center"
+            >
+              <Text className="text-sm text-foreground">
+                {excluded.has(instance.instanceId) ? "□" : "☑"} {driverLabel(instance.driver)} ·{" "}
+                {instance.displayName}
+              </Text>
+            </Pressable>
+          ))}
           <ActionButton
             label="Add"
-            disabled={busy || name.trim().length === 0 || json.trim().length === 0}
+            disabled={
+              busy ||
+              name.trim().length === 0 ||
+              selectedInstanceIds.length === 0 ||
+              (advanced ? json.trim().length === 0 : !/^https?:\/\//.test(url.trim()))
+            }
             onPress={() =>
               void runMutation(async () => {
                 const result = await addServer({
                   environmentId: props.environmentId,
                   input: {
-                    instanceIds: instances.map((instance) => instance.instanceId),
+                    instanceIds: selectedInstanceIds,
                     name: name.trim(),
-                    json: json.trim(),
+                    json: advanced
+                      ? json.trim()
+                      : JSON.stringify({ type: "http", url: url.trim() }),
                   },
                 });
-                setName("");
-                setJson("");
+                if (
+                  result._tag === "Success" &&
+                  result.value.outcomes.every((outcome) => outcome.ok)
+                ) {
+                  setName("");
+                  setJson("");
+                  setUrl("");
+                }
                 return result;
               })
             }
           />
         </View>
-      </SettingsSection>
-
-      <SettingsSection title="Sign in to a connector">
-        {instances.map((instance) => (
-          <Pressable
-            key={instance.instanceId}
-            accessibilityRole="button"
-            accessibilityLabel={`Copy command for ${instance.displayName}`}
-            onPress={() => void tryCopyTextWithHaptic(instance.cliPrefix, { target: "command" })}
-            className="flex-row items-center gap-3 p-4 active:opacity-70"
-          >
-            <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-base text-foreground">
-                {driverLabel(instance.driver)} · {instance.displayName}
-              </Text>
-              <Text className="text-sm text-foreground-muted" numberOfLines={1}>
-                {instance.cliPrefix}
-              </Text>
-              {instance.requiredEnvNames.length > 0 ? (
-                <Text className="text-sm text-foreground-muted opacity-70">
-                  Also needs {instance.requiredEnvNames.join(", ")} in your shell.
-                </Text>
-              ) : null}
-            </View>
-            <SymbolView name="doc.on.doc" size={16} tintColorClassName="accent-icon" />
-          </Pressable>
-        ))}
       </SettingsSection>
     </View>
   );
@@ -345,8 +560,8 @@ export function SettingsMcpRouteScreen() {
           />
         ))}
         <Text className="px-2 text-sm text-foreground-muted">
-          Typing /mcp in a conversation does nothing. It is a command the Claude terminal handles
-          itself, and conversations run Claude without a terminal attached.
+          Connector credentials stay on their machine. After changing a connection, start a new
+          conversation to load its tools.
         </Text>
       </ScrollView>
     </View>

@@ -9,7 +9,25 @@ const mode = process.argv[2];
 const BLUE = "[94m";
 const RESET = "[0m";
 
-if (mode === "code") {
+if (mode === "mcp-tty") {
+  if (!process.stdin.isTTY) {
+    console.log("MCP login requires a terminal");
+    process.exit(1);
+  }
+  const url =
+    "https://issuer.example/authorize?response_type=code&state=mcp-state&redirect_uri=http%3A%2F%2Flocalhost%3A1234%2Fcallback";
+  console.log(`\u001B]8;;${url}\u0007Open sign-in\u001B]8;;\u0007`);
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (value) => {
+    if (!value.includes("\n")) return;
+    if (value.includes("code=fixture-code") && value.includes("state=mcp-state")) {
+      console.log("Connector authorized");
+      process.exit(0);
+    }
+    console.log("Invalid redirect");
+    process.exit(1);
+  });
+} else if (mode === "code") {
   console.log("Opening browser to sign in…");
   console.log(
     "If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=test-state",

@@ -2,14 +2,15 @@ import * as Schema from "effect/Schema";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import { ProviderAuthCompleteInput, ProviderAuthCancelInput } from "./providerSetup.ts";
 
 /**
  * MCP server management, scoped to one provider instance's credential home.
  *
  * T3 Code never parses or writes Claude Code's precedence rules. Reads take
  * the `mcpServers` object straight off `<home>/.claude.json` (user scope), and
- * every write shells out to `claude mcp` so the CLI stays the only thing that
- * decides what a valid entry is.
+ * definition writes use the provider CLI. OAuth repair preserves complete
+ * native records on the environment, outside the client-facing inventory.
  */
 
 const McpServerNameSchema = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
@@ -30,6 +31,10 @@ export const McpServerEntry = Schema.Struct({
   envKeys: Schema.Array(Schema.String),
   /** Header names sent to a remote server. Values are never sent. */
   headerKeys: Schema.Array(Schema.String),
+  /** Credential status is not a live connectivity check. */
+  authStatus: Schema.optional(Schema.Literals(["unknown", "stored", "incomplete", "needsAuth"])),
+  /** OAuth-only/plugin entries can be authorized but are not user-scope definitions. */
+  canManageDefinition: Schema.optional(Schema.Boolean),
 });
 export type McpServerEntry = typeof McpServerEntry.Type;
 
@@ -94,6 +99,22 @@ export const McpRemoveInput = Schema.Struct({
 });
 export type McpRemoveInput = Schema.Codec.Encoded<typeof McpRemoveInput>;
 
+export const McpAuthInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  name: McpServerNameSchema,
+});
+export type McpAuthInput = typeof McpAuthInput.Type;
+export const McpAuthCompleteInput = Schema.Struct({
+  ...ProviderAuthCompleteInput.fields,
+  name: McpServerNameSchema,
+});
+export const McpAuthCancelInput = Schema.Struct({
+  ...ProviderAuthCancelInput.fields,
+  name: McpServerNameSchema,
+});
+/** Restore refresh material from the environment's default Claude home. */
+export const McpRepairInput = McpRemoveInput;
+
 /**
  * Per-instance outcome. A write that fails on one account must not hide the
  * ones that succeeded, so this reports every instance rather than failing the
@@ -122,7 +143,7 @@ export class McpInstanceNotFoundError extends Schema.TaggedErrorClass<McpInstanc
   },
 ) {
   override get message() {
-    return `No Claude provider instance with id: ${this.instanceId}`;
+    return `No MCP-capable provider instance with id: ${this.instanceId}`;
   }
 }
 
@@ -134,7 +155,7 @@ export class McpCliUnavailableError extends Schema.TaggedErrorClass<McpCliUnavai
   },
 ) {
   override get message() {
-    return `Could not run the Claude CLI at ${this.binaryPath} for instance: ${this.instanceId}`;
+    return `Could not run the provider CLI at ${this.binaryPath} for instance: ${this.instanceId}`;
   }
 }
 
