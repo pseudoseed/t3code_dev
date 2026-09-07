@@ -19,8 +19,18 @@ behave normally.
 
 ## Selecting and copying
 
-Press and hold on the terminal, then drag to highlight text. Letting go copies the highlight to
-the clipboard. **Command+C** copies the current highlight and **Command+V** pastes.
+On iPhone and iPad, the terminal has a **Paste**, **Select All**, and **Copy** bar that stays
+visible even when the keyboard is hidden. Tap **Paste** to insert clipboard text, or
+**Select All** followed by **Copy** to copy terminal output. Copy becomes available when text
+is selected. Tap the terminal to leave the selection and resume typing.
+
+On iPhone and iPad, press and hold to select a word, then drag to extend the highlight.
+Choose **Copy** from the menu when you release. You can also choose **Select All** or **Paste**.
+With an iPad trackpad, click and drag to highlight text. **Command+C** copies the current
+highlight and **Command+V** pastes. Selecting text leaves the clipboard unchanged until you copy.
+
+On Android, press and hold to select a word, adjust the selection handles, and choose **Copy**
+from the selection menu.
 
 ## On a tablet
 

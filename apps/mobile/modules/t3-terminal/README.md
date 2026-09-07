@@ -22,6 +22,9 @@ callback I/O model:
 4. send user input back to JS with the write callback
 5. emit Ghostty's measured terminal size through `onResize`
 
+The UIKit adapter and its regression constraints are documented in
+[`terminal-input.md`](../../../../docs/internals/terminal-input.md).
+
 Hardware keys are captured with `UIKeyCommand` (the text-input system swallows presses before the
 responder chain sees them) and encoded by `ghostty_surface_key`, so cursor keys follow the modes
 the running program set. Chords that terminals encode as modified cursor keys — Option and Command
