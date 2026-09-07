@@ -13,9 +13,13 @@ They persist through the existing local client settings API, including desktop I
 Settings search exposes both controls. No provider-specific adapter change or new server RPC is
 required: all adapters use the same shell request flags.
 
-Sound uses a short Web Audio chime, unlocked by a user gesture. System alerts use the Notifications
-API, which Electron supports in its renderer and delivers through the operating system. Permission
-is requested only from the settings control. Notification tags and click targets contain both the
+Sound uses a short Web Audio chime. Browsers unlock audio through a user gesture; Electron creates
+or resumes the audio context on delivery, so a restarted desktop client can sound before its first
+click. Electron's default autoplay policy allows this. System alerts use the Notifications API,
+which Electron supports in its renderer and delivers through the operating system. Permission
+is requested only from the settings control. Enabling notifications also sends a confirmation alert:
+Electron's renderer permission can already be granted before macOS has prompted for native permission.
+Notification tags and click targets contain both the
 environment and thread IDs. Local alerts depend on a running client and a live connection; they
 are not background push for a closed app or suspended mobile client.
 

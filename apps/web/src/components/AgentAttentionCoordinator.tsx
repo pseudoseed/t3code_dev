@@ -14,6 +14,7 @@ import {
 } from "../agentAttentionDelivery";
 import { APP_DISPLAY_NAME } from "../branding";
 import { environmentCatalog } from "../connection/catalog";
+import { isElectron } from "../env";
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentShell } from "../state/shell";
@@ -100,7 +101,7 @@ export function AgentAttentionCoordinator() {
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const soundEnabled = useClientSettings((settings) => settings.agentAttentionSound);
   useEffect(() => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || isElectron) return;
     const removeListeners = () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);

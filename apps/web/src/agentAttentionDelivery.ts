@@ -3,7 +3,7 @@ import { isElectron } from "./env";
 let audioContext: AudioContext | null = null;
 let lastSoundAt = -Infinity;
 
-/** Call during a user gesture so future requests can sound in the background. */
+/** Browsers need a user gesture; Electron can activate audio when an alert arrives. */
 export async function unlockAgentAttentionAudio(): Promise<AudioContext> {
   if (typeof AudioContext === "undefined") {
     throw new Error("This browser does not support notification sounds.");
@@ -16,7 +16,7 @@ export async function unlockAgentAttentionAudio(): Promise<AudioContext> {
 }
 
 export async function playAgentAttentionSound(preview = false): Promise<void> {
-  const context = preview ? await unlockAgentAttentionAudio() : audioContext;
+  const context = preview || isElectron ? await unlockAgentAttentionAudio() : audioContext;
   if (context?.state !== "running") {
     throw new Error("Click in the app to allow notification sounds.");
   }

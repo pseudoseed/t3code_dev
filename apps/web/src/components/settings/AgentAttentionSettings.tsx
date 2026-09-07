@@ -27,6 +27,31 @@ export function AgentAttentionSettings() {
     return () => window.removeEventListener("focus", refresh);
   }, []);
 
+  const previewNotification = () => {
+    setFeedback(null);
+    try {
+      const shown = showAgentAttentionNotification({
+        title: `${APP_DISPLAY_NAME} — Notification test`,
+        body: "You will receive alerts when an agent needs input or approval.",
+        tag: "agent-attention:test",
+        onClick: () => {},
+        onError: () =>
+          setFeedback(
+            "The system could not display the test notification. Check notification permissions for this app or browser.",
+          ),
+      });
+      setFeedback(
+        shown
+          ? "Test sent. Allow notifications if prompted. If no alert appears, check system notification settings and Focus mode."
+          : "Allow notifications, then try again.",
+      );
+    } catch {
+      setFeedback(
+        "This browser could not show a notification. Try the desktop app or a supported desktop browser.",
+      );
+    }
+  };
+
   const enableNotifications = async () => {
     setRequesting(true);
     setFeedback(null);
@@ -34,8 +59,13 @@ export function AgentAttentionSettings() {
       const granted = await requestAgentNotificationPermission();
       update({ agentAttentionNotifications: granted });
       setPermission(agentNotificationPermission());
-      if (!granted)
+      if (granted) {
+        // Electron's renderer permission can be granted before macOS has asked.
+        // Sending an alert triggers the native permission prompt on first use.
+        previewNotification();
+      } else {
         setFeedback("Allow notifications in your browser or system settings, then try again.");
+      }
     } catch {
       setFeedback(
         "Could not request notification permission. Check your browser or system settings.",
@@ -88,30 +118,7 @@ export function AgentAttentionSettings() {
               variant="outline"
               size="sm"
               disabled={permission !== "granted"}
-              onClick={() => {
-                setFeedback(null);
-                try {
-                  const shown = showAgentAttentionNotification({
-                    title: `${APP_DISPLAY_NAME} — Input needed`,
-                    body: "Your agent attention notifications are ready.",
-                    tag: "agent-attention:test",
-                    onClick: () => {},
-                    onError: () =>
-                      setFeedback(
-                        "The system could not display the test notification. Check notification permissions for this app or browser.",
-                      ),
-                  });
-                  setFeedback(
-                    shown
-                      ? "Test sent. If no alert appears, check system notification settings and Focus mode."
-                      : "Allow notifications, then try again.",
-                  );
-                } catch {
-                  setFeedback(
-                    "This browser could not show a notification. Try the desktop app or a supported desktop browser.",
-                  );
-                }
-              }}
+              onClick={previewNotification}
             >
               Test notification
             </Button>

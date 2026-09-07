@@ -55,14 +55,16 @@ another thread is selected. **Input needed**, **Approval needed**, and **Failed*
 icons and a colored edge on the row so they are easy to find without flashing animations.
 
 To hear new input and approval requests, enable **Settings → General → Agent attention sound**.
-Use **Test sound** to check the volume. **Agent attention notifications** enables system alerts;
-allow notification permission when prompted, then use **Test notification** to check delivery.
+Use **Test sound** to check the volume. Enabling **Agent attention notifications** sends a
+confirmation alert; allow notification permission when prompted. Use **Test notification**
+to check delivery again.
 Clicking an alert opens its thread on the correct environment. Both settings can be turned off
 independently and apply only to this device.
 
 These alerts work across connected environments while the desktop app or browser tab is running.
-Desktop browser notifications require HTTPS or localhost and a supported browser. Sounds may
-require a click or keypress in the app after opening it. System notification settings and Focus
+Desktop browser notifications require HTTPS or localhost and a supported browser. Browser sounds
+may require a click or keypress after opening the tab. The desktop app can play sounds immediately
+after restarting with sound enabled. System notification settings and Focus
 mode can suppress banners. Existing requests are not replayed when opening or reconnecting the
 app, and a request that remains pending does not repeatedly chime. These settings do not configure
 mobile push or delivery after the desktop app or browser tab has closed.
