@@ -407,6 +407,13 @@ function normalizeCodexTokenUsage(
   const cachedInputTokens = usage.last.cachedInputTokens;
   const outputTokens = usage.last.outputTokens;
   const reasoningOutputTokens = usage.last.reasoningOutputTokens;
+  // `total` accumulates over the Codex session. Orchestration prices it,
+  // which needs the uncached input split out: Codex counts cached reads
+  // inside `inputTokens`, and they bill at a fraction of the full rate.
+  const sessionInputTokens = usage.total.inputTokens;
+  const sessionCachedInputTokens = usage.total.cachedInputTokens;
+  const sessionCacheCreationTokens = usage.total.cacheWriteInputTokens;
+  const sessionOutputTokens = usage.total.outputTokens;
 
   return {
     usedTokens,
@@ -425,6 +432,10 @@ function normalizeCodexTokenUsage(
     ...(reasoningOutputTokens !== undefined
       ? { lastReasoningOutputTokens: reasoningOutputTokens }
       : {}),
+    ...(sessionInputTokens !== undefined ? { sessionInputTokens } : {}),
+    ...(sessionCachedInputTokens !== undefined ? { sessionCachedInputTokens } : {}),
+    ...(sessionCacheCreationTokens !== undefined ? { sessionCacheCreationTokens } : {}),
+    ...(sessionOutputTokens !== undefined ? { sessionOutputTokens } : {}),
     compactsAutomatically: true,
   };
 }

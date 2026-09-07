@@ -1,19 +1,14 @@
 import { Button } from "../ui/button";
-import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
+import {
+  type ContextWindowSnapshot,
+  formatContextWindowPercentage,
+  formatContextWindowTokens,
+  formatThreadCostUsd,
+} from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
-
-function formatPercentage(value: number | null): string | null {
-  if (value === null || !Number.isFinite(value)) {
-    return null;
-  }
-  if (value < 10) {
-    return `${value.toFixed(1).replace(/\.0$/, "")}%`;
-  }
-  return `${Math.round(value)}%`;
-}
 
 export function ContextWindowMeter(props: {
   usage: ContextWindowSnapshot;
@@ -23,7 +18,8 @@ export function ContextWindowMeter(props: {
   compactDisabledReason?: string | null | undefined;
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
-  const usedPercentage = formatPercentage(usage.usedPercentage);
+  const usedPercentage = formatContextWindowPercentage(usage.usedPercentage);
+  const costLabel = formatThreadCostUsd(usage.costUsd ?? null);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
   const circumference = 2 * Math.PI * radius;
@@ -34,6 +30,10 @@ export function ContextWindowMeter(props: {
   const usageColor = isOverloaded
     ? "var(--color-error)"
     : "color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)";
+  // The max window is already on the model control beside this one, so the
+  // trigger prints the share used and leaves the token counts to the popover.
+  const triggerLabel = usedPercentage ?? formatContextWindowTokens(usage.usedTokens);
+  const costNoun = usage.costSource === "modelPriced" ? "estimated cost" : "cost";
 
   return (
     <Popover>
@@ -43,13 +43,16 @@ export function ContextWindowMeter(props: {
         closeDelay={onCompact ? 150 : 0}
         render={
           <Button
-            size="icon-sm"
+            // `compact` rather than `xs`: xs drops to 24px at the sm
+            // breakpoint, leaving the meter shorter than the send button and
+            // the controls beside it.
+            size="compact"
             variant="ghost-muted"
-            className="size-7 rounded-full hover:text-muted-foreground data-pressed:text-muted-foreground"
+            className="gap-1.5 rounded-full px-1.5 before:rounded-full hover:text-muted-foreground data-pressed:text-muted-foreground"
             aria-label={
-              usage.maxTokens !== null && usedPercentage
-                ? `Context window ${usedPercentage} used`
-                : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
+              costLabel
+                ? `Context window ${triggerLabel} used, ${costLabel} ${costNoun}`
+                : `Context window ${triggerLabel} used`
             }
           >
             <span className="relative flex size-5 items-center justify-center">
@@ -80,6 +83,17 @@ export function ContextWindowMeter(props: {
                 />
               </svg>
             </span>
+            <span className="tabular-nums" style={isOverloaded ? { color: usageColor } : undefined}>
+              {triggerLabel}
+            </span>
+            {costLabel ? (
+              <>
+                <span aria-hidden="true" className="text-muted-foreground/40">
+                  ·
+                </span>
+                <span className="tabular-nums">{costLabel}</span>
+              </>
+            ) : null}
           </Button>
         }
       />
@@ -130,6 +144,17 @@ export function ContextWindowMeter(props: {
               <span className="font-medium tabular-nums text-secondary-label">
                 {formatContextWindowTokens(totalProcessedTokens)}
               </span>
+            </div>
+          ) : null}
+          {costLabel ? (
+            <div className="flex items-center justify-between gap-3 text-[11px] leading-4">
+              <span className="text-secondary-label first-letter:uppercase">{costNoun}</span>
+              <span className="font-medium tabular-nums text-secondary-label">{costLabel}</span>
+            </div>
+          ) : null}
+          {costLabel ? (
+            <div className="text-pretty text-secondary-label text-[11px]">
+              API-equivalent cost for this thread. Subscription plans bill separately.
             </div>
           ) : null}
           {usage.compactsAutomatically ? (

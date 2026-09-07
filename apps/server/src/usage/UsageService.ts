@@ -21,6 +21,7 @@ import {
   type UsagePricing,
   type UsageSummary,
   type UsageSummaryInput,
+  type UsageTokenTotals,
   UsageReadError,
 } from "@t3tools/contracts";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
@@ -44,7 +45,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
-import { parseRateTable, type RateTable } from "./usagePricing.ts";
+import { parseRateTable, priceUsage, type PricedUsage, type RateTable } from "./usagePricing.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -67,6 +68,13 @@ const RATES_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** An explicit refresh ignores the TTL, but not a table fetched this recently. */
 const RATES_REFRESH_FLOOR_MS = 60 * 1000;
+
+/**
+ * Floor under background refresh attempts from the pricing path. A failed
+ * fetch does not advance the table's age, so without this an offline server
+ * would start a fresh 10s request for every token-usage snapshot.
+ */
+const RATES_RETRY_FLOOR_MS = 5 * 60 * 1000;
 
 /**
  * Files are filtered by mtime before opening. The slack covers a session whose
@@ -101,6 +109,21 @@ export class UsageService extends Context.Service<
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     /** Refetches the rate table ahead of its TTL. See `ensureRates`. */
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    /**
+     * Prices one model's tokens against the same rate table the usage page
+     * uses, so a thread's running cost and the usage report can never disagree
+     * about what a model costs. Returns `unpriced` when no rate is known
+     * rather than guessing.
+     *
+     * Never blocks on I/O: this runs on the provider event path, where a slow
+     * rate fetch would stall event streaming for every thread. A stale or
+     * missing table is refreshed in the background and picked up by a later
+     * call.
+     */
+    readonly priceTokens: (input: {
+      readonly model: string;
+      readonly totals: UsageTokenTotals;
+    }) => Effect.Effect<PricedUsage & { readonly ratesLoaded: boolean }>;
   }
 >()("t3/usage/UsageService") {}
 
@@ -128,6 +151,8 @@ export const layerTest = Layer.succeed(
         scanDurationMs: 0,
       }),
     refreshRates: Effect.succeed(EMPTY_PRICING),
+    priceTokens: () =>
+      Effect.succeed({ costUsd: 0, costSource: "unpriced" as const, ratesLoaded: true }),
   }),
 );
 
@@ -592,7 +617,41 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates } as const;
+  // One background refresh at a time. Without this, every snapshot arriving
+  // while the table is stale would fork another fiber to wait on the same
+  // permit.
+  let backgroundRatesLoad = false;
+  // `loadRates` leaves `ratesFetchedAtMs` untouched when a fetch fails, so a
+  // failure alone would keep the table stale and re-fetch on every snapshot.
+  // Tracking attempts separately puts a floor under the retry rate.
+  let lastRatesAttemptMs: number | null = null;
+
+  const priceTokens = Effect.fn("UsageService.priceTokens")(function* (input: {
+    readonly model: string;
+    readonly totals: UsageTokenTotals;
+  }) {
+    const now = yield* Clock.currentTimeMillis;
+    const stale = ratesFetchedAtMs === null || now - ratesFetchedAtMs >= RATES_TTL_MS;
+    const mayRetry =
+      lastRatesAttemptMs === null || now - lastRatesAttemptMs >= RATES_RETRY_FLOOR_MS;
+    if (stale && mayRetry && !backgroundRatesLoad) {
+      backgroundRatesLoad = true;
+      lastRatesAttemptMs = now;
+      yield* ensureRates(false).pipe(
+        Effect.ensuring(Effect.sync(() => (backgroundRatesLoad = false))),
+        Effect.forkDetach,
+      );
+    }
+    // Price against the table in hand. `ratesLoaded` tells the caller whether
+    // an `unpriced` answer means "this model has no published rate" or merely
+    // "no table yet", which are not the same answer at all.
+    return {
+      ...priceUsage(rates, input.model, input.totals, null),
+      ratesLoaded: rates.size > 0,
+    };
+  });
+
+  return { readSummary, refreshRates, priceTokens } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);

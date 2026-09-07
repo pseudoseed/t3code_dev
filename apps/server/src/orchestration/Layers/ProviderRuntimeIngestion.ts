@@ -17,8 +17,11 @@ import {
   type OrchestrationProposedPlan,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
+  type OrchestrationThreadShell,
   type ProviderRuntimeEvent,
   RuntimeRequestId,
+  type ThreadCostSource,
+  type UsageTokenTotals,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -48,6 +51,7 @@ import {
 import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { UsageService } from "../../usage/UsageService.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
@@ -259,6 +263,176 @@ function buildContextWindowActivityPayload(
     return undefined;
   }
   return event.payload.usage;
+}
+
+/**
+ * Running cost bookkeeping for one thread.
+ *
+ * Providers report cost cumulatively over a *session*: Claude a running dollar
+ * total, Codex running token totals. Both are differenced rather than summed,
+ * so the thread only accrues the slice added since the last snapshot. That is
+ * what makes a re-delivered snapshot cost nothing, and what charges each slice
+ * at the model actually running when it was spent instead of re-pricing a whole
+ * session at whatever model is selected now.
+ *
+ * The `last*` baselines are scoped to one provider session and deliberately
+ * never restored from history. A session is one provider process, and a new one
+ * always counts from zero — so after a restart the next report is new spend in
+ * full. `costUsd` is the only figure that outlives a session, and it is read
+ * back from the thread's own activities.
+ */
+interface ThreadCostState {
+  costUsd: number;
+  source: ThreadCostSource | null;
+  lastSessionCostUsd: number | null;
+  lastSessionTokens: SessionTokenCounts | null;
+}
+
+/**
+ * Running token totals as a provider reports them, `null` where it reported
+ * nothing. A provider may omit a counter it has no value for — Codex leaves
+ * `cacheWriteInputTokens` off entirely — and an omission must read as "no
+ * change", not as a drop to zero, which would look like a session restart.
+ *
+ * No reasoning count: the snapshot's `reasoningOutputTokens` is the last turn's
+ * rather than a session total, and reasoning bills inside `output` anyway.
+ */
+interface SessionTokenCounts {
+  readonly input: number | null;
+  readonly cached: number | null;
+  readonly cacheCreation: number | null;
+  readonly output: number | null;
+}
+
+function tokenCount(value: unknown): number | null {
+  return Predicate.isNumber(value) && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function finitePositive(value: unknown): number | null {
+  return Predicate.isNumber(value) && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function sessionTokenCounts(usage: ThreadTokenUsageSnapshot): SessionTokenCounts | null {
+  const input = tokenCount(usage.sessionInputTokens);
+  const output = tokenCount(usage.sessionOutputTokens);
+  if (input === null && output === null) return null;
+  return {
+    input,
+    cached: tokenCount(usage.sessionCachedInputTokens),
+    cacheCreation: tokenCount(usage.sessionCacheCreationTokens),
+    output,
+  };
+}
+
+/**
+ * Tokens a provider added to its running totals since the last snapshot.
+ *
+ * A reported counter going backwards means the totals were reset under us, so
+ * the whole of `next` is new spend. Counters the provider left out are ignored
+ * on both sides of that test and contribute nothing to the delta.
+ */
+const SESSION_TOKEN_FIELDS = ["input", "cached", "cacheCreation", "output"] as const;
+
+/**
+ * Tokens a provider added to its running totals since the last snapshot, and
+ * the baseline the next difference should be measured from.
+ *
+ * A reported counter going backwards means the totals were reset under us, so
+ * the whole of `next` is new spend and the dead session's counters are dropped
+ * entirely — inheriting them would make the new session's next report look like
+ * another reset. Otherwise a counter the provider left out of `next` means "no
+ * news", so the baseline keeps the last value it did report; storing the gap
+ * would make the following snapshot that does report it look like fresh spend.
+ */
+function sessionTokenDelta(
+  previous: SessionTokenCounts | null,
+  next: SessionTokenCounts,
+): { readonly delta: UsageTokenTotals; readonly baseline: SessionTokenCounts } {
+  const restarted =
+    previous !== null &&
+    SESSION_TOKEN_FIELDS.some((field) => {
+      const before = previous[field];
+      const after = next[field];
+      return before !== null && after !== null && after < before;
+    });
+  const base = previous === null || restarted ? null : previous;
+
+  const grown = (field: (typeof SESSION_TOKEN_FIELDS)[number]): number => {
+    const after = next[field];
+    if (after === null) return 0;
+    return Math.max(0, after - (base?.[field] ?? 0));
+  };
+
+  const input = grown("input");
+  const cached = grown("cached");
+  const cacheCreation = grown("cacheCreation");
+  return {
+    delta: {
+      // Providers that report these count cached reads inside the input figure.
+      uncachedInputTokens: Math.max(0, input - cached - cacheCreation),
+      cachedInputTokens: cached,
+      cacheCreationTokens: cacheCreation,
+      outputTokens: grown("output"),
+      // Reasoning bills inside `outputTokens` and is never priced separately.
+      reasoningTokens: 0,
+    },
+    baseline:
+      base === null
+        ? next
+        : {
+            input: next.input ?? base.input,
+            cached: next.cached ?? base.cached,
+            cacheCreation: next.cacheCreation ?? base.cacheCreation,
+            output: next.output ?? base.output,
+          },
+  };
+}
+
+/**
+ * Usage snapshots read back when restoring a thread's running cost.
+ *
+ * Only the newest usable row is used — every snapshot stamped after the
+ * thread's first charge carries the running total — but a few are fetched so a
+ * trailing malformed row cannot hide it.
+ */
+const COST_SEED_ACTIVITY_LIMIT = 5;
+
+function hasBillableTokens(totals: UsageTokenTotals): boolean {
+  return (
+    totals.uncachedInputTokens > 0 ||
+    totals.cachedInputTokens > 0 ||
+    totals.cacheCreationTokens > 0 ||
+    totals.outputTokens > 0
+  );
+}
+
+/**
+ * The thread's running cost, read back from its newest usage snapshot.
+ *
+ * Reading it from the projection rather than starting at zero is what keeps a
+ * server restart from resetting the figure the user has been watching all day.
+ * Every snapshot stamped after the first charge carries it, so only the newest
+ * row is needed. Session baselines are deliberately not restored here — see
+ * {@link ThreadCostState}.
+ */
+function seedCostState(
+  activities: ReadonlyArray<OrchestrationThreadActivity> | undefined,
+): ThreadCostState {
+  for (let index = (activities?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const activity = activities?.[index];
+    if (activity?.kind !== "context-window.updated") continue;
+    const payload = Predicate.isObject(activity.payload) ? activity.payload : undefined;
+    if (tokenCount(payload?.usedTokens) === null) continue;
+
+    const source = payload?.costSource;
+    return {
+      costUsd: finitePositive(payload?.costUsd) ?? 0,
+      source: source === "providerReported" || source === "modelPriced" ? source : null,
+      lastSessionCostUsd: null,
+      lastSessionTokens: null,
+    };
+  }
+  return { costUsd: 0, source: null, lastSessionCostUsd: null, lastSessionTokens: null };
 }
 
 function compactedTokenCountsFromActivities(
@@ -956,6 +1130,7 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
+  const usageService = yield* UsageService;
   const providerCommandId = (event: ProviderRuntimeEvent, tag: string) =>
     crypto.randomUUIDv4.pipe(
       Effect.map((uuid) => CommandId.make(`provider:${event.eventId}:${tag}:${uuid}`)),
@@ -1022,6 +1197,111 @@ const make = Effect.gen(function* () {
     return yield* projectionSnapshotQuery
       .getThreadShellById(threadId)
       .pipe(Effect.map(Option.getOrUndefined));
+  });
+
+  /**
+   * Running cost per thread, keyed by thread id.
+   *
+   * A plain map rather than a TTL cache. Entries are four numbers each and are
+   * only created for threads that actually report usage, so this tracks threads
+   * touched since boot at negligible cost. Eviction is deliberately absent:
+   * dropping a live session's baselines would charge its next report in full a
+   * second time. Session exit clears the baselines instead, keeping the cost.
+   */
+  const costStateByThreadId = new Map<ThreadId, ThreadCostState>();
+
+  /**
+   * Starts the thread's next provider session from a clean baseline while
+   * keeping what it has already cost.
+   */
+  const clearThreadCostBaselines = (threadId: ThreadId) => {
+    const state = costStateByThreadId.get(threadId);
+    if (state === undefined) return;
+    state.lastSessionCostUsd = null;
+    state.lastSessionTokens = null;
+  };
+
+  const resolveThreadCostState = Effect.fn("resolveThreadCostState")(function* (
+    threadId: ThreadId,
+  ) {
+    const existing = costStateByThreadId.get(threadId);
+    if (existing !== undefined) return existing;
+
+    // A narrow read on purpose: the thread detail query would pull every
+    // message, plan and checkpoint alongside the activities, and this runs on
+    // the sequential ingestion worker.
+    const activities = yield* projectionSnapshotQuery.listRecentThreadActivitiesByKinds(
+      threadId,
+      ["context-window.updated"],
+      COST_SEED_ACTIVITY_LIMIT,
+    );
+    const seeded = seedCostState(activities);
+    costStateByThreadId.set(threadId, seeded);
+    return seeded;
+  });
+
+  /**
+   * Adds the thread's running cost to a token-usage snapshot.
+   *
+   * Two provider shapes feed it, both cumulative and both differenced. Claude
+   * reports a running dollar total for its session, which is authoritative and
+   * used as-is. Codex reports running token counts, which are priced against
+   * the same rate table the usage page uses. A model the table does not know
+   * stays uncosted rather than being reported as free.
+   */
+  const stampThreadCost = Effect.fn("stampThreadCost")(function* (
+    thread: OrchestrationThreadShell,
+    usage: ThreadTokenUsageSnapshot,
+  ) {
+    const state = yield* resolveThreadCostState(thread.id);
+
+    const sessionCostUsd = finitePositive(usage.sessionCostUsd);
+    if (sessionCostUsd !== null) {
+      // A total below the last one means the provider session restarted and
+      // began charging from zero, so all of it is new spend.
+      const previous = state.lastSessionCostUsd;
+      state.costUsd +=
+        previous === null || sessionCostUsd < previous ? sessionCostUsd : sessionCostUsd - previous;
+      state.lastSessionCostUsd = sessionCostUsd;
+      state.source = "providerReported";
+    }
+
+    const counts = sessionTokenCounts(usage);
+    // Only a provider that priced this very snapshot supersedes token pricing.
+    // Latching on the thread's previous source instead would freeze the cost
+    // of a thread moved from Claude to Codex.
+    if (counts !== null && sessionCostUsd === null) {
+      const { delta, baseline } = sessionTokenDelta(state.lastSessionTokens, counts);
+      if (!hasBillableTokens(delta)) {
+        state.lastSessionTokens = baseline;
+      } else {
+        const priced = yield* usageService.priceTokens({
+          model: thread.modelSelection.model,
+          totals: delta,
+        });
+        if (priced.costSource === "modelPriced") {
+          state.costUsd += priced.costUsd;
+          state.source = "modelPriced";
+        }
+        // Hold the baseline while the rate table is still loading, so the
+        // tokens spent before it arrives are charged once it does. A loaded
+        // table that simply has no rate for this model is a final answer, and
+        // consuming the delta then is what stops a later switch to a priced
+        // model from retro-charging for them.
+        if (priced.ratesLoaded) {
+          state.lastSessionTokens = baseline;
+        }
+      }
+    }
+
+    if (state.source === null || !Number.isFinite(state.costUsd) || state.costUsd <= 0) {
+      return usage;
+    }
+    return {
+      ...usage,
+      costUsd: state.costUsd,
+      costSource: state.source,
+    } satisfies ThreadTokenUsageSnapshot;
   });
 
   const rememberAssistantMessageId = (threadId: ThreadId, turnId: TurnId, messageId: MessageId) =>
@@ -2092,6 +2372,9 @@ const make = Effect.gen(function* () {
         }
         case "session.exited":
           threadBackgroundLiveness.clearThreadLiveness(thread.id);
+          // The next session counts from zero, so its baselines must too. The
+          // running cost stays: it belongs to the thread, not the session.
+          clearThreadCostBaselines(thread.id);
           break;
         default:
           break;
@@ -2155,6 +2438,16 @@ const make = Effect.gen(function* () {
             },
           };
         }
+      }
+
+      if (activityEvent.type === "thread.token-usage.updated") {
+        activityEvent = {
+          ...activityEvent,
+          payload: {
+            ...activityEvent.payload,
+            usage: yield* stampThreadCost(thread, activityEvent.payload.usage),
+          },
+        };
       }
 
       const activities = runtimeEventToActivities(activityEvent, taskTitle);

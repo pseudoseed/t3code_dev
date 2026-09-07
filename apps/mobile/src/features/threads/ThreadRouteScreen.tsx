@@ -960,6 +960,7 @@ function ThreadRouteContent(
           connectionError={routeConnectionError}
           environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
           selectedThreadFeed={composer.selectedThreadFeed}
+          selectedThreadContextWindow={composer.selectedThreadContextWindow}
           activeWorkStartedAt={composer.activeWorkStartedAt}
           isCompacting={composer.isCompacting}
           activePendingApproval={requests.activePendingApproval}

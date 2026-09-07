@@ -54,6 +54,7 @@ import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeInge
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import * as UsageService from "../../usage/UsageService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 function makeTestServerSettingsLayer(overrides: Partial<ServerSettings> = {}) {
@@ -228,6 +229,8 @@ describe("ProviderRuntimeIngestion", () => {
   async function createHarness(options?: {
     serverSettings?: Partial<ServerSettings>;
     threadTitle?: string;
+    /** Overrides the no-op pricing layer for tests that need real cost math. */
+    usageLayer?: Layer.Layer<UsageService.UsageService>;
   }) {
     const workspaceRoot = makeTempDir("t3-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
@@ -254,6 +257,7 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
+      Layer.provideMerge(options?.usageLayer ?? UsageService.layerTest),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(NodeServices.layer),
     );
@@ -3182,6 +3186,349 @@ describe("ProviderRuntimeIngestion", () => {
       lastUsedTokens: 1075,
       compactsAutomatically: true,
     });
+  });
+
+  it("charges a provider-reported cost total only for what it grew by", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    const emitUsage = (index: number, usage: Record<string, unknown>) =>
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(`evt-thread-token-usage-cost-${index}`),
+        provider: ProviderDriverKind.make("claude"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        payload: { usage },
+      });
+
+    // Claude reports a session running total. Three turns that cost roughly a
+    // quarter of a cent each report 0.25, 0.5, 0.75 — summing those would say
+    // 1.5, so the thread must be charged the increases instead.
+    emitUsage(0, { usedTokens: 1000, maxTokens: 200_000 });
+    emitUsage(1, { usedTokens: 2000, maxTokens: 200_000, sessionCostUsd: 0.25 });
+    emitUsage(2, { usedTokens: 3000, maxTokens: 200_000, sessionCostUsd: 0.5 });
+    emitUsage(3, { usedTokens: 4000, maxTokens: 200_000, sessionCostUsd: 0.75 });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 4000,
+      ),
+    );
+
+    const costs = thread.activities
+      .filter((activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated")
+      .map((activity: ProviderRuntimeTestActivity) => activity.payload as Record<string, unknown>);
+
+    expect(costs.map((payload) => payload.costUsd)).toEqual([undefined, 0.25, 0.5, 0.75]);
+    expect(costs.at(-1)?.costSource).toBe("providerReported");
+  });
+
+  it("re-delivering a snapshot does not charge the thread twice", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    for (const index of [0, 1]) {
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(`evt-thread-token-usage-repeat-${index}`),
+        provider: ProviderDriverKind.make("claude"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        payload: { usage: { usedTokens: 1000 + index, sessionCostUsd: 0.4 } },
+      });
+    }
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 1001,
+      ),
+    );
+
+    const costs = thread.activities
+      .filter((activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated")
+      .map((activity: ProviderRuntimeTestActivity) => activity.payload as Record<string, unknown>);
+
+    expect(costs.map((payload) => payload.costUsd)).toEqual([0.4, 0.4]);
+  });
+
+  it("charges Codex tokens spent before the rate table finished loading", async () => {
+    let ratesLoaded = false;
+    const pricingLayer = Layer.succeed(
+      UsageService.UsageService,
+      UsageService.UsageService.of({
+        readSummary: () => Effect.die("unused"),
+        refreshRates: Effect.die("unused"),
+        priceTokens: ({ totals }) =>
+          Effect.sync(() =>
+            ratesLoaded
+              ? {
+                  costUsd:
+                    ((totals.uncachedInputTokens + totals.cachedInputTokens + totals.outputTokens) /
+                      1000) *
+                    0.01,
+                  costSource: "modelPriced" as const,
+                  ratesLoaded: true,
+                }
+              : { costUsd: 0, costSource: "unpriced" as const, ratesLoaded: false },
+          ),
+      }),
+    );
+    const harness = await createHarness({ usageLayer: pricingLayer });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    const emitUsage = (index: number, sessionInputTokens: number) =>
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(`evt-codex-cold-rates-${index}`),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        payload: {
+          usage: {
+            usedTokens: 1000 + index,
+            sessionInputTokens,
+            sessionCachedInputTokens: 0,
+            sessionOutputTokens: 0,
+          },
+        },
+      });
+
+    // The table has not arrived yet, so this snapshot cannot be priced.
+    emitUsage(0, 100_000);
+    await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 1000,
+      ),
+    );
+
+    // Once it lands, those tokens must still be charged rather than skipped.
+    ratesLoaded = true;
+    emitUsage(1, 150_000);
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 1001,
+      ),
+    );
+
+    const latest = thread.activities.findLast(
+      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
+    );
+    expect((latest?.payload as Record<string, unknown> | undefined)?.costUsd).toBe(1.5);
+  });
+
+  it("charges a new session in full rather than differencing against the last one", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    const emit = (index: number, usage: Record<string, unknown>) =>
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(`evt-new-session-${index}`),
+        provider: ProviderDriverKind.make("claude"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        payload: { usage },
+      });
+
+    emit(0, { usedTokens: 1000, sessionCostUsd: 0.05 });
+    await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 1000,
+      ),
+    );
+
+    harness.emit({
+      type: "session.exited",
+      eventId: asEventId("evt-new-session-exit"),
+      provider: ProviderDriverKind.make("claude"),
+      providerInstanceId: ProviderInstanceId.make("claude"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: { reason: "restart" },
+    });
+    await harness.drain();
+
+    // A second session's total is its own, not a continuation of the first.
+    // Differencing across the boundary would report 0.12 instead of 0.17, and
+    // it stays wrong however the two totals happen to compare.
+    emit(1, { usedTokens: 2000, sessionCostUsd: 0.12 });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 2000,
+      ),
+    );
+
+    const latest = thread.activities.findLast(
+      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
+    );
+    expect((latest?.payload as Record<string, unknown> | undefined)?.costUsd).toBeCloseTo(0.17, 10);
+  });
+
+  it("prices a Codex thread from its running token totals", async () => {
+    // A penny per thousand tokens whatever the mix, so the arithmetic under
+    // test is the accumulation rather than the rate lookup.
+    const pricedTokenCounts: Array<number> = [];
+    const pricingLayer = Layer.succeed(
+      UsageService.UsageService,
+      UsageService.UsageService.of({
+        readSummary: () => Effect.die("unused"),
+        refreshRates: Effect.die("unused"),
+        priceTokens: ({ totals }) =>
+          Effect.sync(() => {
+            const tokens =
+              totals.uncachedInputTokens + totals.cachedInputTokens + totals.outputTokens;
+            pricedTokenCounts.push(tokens);
+            return {
+              costUsd: (tokens / 1000) * 0.01,
+              costSource: "modelPriced" as const,
+              ratesLoaded: true,
+            };
+          }),
+      }),
+    );
+    const harness = await createHarness({ usageLayer: pricingLayer });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    const emitUsage = (index: number, sessionInputTokens: number, sessionOutputTokens: number) =>
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(`evt-codex-cost-${index}`),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        payload: {
+          usage: {
+            usedTokens: 1000 + index,
+            sessionInputTokens,
+            sessionCachedInputTokens: 0,
+            sessionOutputTokens,
+          },
+        },
+      });
+
+    // Totals climb within one session, then drop: Codex restarted and began
+    // counting again, so the first session's cost must be banked, not lost.
+    emitUsage(0, 100_000, 0);
+    emitUsage(1, 300_000, 0);
+    emitUsage(2, 50_000, 0);
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 1002,
+      ),
+    );
+
+    const costs = thread.activities
+      .filter((activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated")
+      .map((activity: ProviderRuntimeTestActivity) => activity.payload as Record<string, unknown>);
+
+    expect(costs.map((payload) => payload.costUsd)).toEqual([1, 3, 3.5]);
+    expect(costs.at(-1)?.costSource).toBe("modelPriced");
+    // Each slice is priced on its own, never the running total re-priced. That
+    // is what makes a mid-thread model change charge earlier tokens at the
+    // model that actually spent them.
+    expect(pricedTokenCounts).toEqual([100_000, 200_000, 50_000]);
+  });
+
+  it("treats a counter the provider omitted as unchanged, not as a restart", async () => {
+    const pricedTokenCounts: Array<number> = [];
+    const pricingLayer = Layer.succeed(
+      UsageService.UsageService,
+      UsageService.UsageService.of({
+        readSummary: () => Effect.die("unused"),
+        refreshRates: Effect.die("unused"),
+        priceTokens: ({ totals }) =>
+          Effect.sync(() => {
+            const tokens =
+              totals.uncachedInputTokens +
+              totals.cachedInputTokens +
+              totals.cacheCreationTokens +
+              totals.outputTokens;
+            pricedTokenCounts.push(tokens);
+            return {
+              costUsd: (tokens / 1000) * 0.01,
+              costSource: "modelPriced" as const,
+              ratesLoaded: true,
+            };
+          }),
+      }),
+    );
+    const harness = await createHarness({ usageLayer: pricingLayer });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    const emitUsage = (index: number, usage: Record<string, unknown>) =>
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(`evt-codex-omitted-${index}`),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        payload: { usage: { usedTokens: 1000 + index, ...usage } },
+      });
+
+    // Codex leaves `cacheWriteInputTokens` off when it has none. Reading the
+    // gap as a drop to zero would look like a restart and re-charge the lot.
+    emitUsage(0, {
+      sessionInputTokens: 100_000,
+      sessionCachedInputTokens: 0,
+      sessionCacheCreationTokens: 500,
+      sessionOutputTokens: 0,
+    });
+    emitUsage(1, {
+      sessionInputTokens: 150_000,
+      sessionCachedInputTokens: 0,
+      sessionOutputTokens: 0,
+    });
+    // ...and reporting it again at its unchanged value must not re-charge it.
+    emitUsage(2, {
+      sessionInputTokens: 150_000,
+      sessionCachedInputTokens: 0,
+      sessionCacheCreationTokens: 500,
+      sessionOutputTokens: 0,
+    });
+    // A restart drops the dead session's counters rather than inheriting them.
+    // Keeping its cache-creation total would read the next small value as yet
+    // another restart and charge the new session twice over.
+    emitUsage(3, {
+      sessionInputTokens: 1_000,
+      sessionCachedInputTokens: 0,
+      sessionOutputTokens: 0,
+    });
+    emitUsage(4, {
+      sessionInputTokens: 2_000,
+      sessionCachedInputTokens: 0,
+      sessionCacheCreationTokens: 100,
+      sessionOutputTokens: 0,
+    });
+
+    await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-window.updated" &&
+          (activity.payload as { usedTokens?: number }).usedTokens === 1004,
+      ),
+    );
+
+    // The last slice is 1_000, not the 2_100 a false restart would charge:
+    // cache creation is counted inside the reported input figure.
+    expect(pricedTokenCounts).toEqual([100_000, 50_000, 1_000, 1_000]);
   });
 
   it("projects Codex camelCase token usage payloads into normalized thread activities", async () => {

@@ -4,6 +4,7 @@ import {
   type CodexArtifactTemplate,
 } from "@t3tools/client-runtime/codex-artifact-templates";
 import type { EnvironmentThreadStatus } from "@t3tools/client-runtime/state/threads";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/context-window";
 import { useKeyboardChatComposerInset, useKeyboardScrollToEnd } from "@legendapp/list/keyboard";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
 import type { LegendListRef } from "@legendapp/list/react-native";
@@ -99,6 +100,7 @@ export interface ThreadDetailScreenProps {
   readonly connectionError: string | null;
   readonly environmentLabel: string | null;
   readonly selectedThreadFeed: ReadonlyArray<ThreadFeedEntry>;
+  readonly selectedThreadContextWindow: ContextWindowSnapshot | null;
   readonly activeWorkStartedAt: string | null;
   readonly isCompacting: boolean;
   readonly activePendingApproval: PendingApproval | null;
@@ -835,6 +837,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                   connectionError={props.connectionError}
                   environmentLabel={props.environmentLabel}
                   selectedThread={props.selectedThread}
+                  contextWindow={props.selectedThreadContextWindow}
                   hasCompactableConversation={hasCompactableConversation && !props.isCompacting}
                   serverConfig={props.serverConfig}
                   queueCount={props.selectedThreadQueueCount}

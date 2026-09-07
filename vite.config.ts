@@ -133,6 +133,9 @@ export default defineConfig({
       {
         // Reviewed native and third-party interop boundaries that cannot consume a className.
         files: [
+          // react-native-svg strokes the composer's context ring; a stroke
+          // colour cannot be a className, so the ring reads the palette.
+          "apps/mobile/src/components/ContextWindowMeter.tsx",
           "apps/mobile/src/features/archive/ArchivedThreadsScreen.tsx",
           "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
           "apps/mobile/src/features/files/FileMarkdownPreview.tsx",

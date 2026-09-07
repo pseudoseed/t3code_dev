@@ -55,6 +55,7 @@ import {
   ComposerInlineControl,
   ComposerToolbarRow,
 } from "../../components/ComposerToolbar";
+import { ContextWindowMeter } from "../../components/ContextWindowMeter";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type {
   DraftComposerAttachment,
@@ -66,6 +67,7 @@ import {
   isModelSelectionUnavailable,
 } from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/context-window";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
@@ -111,6 +113,7 @@ export interface ThreadComposerProps {
   readonly connectionError: string | null;
   readonly environmentLabel: string | null;
   readonly selectedThread: OrchestrationThreadShell;
+  readonly contextWindow: ContextWindowSnapshot | null;
   readonly hasCompactableConversation: boolean;
   readonly serverConfig: T3ServerConfig | null;
   readonly queueCount: number;
@@ -796,17 +799,22 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                       onPickMedia={props.onPickDraftMedia}
                       onPickFiles={props.onPickDraftFiles}
                     />
-                    <View className="min-w-0 shrink" style={{ maxWidth: 152 }}>
-                      <ComposerInlineControl
-                        accessibilityLabel="Model and reasoning settings"
-                        emphasized
-                        iconNode={
-                          <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
-                        }
-                        label={currentModelOption?.label ?? currentModelSelection.model}
-                        maxWidth={152}
-                        onPress={openSettings}
-                      />
+                    <View className="min-w-0 shrink flex-row items-center justify-end">
+                      <View className="min-w-0 shrink" style={{ maxWidth: 152 }}>
+                        <ComposerInlineControl
+                          accessibilityLabel="Model and reasoning settings"
+                          emphasized
+                          iconNode={
+                            <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
+                          }
+                          label={currentModelOption?.label ?? currentModelSelection.model}
+                          maxWidth={152}
+                          onPress={openSettings}
+                        />
+                      </View>
+                      {props.contextWindow ? (
+                        <ContextWindowMeter usage={props.contextWindow} />
+                      ) : null}
                     </View>
                   </View>
                 )}
