@@ -7,14 +7,18 @@
  * which is why a user with five signed-in accounts can configure all five from
  * one screen.
  *
- * T3 Code owns none of Claude Code's configuration semantics. Reads lift the
+ * Definition reads lift the
  * `mcpServers` object off `<home>/.claude.json` and stop there; writes shell
  * out to `claude mcp add-json` and `claude mcp remove`, so the CLI keeps
- * deciding what a valid entry is and nothing here has to track its rules.
+ * deciding what a valid entry is. Native OAuth repair lives at the credential
+ * adapter boundary and never transfers a Claude account session.
  *
  * @module mcp/ProviderMcpServers
  */
 import {
+  ProviderSetupError,
+  type McpAuthInput,
+  type ProviderAuthState,
   ClaudeSettings,
   CodexSettings,
   McpCliUnavailableError,
@@ -28,6 +32,29 @@ import {
   type ProviderInstanceId,
   type ServerSettingsError,
 } from "@t3tools/contracts";
+import * as NodeOS from "node:os";
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import * as Crypto from "effect/Crypto";
+import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import { ChildProcessSpawner } from "effect/unstable/process";
+import { PtyAdapter } from "../terminal/PtyAdapter.ts";
+import { runMcpPtyLogin } from "./McpPtyLogin.ts";
+import { makeCliLoginAuth } from "../provider/CliLoginAuth.ts";
+import { findMcpAuthorizationUrl } from "../provider/cliLoginOutput.ts";
+import type { ProviderAuthController } from "../provider/Services/ProviderAuthService.ts";
+import {
+  clearClaudeMcpAuthCache,
+  copyMcpRecords,
+  hasRefreshMaterial,
+  mcpRecordName,
+  mcpRecords,
+  readClaudeCredentials,
+  repairMcpRecords,
+  writeClaudeCredentials,
+} from "./ClaudeMcpCredentials.ts";
+
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -40,7 +67,10 @@ import * as ProcessRunner from "../processRunner.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { resolveProviderCredentialHome } from "../provider/providerCredentialHome.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
-import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import {
+  resolveCodexHomeLayout,
+  resolveCodexInstanceHomeLayout,
+} from "../provider/Drivers/CodexHomeLayout.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 
 // The Claude driver registers itself as `claudeAgent`; `claude` is the CLI
@@ -48,6 +78,29 @@ import { ServerSettingsService } from "../serverSettings.ts";
 export class ProviderMcpServers extends Context.Service<
   ProviderMcpServers,
   {
+    readonly repair: (input: {
+      readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
+      readonly name: string;
+    }) => Effect.Effect<McpMutationResult, McpInstanceNotFoundError | ServerSettingsError>;
+    readonly authStart: (
+      input: McpAuthInput,
+      owner: string,
+    ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
+    readonly authComplete: (
+      input: McpAuthInput & { readonly flowId: string; readonly callbackUrl: string },
+      owner: string,
+    ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
+    readonly authCancel: (
+      input: McpAuthInput & { readonly flowId: string },
+      owner: string,
+    ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
+    readonly authLogout: (
+      input: McpAuthInput,
+    ) => Effect.Effect<ProviderAuthState, ProviderSetupError>;
+    readonly authSubscribe: (
+      input: McpAuthInput,
+      owner: string,
+    ) => Stream.Stream<ProviderAuthState, ProviderSetupError>;
     readonly list: () => Effect.Effect<McpInventory, ServerSettingsError>;
     readonly add: (input: {
       readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
@@ -88,8 +141,8 @@ const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 /**
- * `claude mcp` writes and reads a small JSON file. Two seconds is generous for
- * that and short enough that one wedged instance cannot stall the whole page.
+ * `claude mcp` writes and reads a small JSON file. Twenty seconds allows for
+ * CLI startup while bounding how long a wedged instance can stall the page.
  */
 const CLI_TIMEOUT_MS = 20_000;
 
@@ -110,6 +163,7 @@ interface ResolvedInstance {
   readonly environment: NodeJS.ProcessEnv;
   /** Names of the variables this instance adds, for the UI to explain. */
   readonly requiredEnvNames: ReadonlyArray<string>;
+  readonly readError?: string;
 }
 
 /**
@@ -120,9 +174,10 @@ interface ResolvedInstance {
 function cliPrefixFor(instance: ResolvedInstance): string {
   const isClaude = instance.driver === CLAUDE_DRIVER_KIND;
   const binary = instance.binaryPath.trim() || (isClaude ? "claude" : "codex");
-  if (instance.configDir.length === 0) return binary;
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+  if (instance.configDir.length === 0) return quote(binary);
   const variable = isClaude ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
-  return `${variable}=${instance.configDir} ${binary}`;
+  return `${variable}=${quote(instance.configDir)} ${quote(binary)}`;
 }
 
 const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstances")(function* () {
@@ -141,15 +196,17 @@ const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstan
       configuredPath: config.homePath,
       providerHomesDir,
     });
-    const resolvedHome = yield* resolveClaudeHomePath({ homePath: configDir });
+    const environment = mergeProviderInstanceEnvironment(entry.environment);
+    const effectiveDir = configDir || environment.CLAUDE_CONFIG_DIR || "";
+    const resolvedHome = yield* resolveClaudeHomePath({ homePath: effectiveDir });
     resolved.push({
       instanceId,
       driver: CLAUDE_DRIVER_KIND,
       displayName: entry.displayName?.trim() || rawInstanceId,
       binaryPath: config.binaryPath,
-      configDir,
+      configDir: effectiveDir ? resolvedHome : "",
       resolvedHome,
-      environment: mergeProviderInstanceEnvironment(entry.environment),
+      environment,
       requiredEnvNames: (entry.environment ?? []).map((variable) => variable.name),
     });
   }
@@ -160,12 +217,21 @@ const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstan
 const resolveCodexInstances = Effect.fn("ProviderMcpServers.resolveCodexInstances")(function* () {
   const settings = yield* ServerSettingsService;
   const current = yield* settings.getSettings;
+  const { providerHomesDir } = yield* ServerConfig;
 
   const resolved: Array<ResolvedInstance> = [];
   for (const [rawInstanceId, entry] of Object.entries(current.providerInstances)) {
     if (entry.driver !== CODEX_DRIVER_KIND) continue;
     const config = decodeCodexSettings(entry.config ?? {});
-    const layout = yield* resolveCodexHomeLayout(config);
+    const resolvedLayout = yield* resolveCodexInstanceHomeLayout(
+      config,
+      rawInstanceId as ProviderInstanceId,
+      providerHomesDir,
+    ).pipe(Effect.result);
+    const layout =
+      resolvedLayout._tag === "Success"
+        ? resolvedLayout.success
+        : yield* resolveCodexHomeLayout(config);
     // Codex keeps auth.json private to a shadow home but symlinks config.toml
     // back to the shared one, so a write through the shadow lands in the
     // shared server list. That is the intent: sign-ins are per account,
@@ -173,6 +239,7 @@ const resolveCodexInstances = Effect.fn("ProviderMcpServers.resolveCodexInstance
     resolved.push({
       instanceId: rawInstanceId as ProviderInstanceId,
       driver: CODEX_DRIVER_KIND,
+      ...(resolvedLayout._tag === "Failure" ? { readError: resolvedLayout.failure.message } : {}),
       displayName: entry.displayName?.trim() || rawInstanceId,
       binaryPath: config.binaryPath,
       configDir: layout.effectiveHomePath ?? "",
@@ -327,12 +394,19 @@ const readClaudeInventory = Effect.fn("ProviderMcpServers.readClaudeInventory")(
     requiredEnvNames: instance.requiredEnvNames,
   } as const;
 
-  const contents = yield* fileSystem.readFileString(configPath).pipe(Effect.option);
+  const contents = yield* fileSystem.readFileString(configPath).pipe(Effect.result);
   // A missing file is the normal state for a freshly provisioned instance, not
   // an error worth surfacing: it simply has no servers yet.
-  if (contents._tag === "None") return { ...base, servers: [] };
+  if (contents._tag === "Failure")
+    return {
+      ...base,
+      servers: [],
+      ...(contents.failure.reason._tag === "NotFound"
+        ? {}
+        : { readError: `Could not read ${configPath}` }),
+    };
 
-  const parsed = yield* decodeJson(contents.value).pipe(Effect.option);
+  const parsed = yield* decodeJson(contents.success).pipe(Effect.option);
   if (parsed._tag === "None") {
     return { ...base, servers: [], readError: `Could not parse ${configPath}` };
   }
@@ -371,6 +445,7 @@ const readCodexInventory = Effect.fn("ProviderMcpServers.readCodexInventory")(fu
     requiredEnvNames: instance.requiredEnvNames,
   } as const;
 
+  if (instance.readError) return { ...base, servers: [], readError: instance.readError };
   const result = yield* runProviderMcp({ instance, args: ["list", "--json"] }).pipe(Effect.option);
   if (result._tag === "None" || !result.value.outcome.ok) {
     return {
@@ -393,10 +468,83 @@ const readCodexInventory = Effect.fn("ProviderMcpServers.readCodexInventory")(fu
         const record =
           typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
         const name = typeof record.name === "string" ? record.name : "";
-        return canonicalToEntry(name, codexEntryToCanonical(record));
+        return {
+          ...canonicalToEntry(name, codexEntryToCanonical(record)),
+          authStatus:
+            record.auth_status === "oauth"
+              ? ("stored" as const)
+              : record.auth_status === "not_logged_in"
+                ? ("needsAuth" as const)
+                : ("unknown" as const),
+        };
       })
       .filter((entry) => entry.name.length > 0)
       .sort((left, right) => left.name.localeCompare(right.name)),
+  };
+});
+
+const withClaudeAuthInventory = Effect.fn("ProviderMcpServers.withClaudeAuthInventory")(function* (
+  instance: ResolvedInstance,
+  inventory: McpInstanceInventory,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const store = yield* readClaudeCredentials(instance.configDir).pipe(Effect.result);
+  if (store._tag === "Failure") return { ...inventory, readError: store.failure.message };
+  const records = mcpRecords(store.success.credentials);
+  const cachePath = path.join(
+    instance.configDir || path.join(NodeOS.homedir(), ".claude"),
+    "mcp-needs-auth-cache.json",
+  );
+  const cache = yield* fs.readFileString(cachePath).pipe(
+    Effect.flatMap(decodeJson),
+    Effect.orElseSucceed(() => ({})),
+  );
+  const needsAuth = typeof cache === "object" && cache !== null ? cache : {};
+  const servers = new Map(
+    inventory.servers.map((entry) => [entry.name, { ...entry, canManageDefinition: true }]),
+  );
+  for (const [key, record] of Object.entries(records)) {
+    const name = mcpRecordName(key);
+    if (!name || servers.has(name)) continue;
+    servers.set(name, {
+      name,
+      transport: "http",
+      target: typeof record.serverUrl === "string" ? record.serverUrl : "",
+      envKeys: [],
+      headerKeys: [],
+      canManageDefinition: false,
+    });
+  }
+  for (const name of Object.keys(needsAuth)) {
+    if (!servers.has(name))
+      servers.set(name, {
+        name,
+        transport: "unknown",
+        target: "",
+        envKeys: [],
+        headerKeys: [],
+        canManageDefinition: false,
+      });
+  }
+  return {
+    ...inventory,
+    servers: [...servers.values()]
+      .map((server): McpServerEntry => {
+        const matching = Object.entries(records)
+          .filter(([key]) => mcpRecordName(key) === server.name)
+          .map(([, record]) => record);
+        const authStatus =
+          server.name in needsAuth
+            ? "needsAuth"
+            : matching.some(hasRefreshMaterial)
+              ? "stored"
+              : matching.length > 0
+                ? "incomplete"
+                : "unknown";
+        return { ...server, authStatus };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name)),
   };
 });
 
@@ -404,10 +552,13 @@ const listMcpServers = Effect.fn("ProviderMcpServers.list")(function* () {
   const instances = yield* resolveInstances();
   const inventories: Array<McpInstanceInventory> = [];
   for (const instance of instances) {
+    const inventory = yield* instance.driver === CLAUDE_DRIVER_KIND
+      ? readClaudeInventory(instance)
+      : readCodexInventory(instance);
     inventories.push(
-      yield* instance.driver === CLAUDE_DRIVER_KIND
-        ? readClaudeInventory(instance)
-        : readCodexInventory(instance),
+      instance.driver === CLAUDE_DRIVER_KIND
+        ? yield* withClaudeAuthInventory(instance, inventory)
+        : inventory,
     );
   }
   return { instances: inventories };
@@ -417,6 +568,15 @@ const runProviderMcp = Effect.fn("ProviderMcpServers.runProviderMcp")(function* 
   readonly instance: ResolvedInstance;
   readonly args: ReadonlyArray<string>;
 }) {
+  if (input.instance.readError)
+    return {
+      outcome: {
+        instanceId: input.instance.instanceId,
+        ok: false,
+        message: input.instance.readError,
+      },
+      stdout: "",
+    };
   const runner = yield* ProcessRunner.ProcessRunner;
   const isClaude = input.instance.driver === CLAUDE_DRIVER_KIND;
   const binaryPath = input.instance.binaryPath.trim() || (isClaude ? "claude" : "codex");
@@ -470,14 +630,19 @@ const applyServerToInstances = Effect.fn("ProviderMcpServers.applyServerToInstan
     );
 
     const outcomes: Array<McpMutationOutcome> = [];
-    for (const instanceId of input.instanceIds) {
-      const instance = yield* findInstance(instanceId);
-      const plan = addArgsFor(instance, input.name, server, input.json);
-      if ("reason" in plan) {
-        outcomes.push({ instanceId, ok: false, message: plan.reason });
-        continue;
-      }
-      outcomes.push((yield* runProviderMcp({ instance, args: plan.args })).outcome);
+    for (const instanceId of new Set(input.instanceIds)) {
+      outcomes.push(
+        yield* Effect.gen(function* () {
+          const instance = yield* findInstance(instanceId);
+          const plan = addArgsFor(instance, input.name, server, input.json);
+          if ("reason" in plan) return { instanceId, ok: false, message: plan.reason };
+          return (yield* runProviderMcp({ instance, args: plan.args })).outcome;
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.succeed({ instanceId, ok: false, message: error.message }),
+          ),
+        ),
+      );
     }
     return { outcomes };
   },
@@ -556,11 +721,48 @@ const copyMcpServer = Effect.fn("ProviderMcpServers.copy")(function* (input: {
 }) {
   const source = yield* findInstance(input.fromInstanceId);
   const json = yield* readRawServerDefinition(source, input.name);
-  return yield* applyServerToInstances({
+  const result = yield* applyServerToInstances({
     instanceIds: input.toInstanceIds.filter((id) => id !== input.fromInstanceId),
     name: input.name,
     json,
   });
+  if (source.driver !== CLAUDE_DRIVER_KIND) return result;
+  const outcomes: McpMutationOutcome[] = [];
+  for (const outcome of result.outcomes) {
+    if (!outcome.ok) {
+      outcomes.push(outcome);
+      continue;
+    }
+    const target = yield* findInstance(outcome.instanceId);
+    if (target.driver !== CLAUDE_DRIVER_KIND || source.configDir === target.configDir) {
+      outcomes.push(outcome);
+      continue;
+    }
+    outcomes.push(
+      yield* Effect.gen(function* () {
+        const sourceStore = yield* readClaudeCredentials(source.configDir);
+        const targetStore = yield* readClaudeCredentials(target.configDir);
+        const merged = copyMcpRecords(sourceStore.credentials, targetStore.credentials, input.name);
+        if (merged.copied > 0) {
+          yield* writeClaudeCredentials(target.configDir, {
+            ...targetStore,
+            credentials: merged.credentials,
+          });
+          yield* clearClaudeMcpAuthCache(target.configDir, input.name);
+        }
+        return outcome;
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed({
+            ...outcome,
+            ok: false,
+            message: `Definition copied, but authorization could not be copied: ${error.message} Use Sign in.`,
+          }),
+        ),
+      ),
+    );
+  }
+  return { outcomes };
 });
 
 const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* (input: {
@@ -568,10 +770,15 @@ const removeMcpServer = Effect.fn("ProviderMcpServers.remove")(function* (input:
   readonly name: string;
 }) {
   const outcomes: Array<McpMutationOutcome> = [];
-  for (const instanceId of input.instanceIds) {
-    const instance = yield* findInstance(instanceId);
+  for (const instanceId of new Set(input.instanceIds)) {
     outcomes.push(
-      (yield* runProviderMcp({ instance, args: removeArgsFor(instance, input.name) })).outcome,
+      yield* Effect.gen(function* () {
+        const instance = yield* findInstance(instanceId);
+        return (yield* runProviderMcp({ instance, args: removeArgsFor(instance, input.name) }))
+          .outcome;
+      }).pipe(
+        Effect.catch((error) => Effect.succeed({ instanceId, ok: false, message: error.message })),
+      ),
     );
   }
   return { outcomes };
@@ -589,13 +796,235 @@ export const make = Effect.fn("ProviderMcpServers.make")(function* () {
     | ServerSettingsService
   >();
 
+  const pty = yield* PtyAdapter;
+  const scope = yield* Scope.Scope;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const crypto = yield* Crypto.Crypto;
+  const lock = yield* Semaphore.make(1);
+  const controllerLock = yield* Semaphore.make(1);
+  const controllers = new Map<string, ProviderAuthController>();
+  const authController = Effect.fn("ProviderMcpServers.authController")(function* (
+    input: McpAuthInput,
+  ) {
+    const instance = yield* findInstance(input.instanceId).pipe(
+      Effect.provide(context),
+      Effect.mapError(
+        () =>
+          new ProviderSetupError({
+            instanceId: input.instanceId,
+            operation: "mcp",
+            detail: "This provider account is unavailable.",
+          }),
+      ),
+    );
+    if (instance.readError)
+      return yield* new ProviderSetupError({
+        instanceId: input.instanceId,
+        operation: "mcp",
+        detail: instance.readError,
+      });
+    const key = yield* encodeJson([
+      instance.instanceId,
+      instance.configDir,
+      instance.binaryPath,
+      input.name,
+    ]).pipe(Effect.orDie);
+    const existing = controllers.get(key);
+    if (existing) return existing;
+    const isClaude = instance.driver === CLAUDE_DRIVER_KIND;
+    const env = {
+      ...instance.environment,
+      ...(instance.configDir
+        ? { [isClaude ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME"]: instance.configDir }
+        : {}),
+    };
+    const base = {
+      command: instance.binaryPath || (isClaude ? "claude" : "codex"),
+      env,
+      cwd: instance.resolvedHome,
+    };
+    const verify = isClaude
+      ? readClaudeCredentials(instance.configDir).pipe(
+          Effect.map((store) =>
+            Object.entries(mcpRecords(store.credentials)).some(
+              ([key, record]) =>
+                mcpRecordName(key) === input.name &&
+                typeof record.accessToken === "string" &&
+                record.accessToken.length > 0,
+            ),
+          ),
+          Effect.orElseSucceed(() => false),
+          Effect.provide(context),
+        )
+      : runProviderMcp({ instance, args: ["list", "--json"] }).pipe(
+          Effect.flatMap((result) => decodeJson(result.stdout)),
+          Effect.map(
+            (raw) =>
+              Array.isArray(raw) &&
+              raw.some((entry) => entry?.name === input.name && entry?.auth_status === "oauth"),
+          ),
+          Effect.orElseSucceed(() => false),
+          Effect.provide(context),
+        );
+    const login = {
+      ...base,
+      args: ["mcp", "login", input.name, ...(isClaude ? ["--no-browser"] : [])],
+    };
+    const controller = yield* makeCliLoginAuth({
+      instanceId: input.instanceId,
+      providerLabel: isClaude ? "Claude MCP" : "Codex MCP",
+      accountLabel: input.name,
+      completion: "redirectUrl",
+      authorizationUrlHosts: [],
+      findAuthorizationUrl: findMcpAuthorizationUrl,
+      ...(isClaude ? { redirectDelivery: "stdin" as const } : {}),
+      login,
+      ...(isClaude
+        ? {
+            runLogin: (input, onLine) =>
+              runMcpPtyLogin(login, input, onLine).pipe(Effect.provideService(PtyAdapter, pty)),
+          }
+        : {}),
+      logout: { ...base, args: ["mcp", "logout", input.name] },
+      verifySignedIn: verify,
+      onAuthenticated: Effect.void,
+      onSignedOut: Effect.void,
+    }).pipe(
+      Effect.provideService(Scope.Scope, scope),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(Crypto.Crypto, crypto),
+    );
+    controllers.set(key, controller);
+    return controller;
+  }, controllerLock.withPermits(1));
+
+  const hasActiveAuth = Effect.fn("ProviderMcpServers.hasActiveAuth")(function* (
+    except?: ProviderAuthController,
+  ) {
+    for (const controller of controllers.values()) {
+      if (controller === except) continue;
+      const state = yield* controller.subscribe("mcp-mutation").pipe(Stream.runHead);
+      if (state._tag === "Some" && ["starting", "waiting", "verifying"].includes(state.value.phase))
+        return true;
+    }
+    return false;
+  });
+
+  const repair = Effect.fn("ProviderMcpServers.repair")(function* (input: {
+    readonly instanceIds: ReadonlyArray<ProviderInstanceId>;
+    readonly name: string;
+  }) {
+    if (yield* hasActiveAuth())
+      return {
+        outcomes: input.instanceIds.map((instanceId) => ({
+          instanceId,
+          ok: false,
+          message: "Finish or cancel connector sign-in before repairing credentials.",
+        })),
+      };
+    const hostEnv = yield* HostProcessEnvironment;
+    const sourceDir = hostEnv.CLAUDE_CONFIG_DIR?.trim()
+      ? yield* resolveClaudeHomePath({ homePath: hostEnv.CLAUDE_CONFIG_DIR })
+      : "";
+    const outcomes: McpMutationOutcome[] = [];
+    for (const instanceId of new Set(input.instanceIds)) {
+      const instance = yield* findInstance(instanceId);
+      if (instance.driver !== CLAUDE_DRIVER_KIND || instance.configDir === sourceDir) {
+        outcomes.push({
+          instanceId,
+          ok: false,
+          message: "Repair applies to a separate Claude account. Use Sign in for this account.",
+        });
+        continue;
+      }
+      const result = yield* Effect.gen(function* () {
+        const source = yield* readClaudeCredentials(sourceDir);
+        const target = yield* readClaudeCredentials(instance.configDir);
+        const repaired = repairMcpRecords(source.credentials, target.credentials, input.name);
+        if (repaired.repaired === 0)
+          return {
+            instanceId,
+            ok: false,
+            message:
+              "No incomplete record with a matching configuration and refresh material in the default Claude home. Use Sign in.",
+          };
+        yield* writeClaudeCredentials(instance.configDir, {
+          ...target,
+          credentials: repaired.credentials,
+        });
+        yield* clearClaudeMcpAuthCache(instance.configDir, input.name);
+        return {
+          instanceId,
+          ok: true,
+          message: "Refresh credentials restored. Start a new conversation to reconnect.",
+        };
+      }).pipe(
+        Effect.catch((error) => Effect.succeed({ instanceId, ok: false, message: error.message })),
+      );
+      outcomes.push(result);
+    }
+    return { outcomes };
+  }, lock.withPermits(1));
+
   // Every operation re-reads settings. Accounts are added and signed out while
   // the app runs, and this backs a settings page, not a hot path.
   return ProviderMcpServers.of({
+    repair: (input) => repair(input).pipe(Effect.provide(context)),
+    authStart: (input, owner) =>
+      lock.withPermits(1)(
+        Effect.gen(function* () {
+          const controller = yield* authController(input);
+          if (yield* hasActiveAuth(controller))
+            return yield* new ProviderSetupError({
+              instanceId: input.instanceId,
+              operation: "mcp",
+              detail: "Finish or cancel the other connector sign-in first.",
+            });
+          return yield* controller.start(owner);
+        }),
+      ),
+    authComplete: (input, owner) =>
+      authController(input).pipe(Effect.flatMap((controller) => controller.complete(owner, input))),
+    authCancel: (input, owner) =>
+      authController(input).pipe(
+        Effect.flatMap((controller) => controller.cancel(owner, input.flowId)),
+      ),
+    authLogout: (input) =>
+      lock.withPermits(1)(
+        Effect.gen(function* () {
+          const controller = yield* authController(input);
+          if (yield* hasActiveAuth(controller))
+            return yield* new ProviderSetupError({
+              instanceId: input.instanceId,
+              operation: "mcp",
+              detail: "Finish or cancel the other connector sign-in first.",
+            });
+          return yield* controller.logout(Effect.void);
+        }),
+      ),
+    authSubscribe: (input, owner) =>
+      Stream.unwrap(
+        authController(input).pipe(Effect.map((controller) => controller.subscribe(owner))),
+      ),
     list: () => listMcpServers().pipe(Effect.provide(context)),
     add: (input) => addMcpServer(input).pipe(Effect.provide(context)),
     remove: (input) => removeMcpServer(input).pipe(Effect.provide(context)),
-    copy: (input) => copyMcpServer(input).pipe(Effect.provide(context)),
+    copy: (input) =>
+      lock
+        .withPermits(1)(
+          Effect.gen(function* () {
+            if (yield* hasActiveAuth())
+              return {
+                outcomes: input.toInstanceIds.map((instanceId) => ({
+                  instanceId,
+                  ok: false,
+                  message: "Finish or cancel connector sign-in before copying credentials.",
+                })),
+              };
+            return yield* copyMcpServer(input);
+          }),
+        )
+        .pipe(Effect.provide(context)),
   });
 });
 

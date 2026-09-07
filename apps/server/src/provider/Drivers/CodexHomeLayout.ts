@@ -1,12 +1,17 @@
 import * as NodeOS from "node:os";
 
-import { ProviderDriverKind, type CodexSettings } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  type ProviderInstanceId,
+  type CodexSettings,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as PlatformError from "effect/PlatformError";
 
+import { resolveProviderCredentialHome } from "../providerCredentialHome.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 
 export interface CodexHomeLayout {
@@ -420,3 +425,30 @@ export function codexContinuationIdentity(layout: CodexHomeLayout) {
     continuationKey: layout.continuationKey,
   };
 }
+
+/** Resolve the same credential home for agent launches and account-specific MCP operations. */
+export const resolveCodexInstanceHomeLayout = Effect.fn("resolveCodexInstanceHomeLayout")(
+  function* (config: CodexSettings, instanceId: ProviderInstanceId, providerHomesDir: string) {
+    const configuresOwnHome =
+      config.homePath.trim().length > 0 || config.shadowHomePath.trim().length > 0;
+    const shadowHomePath = configuresOwnHome
+      ? config.shadowHomePath
+      : yield* resolveProviderCredentialHome({
+          driverKind: ProviderDriverKind.make("codex"),
+          instanceId,
+          configuredPath: "",
+          providerHomesDir,
+        });
+    const requestedLayout = yield* resolveCodexHomeLayout({ ...config, shadowHomePath });
+    const materialized = yield* materializeCodexShadowHome(requestedLayout).pipe(Effect.result);
+    if (materialized._tag === "Success") return requestedLayout;
+    // A configured overlay failure must be visible. Provisioned overlays may
+    // fall back to a standalone home while keeping this account isolated.
+    if (configuresOwnHome || shadowHomePath.length === 0) return yield* materialized.failure;
+    return yield* resolveCodexHomeLayout({
+      ...config,
+      homePath: shadowHomePath,
+      shadowHomePath: "",
+    });
+  },
+);

@@ -148,7 +148,16 @@ export interface CliLoginAuthOptions {
   readonly completion: ProviderAuthCompletion;
   /** Hosts whose URLs may be presented to the user as the sign-in page. */
   readonly authorizationUrlHosts: ReadonlyArray<string>;
+  /** MCP servers discover their own issuer through the CLI. */
+  readonly findAuthorizationUrl?: (line: string) => string | undefined;
+  /** Headless MCP login accepts the validated redirect on stdin. */
+  readonly redirectDelivery?: "stdin" | "forward";
   readonly login: CliInvocation;
+  /** Some headless connector CLIs require a pseudo-terminal for redirect input. */
+  readonly runLogin?: (
+    input: Queue.Queue<string, Cause.Done>,
+    onLine: (line: string) => Effect.Effect<void>,
+  ) => Effect.Effect<CliInvocationResult, never, Scope.Scope>;
   readonly logout: CliInvocation;
   /**
    * Whether this instance's credential directory holds a usable sign-in right
@@ -268,7 +277,9 @@ export const makeCliLoginAuth = Effect.fn("makeCliLoginAuth")(function* (
 
   const receiveLine = (flow: AuthFlow, line: string) =>
     Effect.gen(function* () {
-      const url = findAuthorizationUrl(line, options.authorizationUrlHosts);
+      const url = options.findAuthorizationUrl
+        ? options.findAuthorizationUrl(line)
+        : findAuthorizationUrl(line, options.authorizationUrlHosts);
       const code = options.completion !== "code" ? findDeviceUserCode(line) : undefined;
       if (url === undefined && code === undefined) return;
       yield* lock.withPermits(1)(
@@ -318,10 +329,12 @@ export const makeCliLoginAuth = Effect.fn("makeCliLoginAuth")(function* (
       // Stop this instance's running sessions first: an agent mid-turn holds
       // the same credential file the CLI is about to rewrite.
       yield* stopSessions;
-      const result = yield* runCliInvocation(options.login, {
-        input: flow.input,
-        onLine: (line) => receiveLine(flow, line),
-      });
+      const result = yield* options.runLogin
+        ? options.runLogin(flow.input, (line) => receiveLine(flow, line))
+        : runCliInvocation(options.login, {
+            input: flow.input,
+            onLine: (line) => receiveLine(flow, line),
+          });
       if (result.exitCode === null) {
         return yield* setupError("start", spawnFailureDetail(options.login));
       }
@@ -481,11 +494,11 @@ export const makeCliLoginAuth = Effect.fn("makeCliLoginAuth")(function* (
                   input.callbackUrl,
                 );
           flow.responseSent = true;
-          if (callback === undefined) {
+          if (callback === undefined || options.redirectDelivery === "stdin") {
             // `Queue.end` drains what is buffered and then closes stdin, so the
             // CLI reads the code and sees EOF. `Queue.shutdown` would discard
             // the code, which is why it only ever abandons a flow.
-            yield* Queue.offer(flow.input, `${input.callbackUrl}\n`);
+            yield* Queue.offer(flow.input, `${callback?.href ?? input.callbackUrl}\n`);
             yield* Queue.end(flow.input);
           }
           yield* publishFlow(flow, {
@@ -495,7 +508,7 @@ export const makeCliLoginAuth = Effect.fn("makeCliLoginAuth")(function* (
             userCode: null,
             message: `Checking the sign-in with ${options.providerLabel}.`,
           });
-          return { flow, callback };
+          return { flow, callback: options.redirectDelivery === "stdin" ? undefined : callback };
         }),
       );
 

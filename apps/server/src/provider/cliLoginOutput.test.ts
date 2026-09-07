@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   findAuthorizationUrl,
+  findMcpAuthorizationUrl,
   findDeviceUserCode,
   stripAnsi,
   summarizeCliFailure,
@@ -16,6 +17,20 @@ const CLAUDE_URL_LINE =
   "If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code&state=T9iV1GS8";
 const CODEX_URL_LINE = "   \u001B[94mhttps://auth.openai.com/codex/device\u001B[0m";
 const CODEX_CODE_LINE = "   \u001B[94mUNK7-0HJFF\u001B[0m";
+
+describe("MCP authorization links", () => {
+  const url =
+    "https://issuer.example/authorize?response_type=code&state=fixture&redirect_uri=http%3A%2F%2Flocalhost%3A1234%2Fcallback";
+  it("reads a discovered issuer's OAuth URL, including hidden OSC 8 links", () => {
+    expect(findMcpAuthorizationUrl(`Visit ${url}`)).toBe(url);
+    expect(findMcpAuthorizationUrl(`\u001B]8;;${url}\u0007Open sign-in\u001B]8;;\u0007`)).toBe(url);
+  });
+  it("does not mistake documentation or unrelated output for a sign-in", () => {
+    expect(findMcpAuthorizationUrl("See https://docs.example/mcp")).toBeUndefined();
+    expect(findMcpAuthorizationUrl(url.replace("https:", "http:"))).toBeUndefined();
+    expect(findMcpAuthorizationUrl(url.replace("state=fixture", "missing=state"))).toBeUndefined();
+  });
+});
 
 describe("stripAnsi", () => {
   it("removes the color codes both CLIs emit to a pipe", () => {

@@ -2479,6 +2479,38 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "review" },
           ),
         // PseudoCode fork addition: per-instance MCP server management.
+        [WS_METHODS.mcpRepair]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpRepair, providerMcpServers.repair(input), {
+            "rpc.aggregate": "mcp",
+          }),
+        [WS_METHODS.mcpAuthStart]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpAuthStart,
+            providerMcpServers.authStart(input, currentSessionId),
+            { "rpc.aggregate": "mcp" },
+          ),
+        [WS_METHODS.mcpAuthComplete]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpAuthComplete,
+            providerMcpServers.authComplete(input, currentSessionId),
+            { "rpc.aggregate": "mcp" },
+          ),
+        [WS_METHODS.mcpAuthCancel]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpAuthCancel,
+            providerMcpServers.authCancel(input, currentSessionId),
+            { "rpc.aggregate": "mcp" },
+          ),
+        [WS_METHODS.mcpAuthLogout]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpAuthLogout, providerMcpServers.authLogout(input), {
+            "rpc.aggregate": "mcp",
+          }),
+        [WS_METHODS.mcpAuthSubscribe]: (input) =>
+          observeRpcStream(
+            WS_METHODS.mcpAuthSubscribe,
+            providerMcpServers.authSubscribe(input, currentSessionId),
+            { "rpc.aggregate": "mcp" },
+          ),
         [WS_METHODS.mcpList]: (_input) =>
           observeRpcEffect(WS_METHODS.mcpList, providerMcpServers.list(), {
             "rpc.aggregate": "mcp",

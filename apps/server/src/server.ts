@@ -582,7 +582,12 @@ export const makeRoutesLayer = Layer.mergeAll(
   Layer.provide(IssueServiceLive),
   Layer.provide(PreviewAutomationBroker.layer),
   // PseudoCode fork addition: shells out to `claude mcp`, so it owns its runner.
-  Layer.provide(ProviderMcpServers.layer.pipe(Layer.provide(ProcessRunner.layer))),
+  Layer.provide(
+    ProviderMcpServers.layer.pipe(
+      Layer.provide(ProcessRunner.layer),
+      Layer.provide(PtyAdapterLive),
+    ),
+  ),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(DesktopAppUpdateLayerLive))),
   Layer.provide(commandReadinessLayer),
   Layer.provide(browserApiCorsLayer),

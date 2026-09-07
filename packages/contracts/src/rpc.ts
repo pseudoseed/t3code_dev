@@ -169,6 +169,10 @@ import {
 } from "./terminal.ts";
 // PseudoCode fork addition.
 import {
+  McpAuthInput,
+  McpAuthCompleteInput,
+  McpAuthCancelInput,
+  McpRepairInput,
   McpAddInput,
   McpCopyInput,
   McpError,
@@ -327,6 +331,12 @@ export const WS_METHODS = {
   mcpAdd: "mcp.add",
   mcpRemove: "mcp.remove",
   mcpCopy: "mcp.copy",
+  mcpAuthSubscribe: "mcp.auth.subscribe",
+  mcpAuthLogout: "mcp.auth.logout",
+  mcpAuthCancel: "mcp.auth.cancel",
+  mcpAuthComplete: "mcp.auth.complete",
+  mcpAuthStart: "mcp.auth.start",
+  mcpRepair: "mcp.repair",
 
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
@@ -1268,6 +1278,73 @@ export const WsMcpCopyRpc = Rpc.make(WS_METHODS.mcpCopy, {
   error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
+export const WsMcpRepairRpc = Rpc.make(WS_METHODS.mcpRepair, {
+  payload: McpRepairInput,
+  success: McpMutationResult,
+  error: Schema.Union([
+    McpError,
+    ProviderSetupError,
+    ServerSettingsError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMcpAuthStartRpc = Rpc.make(WS_METHODS.mcpAuthStart, {
+  payload: McpAuthInput,
+  success: ProviderAuthState,
+  error: Schema.Union([
+    McpError,
+    ProviderSetupError,
+    ServerSettingsError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMcpAuthCompleteRpc = Rpc.make(WS_METHODS.mcpAuthComplete, {
+  payload: McpAuthCompleteInput,
+  success: ProviderAuthState,
+  error: Schema.Union([
+    McpError,
+    ProviderSetupError,
+    ServerSettingsError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMcpAuthCancelRpc = Rpc.make(WS_METHODS.mcpAuthCancel, {
+  payload: McpAuthCancelInput,
+  success: ProviderAuthState,
+  error: Schema.Union([
+    McpError,
+    ProviderSetupError,
+    ServerSettingsError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMcpAuthLogoutRpc = Rpc.make(WS_METHODS.mcpAuthLogout, {
+  payload: McpAuthInput,
+  success: ProviderAuthState,
+  error: Schema.Union([
+    McpError,
+    ProviderSetupError,
+    ServerSettingsError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsMcpAuthSubscribeRpc = Rpc.make(WS_METHODS.mcpAuthSubscribe, {
+  payload: McpAuthInput,
+  success: ProviderAuthState,
+  error: Schema.Union([
+    McpError,
+    ProviderSetupError,
+    ServerSettingsError,
+    EnvironmentAuthorizationError,
+  ]),
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -1397,4 +1474,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAddRpc,
   WsMcpRemoveRpc,
   WsMcpCopyRpc,
+  WsMcpAuthSubscribeRpc,
+  WsMcpAuthLogoutRpc,
+  WsMcpAuthCancelRpc,
+  WsMcpAuthCompleteRpc,
+  WsMcpAuthStartRpc,
+  WsMcpRepairRpc,
 );
