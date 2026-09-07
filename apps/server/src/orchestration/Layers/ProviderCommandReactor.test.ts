@@ -193,6 +193,7 @@ describe("ProviderCommandReactor", () => {
     readonly agentMcp?: boolean;
     readonly getCapabilitiesEffect?: ProviderServiceShape["getCapabilities"];
     readonly stopSessionEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
+    readonly sendTurnEffect?: ProviderServiceShape["sendTurn"];
     readonly startSessionEffect?: (
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
@@ -294,11 +295,13 @@ describe("ProviderCommandReactor", () => {
         ),
       );
     });
-    const sendTurn = vi.fn((_: unknown) =>
-      Effect.succeed({
-        threadId: ThreadId.make("thread-1"),
-        turnId: asTurnId("turn-1"),
-      }),
+    const sendTurn = vi.fn(
+      input?.sendTurnEffect ??
+        ((_: unknown) =>
+          Effect.succeed({
+            threadId: ThreadId.make("thread-1"),
+            turnId: asTurnId("turn-1"),
+          })),
     );
     const compactThread = vi.fn((_: ThreadId) => input?.compactThreadEffect?.() ?? Effect.void);
     const interruptTurn = vi.fn((_: unknown) => input?.interruptTurnEffect?.() ?? Effect.void);
@@ -3348,6 +3351,85 @@ describe("ProviderCommandReactor", () => {
       ),
     });
   });
+
+  effectIt.effect("preserves a running turn when a follow-up is rejected", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread-1");
+      const turnId = asTurnId("turn-still-working");
+      const firstSubmitted = yield* Deferred.make<void>();
+      let rejectFollowUp = false;
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          sendTurnEffect: () =>
+            rejectFollowUp
+              ? Effect.fail(
+                  new ProviderAdapterRequestError({
+                    provider: "codex",
+                    method: "turn/steer",
+                    detail: "Follow-up rejected",
+                  }),
+                )
+              : Deferred.succeed(firstSubmitted, undefined).pipe(Effect.as({ threadId, turnId })),
+        }),
+      );
+      const send = (id: string) =>
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(id),
+          threadId,
+          message: { messageId: MessageId.make(id), role: "user", text: id, attachments: [] },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        });
+      yield* send("first-message");
+      yield* Deferred.await(firstSubmitted);
+      yield* Effect.promise(() => harness.drain());
+      const session = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (thread) => thread.id === threadId,
+      )!.session!;
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("mark-turn-running"),
+        threadId,
+        session: { ...session, status: "running", activeTurnId: turnId },
+        createdAt: "2026-01-01T00:00:02.000Z",
+      });
+      const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+      const failed = yield* events.pipe(
+        Stream.filter(
+          (event) =>
+            event.type === "thread.activity-appended" &&
+            event.payload.activity.kind === "provider.turn.start.failed",
+        ),
+        Stream.runHead,
+        Effect.forkScoped,
+      );
+      rejectFollowUp = true;
+      yield* send("follow-up-message");
+      yield* Fiber.join(failed);
+      const thread = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === threadId,
+      );
+      expect(thread?.session).toMatchObject({
+        status: "running",
+        activeTurnId: turnId,
+        lastError: null,
+      });
+      expect(thread?.activities).toContainEqual(
+        expect.objectContaining({
+          kind: "provider.turn.start.failed",
+          payload: expect.objectContaining({
+            detail: "Follow-up rejected",
+            requestId: "follow-up-message",
+          }),
+        }),
+      );
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+      expect(harness.stopSession).not.toHaveBeenCalled();
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+    }).pipe(Effect.scoped),
+  );
 
   it("forwards plan interaction mode to the provider turn request", async () => {
     const harness = await createHarness();

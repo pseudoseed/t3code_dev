@@ -1500,6 +1500,14 @@ describe("ClaudeAdapterLive", () => {
         attachments: [],
       });
       assert.equal(String(steeredTurn.turnId), String(turn.turnId));
+      const prompts = yield* Effect.promise(() =>
+        readPromptMessages(harness.getLastCreateQueryInput(), 2),
+      );
+      assert.deepEqual(
+        prompts.map((prompt) => prompt.message.content),
+        [[{ type: "text", text: "run 5 commands" }], [{ type: "text", text: "actually run 15" }]],
+      );
+      assert.equal(harness.query.closeCalls, 0);
 
       harness.query.emit({
         type: "assistant",

@@ -607,6 +607,7 @@ describe("CodexSessionRuntime collab integration", () => {
         rootThreadId: ROOT,
         holdTurnOpen: true,
         onlyFirstTurnStarts: true,
+        steerError: { code: -32601, message: "Method not found: turn/steer" },
         turnIds: [activeTurnId, queuedTurnId],
         expectedActiveTurnId: activeTurnId,
         notifications: [],

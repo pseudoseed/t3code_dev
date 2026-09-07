@@ -391,6 +391,28 @@ Provider output comes back as internal commands such as `thread.message.assistan
 `thread.session.set`, which clients observe through `orchestration.subscribeThread`. See
 [overview.md](./overview.md) for the command/event loop.
 
+### Follow-ups during active work
+
+Ordinary follow-ups use the existing `thread.turn.start` command on every client. Delivery belongs
+at the adapter boundary; clients do not interrupt a turn before sending another message.
+
+- Claude adds input to its live SDK prompt queue and retains the active turn id.
+- Cursor sends another ACP prompt and retains the turn until all in-flight prompts settle.
+- OpenCode submits `session.promptAsync` and retains the active turn through prompt admission.
+- Codex serializes send admission and uses [`turn/steer`](https://learn.chatgpt.com/docs/app-server#steer-an-active-turn)
+  with `expectedTurnId` when the active turn's last submitted model, effort, service tier, and
+  interaction mode match. Settings changes use `turn/start`, since steering cannot carry those
+  overrides. An explicit missing-method or stale-turn rejection falls back to `turn/start`;
+  ambiguous failures and other rejections never resend the input automatically. A steering
+  acknowledgement does not change liveness, which remains owned by runtime notifications.
+- Grok and Antigravity retain their cancel-before-prompt behavior. They are outside the scope of
+  the non-cancelling follow-up path.
+
+`ProviderCommandReactor` records a rejected follow-up as a failure activity without clearing an
+already running turn. Provider runtime events report any actual failure or completion of that
+work. Stop remains the separate `thread.turn.interrupt` command. This behavior uses the same
+server path for web, desktop, mobile, and remote connections.
+
 ## Subagent model overrides
 
 `OrchestrationThread.subagentModelSelection` holds the model a thread's subagents run on; null

@@ -11,6 +11,19 @@ composers.
 On web and desktop, typing or deleting immediately after a draft is restored or changed by a
 composer action updates the draft used for sending, including when you attach an image.
 
+## Sending while the agent is working
+
+With Claude Code, Codex, Cursor, and OpenCode, you can send another message while the agent
+works. The message goes into the running session so the agent can incorporate corrections,
+extra context, or answers as it continues. Delivery timing depends on the provider; sending
+does not wait for the whole task to finish.
+
+Use **Stop** when you want to interrupt the work. Sending a message and stopping are separate
+actions. If a follow-up is rejected, PseudoCode reports the failure while keeping the existing
+turn active.
+
+## Attachments
+
 You can attach images up to 10 MB. On servers that support file uploads, you can also
 attach videos, text files, PDFs, ZIP archives, and other files. Each file can be up to the limit advertised
 by the server, capped at 50 MB. Each message can contain up to eight attachments in total. Files
