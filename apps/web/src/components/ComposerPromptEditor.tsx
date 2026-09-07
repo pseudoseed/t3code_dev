@@ -88,6 +88,7 @@ import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/provider
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
+import { applyControlledComposerUpdate } from "./composerControlledUpdate";
 import {
   $consumeComposerCitationCommentRequest,
   $createComposerCitationNode,
@@ -1680,10 +1681,11 @@ function ComposerPromptEditorInner({
       return;
     }
 
-    isApplyingControlledUpdateRef.current = true;
     const isCiteInsertion = citationCommentRequestRef.current?.value === value;
     let citationToOpen: ComposerCitationCommentTarget | null = null;
-    editor.update(
+    applyControlledComposerUpdate(
+      editor,
+      isApplyingControlledUpdateRef,
       () => {
         const shouldRewriteEditorState =
           previousSnapshot.value !== value || contextsChanged || skillsChanged;
@@ -1702,9 +1704,6 @@ function ComposerPromptEditorInner({
         },
       },
     );
-    queueMicrotask(() => {
-      isApplyingControlledUpdateRef.current = false;
-    });
   }, [cursor, editor, skillsSignature, terminalContexts, terminalContextsSignature, value]);
 
   const focusAt = useCallback(
