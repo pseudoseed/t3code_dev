@@ -1,7 +1,7 @@
 # Codex
 
-This guide is for people who want to use more than one Codex account in T3 Code. For Claude, see
-[Claude](./providers-claude.md). For first-time setup, see [Install T3 Code](./install.md).
+This guide is for people who want to use more than one Codex account in PseudoCode. For Claude, see
+[Claude](./providers-claude.md). For first-time setup, see [Install PseudoCode](./install.md).
 
 Common reasons:
 
@@ -14,12 +14,12 @@ Common reasons:
 
 Open Settings, select your Codex provider, and press **Sign in to Codex**.
 
-T3 Code opens Codex's sign-in page and shows you a link you can open on any device. Approve the
+PseudoCode opens Codex's sign-in page and shows you a link you can open on any device. Approve the
 sign-in and it finishes.
 
 If your browser is on a different machine from the server, the last step lands on a `localhost`
 address your browser cannot load. That is expected. Copy that full address, paste it into the field
-T3 Code shows, and the sign-in completes.
+PseudoCode shows, and the sign-in completes.
 
 You never need a terminal.
 
@@ -37,7 +37,7 @@ OpenAI's page will tell you to enable it in ChatGPT security settings before it 
 If the sign-in expires or is revoked, the provider shows as signed out and the same button reads
 **Sign in again**. Nothing else has to be reset.
 
-T3 Code does not hold your Codex credentials. Codex stores them itself, in its own `auth.json`, and
+PseudoCode does not hold your Codex credentials. Codex stores them itself, in its own `auth.json`, and
 refreshes them as it works.
 
 ## I Only Use One Codex Account
@@ -58,7 +58,7 @@ made with `codex login` keeps working.
 ## Send feedback to OpenAI
 
 In an existing Codex thread, send `/feedback` or `/feedback` followed by a description of the
-issue. T3 Code uploads the thread and Codex logs to OpenAI and shows a thread ID that you can copy
+issue. PseudoCode uploads the thread and Codex logs to OpenAI and shows a thread ID that you can copy
 and share with OpenAI employees.
 
 ## Answer questions while Codex works
@@ -73,7 +73,7 @@ This works in the web, desktop, and mobile apps. Codex must support async questi
 ## Sub-agent models
 
 The web and desktop Agents panel shows each sub-agent's model and reasoning effort when Codex
-reports them. If Codex does not report either value, T3 Code leaves it out instead of using the
+reports them. If Codex does not report either value, PseudoCode leaves it out instead of using the
 parent agent's settings.
 
 ## Browser and computer activity
@@ -89,7 +89,7 @@ integrations that provide separate light and dark logos use the logo for the cur
 
 ## Approve access to other apps
 
-When a Codex tool needs access to an app such as Safari, T3 Code shows the app name and asks for
+When a Codex tool needs access to an app such as Safari, PseudoCode shows the app name and asks for
 approval. You can approve, decline, or cancel the request from the desktop app, web app, or mobile
 app. Some tools also offer approval for the current session or permanent approval.
 
@@ -114,7 +114,7 @@ The idea is:
 
 Select the Codex provider and press **Sign in to Codex**. This is the account used by `~/.codex`.
 
-In T3 Code Settings, name it something obvious:
+In PseudoCode Settings, name it something obvious:
 
 ```text
 Display name: Codex Work
@@ -134,7 +134,7 @@ signed in. You can add as many as you have accounts.
 
 ### Pointing At A Directory You Already Have
 
-If you already keep a shadow home per account, set it yourself and T3 Code uses it instead of
+If you already keep a shadow home per account, set it yourself and PseudoCode uses it instead of
 provisioning one:
 
 ```text
@@ -150,7 +150,7 @@ has a `Shadow home path`.
 
 Open Settings and look at the provider row.
 
-T3 Code shows the authenticated email for providers that report one. Emails are blurred by default;
+PseudoCode shows the authenticated email for providers that report one. Emails are blurred by default;
 click the blurred email to reveal it.
 
 Use display names and accent colors to make accounts easy to tell apart in the model picker.
@@ -177,7 +177,7 @@ Codex Personal  CODEX_HOME path: ~/.codex, Shadow home path: ~/.codex_p
 Those two providers are considered compatible for continuation, so the locked model picker can show
 both.
 
-If you add a third Codex provider with a completely different `CODEX_HOME path`, T3 Code treats it
+If you add a third Codex provider with a completely different `CODEX_HOME path`, PseudoCode treats it
 as a different workspace. It will not be offered for existing threads created under `~/.codex`.
 
 ## If Both Accounts Look The Same

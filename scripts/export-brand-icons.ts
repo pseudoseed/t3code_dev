@@ -202,38 +202,11 @@ export class IconExportAssetsStaleError extends Schema.TaggedErrorClass<IconExpo
   }
 }
 
+// PseudoCode ships one source PNG on every channel. Never overwrite it with upstream artwork.
 const ICON_VARIANTS = [
   {
-    label: "development",
-    source: BRAND_ASSET_PATHS.developmentIconComposerProject,
-    outputs: {
-      ios: BRAND_ASSET_PATHS.developmentIosIconPng,
-      macos: BRAND_ASSET_PATHS.developmentDesktopIconPng,
-      universal: BRAND_ASSET_PATHS.developmentUniversalIconPng,
-      appleTouch: BRAND_ASSET_PATHS.developmentWebAppleTouchIconPng,
-      favicon16: BRAND_ASSET_PATHS.developmentWebFavicon16Png,
-      favicon32: BRAND_ASSET_PATHS.developmentWebFavicon32Png,
-      faviconIco: BRAND_ASSET_PATHS.developmentWebFaviconIco,
-      windowsIco: BRAND_ASSET_PATHS.developmentWindowsIconIco,
-    },
-  },
-  {
-    label: "preview",
-    source: BRAND_ASSET_PATHS.nightlyIconComposerProject,
-    outputs: {
-      ios: BRAND_ASSET_PATHS.nightlyIosIconPng,
-      macos: BRAND_ASSET_PATHS.nightlyMacIconPng,
-      universal: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
-      appleTouch: BRAND_ASSET_PATHS.nightlyWebAppleTouchIconPng,
-      favicon16: BRAND_ASSET_PATHS.nightlyWebFavicon16Png,
-      favicon32: BRAND_ASSET_PATHS.nightlyWebFavicon32Png,
-      faviconIco: BRAND_ASSET_PATHS.nightlyWebFaviconIco,
-      windowsIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
-    },
-  },
-  {
-    label: "production",
-    source: BRAND_ASSET_PATHS.productionIconComposerProject,
+    label: "PseudoCode",
+    source: "assets/pseudocode/app-icon-1024.png",
     outputs: {
       ios: BRAND_ASSET_PATHS.productionIosIconPng,
       macos: BRAND_ASSET_PATHS.productionMacIconPng,
@@ -483,25 +456,28 @@ const renderIcon = Effect.fn("iconExport.renderIcon")(function* (
   size: number,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const args = [
-    sourcePath,
-    "--export-image",
-    "--output-file",
-    outputPath,
-    "--platform",
-    platform,
-    "--rendition",
-    "Default",
-    "--width",
-    String(size),
-    "--height",
-    String(size),
-    "--scale",
-    "1",
-    "--design-generation",
-    String(DESIGN_GENERATION),
-  ];
-  const result = yield* runCommand(toolPath, args);
+  const pngSource = sourcePath.endsWith(".png");
+  const args = pngSource
+    ? ["-z", String(size), String(size), sourcePath, "--out", outputPath]
+    : [
+        sourcePath,
+        "--export-image",
+        "--output-file",
+        outputPath,
+        "--platform",
+        platform,
+        "--rendition",
+        "Default",
+        "--width",
+        String(size),
+        "--height",
+        String(size),
+        "--scale",
+        "1",
+        "--design-generation",
+        String(DESIGN_GENERATION),
+      ];
+  const result = yield* runCommand(pngSource ? "/usr/bin/sips" : toolPath, args);
   if (result.exitCode !== 0) {
     return yield* new IconExportCommandFailedError({
       command: toolPath,
@@ -585,7 +561,19 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
     return contents;
   });
 
-  const ios = yield* render("iOS", 1024);
+  // The checked-in source is already 1024px; keep its exact bytes and metadata.
+  const ios = variant.source.endsWith(".png")
+    ? Buffer.from(
+        yield* fs
+          .readFile(sourcePath)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new IconExportFileSystemError({ operation: "read-file", path: sourcePath, cause }),
+            ),
+          ),
+      )
+    : yield* render("iOS", 1024);
   const icoRenditions = yield* Effect.forEach(
     WINDOWS_ICON_SIZES,
     (size) => render("iOS", size).pipe(Effect.map((contents) => ({ size, contents }))),
@@ -718,7 +706,8 @@ const isCurrent = Effect.fn("iconExport.isCurrent")(function* (
 export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOnly: boolean) {
   const fs = yield* FileSystem.FileSystem;
   const repositoryRoot = yield* RepositoryRoot;
-  const tool = yield* resolveIconComposerTool();
+  const usesComposer = ICON_VARIANTS.some((variant) => !variant.source.endsWith(".png"));
+  const tool = usesComposer ? yield* resolveIconComposerTool() : null;
   const temporaryDirectory = yield* fs
     .makeTempDirectoryScoped({
       prefix: "t3-icon-export-",
@@ -734,14 +723,16 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
       ),
     );
   yield* Console.log(
-    `Exporting icons with Icon Composer ${tool.version}, design generation ${DESIGN_GENERATION}.`,
+    tool
+      ? `Exporting icons with Icon Composer ${tool.version}, design generation ${DESIGN_GENERATION}.`
+      : "Exporting PseudoCode PNG renditions with sips.",
   );
 
   const generated = new Map<string, Buffer>();
   for (const variant of ICON_VARIANTS) {
     yield* Console.log(`Rendering ${variant.label} from ${variant.source}...`);
     const variantAssets = yield* renderVariant(
-      tool.path,
+      tool?.path ?? "/usr/bin/sips",
       repositoryRoot,
       temporaryDirectory,
       variant,
@@ -774,7 +765,7 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
       });
     }
     yield* Console.log(`All ${generated.size} generated icon assets are current.`);
-    yield* logManualMacOsExportInstructions();
+    if (usesComposer) yield* logManualMacOsExportInstructions();
     return;
   }
 
@@ -784,7 +775,7 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
     { concurrency: 1, discard: true },
   );
   yield* Console.log(`Updated ${generated.size} generated icon assets.`);
-  yield* logManualMacOsExportInstructions();
+  if (usesComposer) yield* logManualMacOsExportInstructions();
 });
 
 export const exportBrandIconsCommand = Command.make(
@@ -798,7 +789,7 @@ export const exportBrandIconsCommand = Command.make(
   ({ check }) => exportBrandIcons(check).pipe(Effect.scoped),
 ).pipe(
   Command.withDescription(
-    "Export development, preview, and production assets from Icon Composer projects.",
+    "Export PseudoCode app and web renditions from the checked-in source icon.",
   ),
 );
 

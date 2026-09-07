@@ -352,7 +352,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
                     onPress={() => {
                       Alert.alert(
                         `Remove the ${title} install?`,
-                        `This removes T3's managed install from ${environmentLabel}. Providers that use it will need it installed again. Credentials and threads stay.`,
+                        `This removes PseudoCode’s managed install from ${environmentLabel}. Providers that use it will need it installed again. Credentials and threads stay.`,
                         [
                           { text: "Cancel", style: "cancel" },
                           {

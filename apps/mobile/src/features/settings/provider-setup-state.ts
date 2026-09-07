@@ -80,7 +80,7 @@ export function providerEnabledPatch(
   };
 }
 
-/** Providers whose setup screen T3 Code can drive. */
+/** Providers whose setup screen PseudoCode can drive. */
 export function supportsProviderSetupScreen(driver: string): boolean {
   return legacyProviderKey(driver) !== null;
 }

@@ -84,3 +84,27 @@ References: [Electron notifications](https://www.electronjs.org/docs/latest/tuto
 [Apple notification providers](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server),
 [iOS capabilities](https://developer.apple.com/help/account/reference/supported-capabilities-ios/),
 [WebKit Web Push](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+
+## PseudoCode glanceable surfaces
+
+The mobile header and the widget extension use the PseudoCode artwork. The widget
+asset plugin bundles an original-color `AppMark` image set, sourced from the same
+app icon. Serialized WidgetKit layouts keep their helpers inside the layout
+function; app-module imports cannot supply runtime branding inside the extension.
+
+The shared `selectWidgetActivities` projection prioritizes requests and active
+work, retains terminal results from the past hour at refresh time, and limits error
+context to the first 140 characters of the first line. The optional aggregate row
+`detail` field carries this context through direct APNs to widgets and Live
+Activities; payload compaction still enforces Apple's byte limit. A detail change
+invalidates the widget content key, while timestamp-only changes do not.
+
+Product labels use PseudoCode and the optional hosted connection UI uses Cloud
+Connect. Existing URL schemes, server protocol names, stored theme IDs, and legacy
+data-directory migration names remain compatible with installed clients.
+
+The Live Activity uses a dark surface with explicit contrast colors because its
+WidgetKit environment can report light mode on a dark Lock Screen. Home Screen
+widgets follow the system color scheme. `icons:export` derives web and ICO assets
+from the checked-in PseudoCode PNG; it does not overwrite that source from the
+upstream Icon Composer projects.

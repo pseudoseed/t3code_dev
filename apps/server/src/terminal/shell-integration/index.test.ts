@@ -67,7 +67,7 @@ describe("applyShellIntegration", () => {
     expect(result.args).toEqual([]);
   });
 
-  it("does not stack when a T3 Code terminal spawns another shell", () => {
+  it("does not stack when a PseudoCode terminal spawns another shell", () => {
     const result = apply("/bin/zsh", {
       T3CODE_SHELL_INTEGRATION: "1",
       ZDOTDIR: "/state/shell-integration/zsh",

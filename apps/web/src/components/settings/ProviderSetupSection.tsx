@@ -105,7 +105,7 @@ function ProviderSetupActions({
   const canInstall = provider.setup?.canInstall === true;
   const phaseLabels = presentation.phaseLabels;
   const authQuery = useEnvironmentQuery(serverEnvironment.providerAuthState(target));
-  // Providers T3 Code does not install reject the install subscription, so it
+  // Providers PseudoCode does not install reject the install subscription, so it
   // is never opened for them; a rejected query would read as a setup error and
   // disable the sign-in controls.
   const installQuery = useEnvironmentQuery(
@@ -153,7 +153,7 @@ function ProviderSetupActions({
   const authorizationUrl = auth?.phase === "waiting" ? auth.authorizationUrl : null;
   const userCode = auth?.phase === "waiting" ? auth.userCode : null;
   // `none` means the provider polls its own device authorization and there is
-  // nothing for the user to send back through T3 Code.
+  // nothing for the user to send back through PseudoCode.
   const completion = auth?.completion ?? "redirectUrl";
   const queryError = authQuery.error ?? installQuery.error;
   const actionsDisabled = pendingLabel !== null || queryError !== null;

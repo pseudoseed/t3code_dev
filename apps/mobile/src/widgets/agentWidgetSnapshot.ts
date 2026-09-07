@@ -6,6 +6,7 @@ import type {
 } from "@t3tools/client-runtime/state/models";
 import {
   projectThreadAwareness,
+  selectWidgetActivities,
   type AgentAwarenessState,
   type ProjectThreadAwarenessInput,
 } from "@t3tools/shared/agentAwareness";
@@ -41,6 +42,7 @@ export function buildAgentWidgetSnapshot(input: {
   readonly projects: readonly Pick<EnvironmentProject, "id" | "environmentId" | "title">[];
   readonly threads: readonly (ProjectThreadAwarenessInput["thread"] &
     Pick<EnvironmentThreadShell, "projectId" | "environmentId" | "archivedAt">)[];
+  readonly now?: number;
 }): AgentWidgetSnapshot {
   const projects = new Map(
     input.projects.map((project) => [
@@ -61,15 +63,11 @@ export function buildAgentWidgetSnapshot(input: {
       thread,
     });
     if (activity) {
-      const { detail: _detail, ...summary } = activity;
-      activities.push(summary);
+      activities.push(activity);
     }
   }
-  activities.sort(
-    (left, right) =>
-      priority(left.phase) - priority(right.phase) || right.updatedAt.localeCompare(left.updatedAt),
-  );
-  const visible = activities.slice(0, 3);
+  const selected = selectWidgetActivities(activities, input.now ?? Date.now());
+  const visible = selected.slice(0, 3);
   const environmentIds = [...new Set(input.projects.map((project) => project.environmentId))];
   return {
     activeCount: activities.filter((activity) => priority(activity.phase) < 2).length,
@@ -83,7 +81,7 @@ export function buildAgentWidgetSnapshot(input: {
     ...(environmentIds.length
       ? {
           environments: environmentIds.map((environmentId) => {
-            const rows = activities.filter((activity) => activity.environmentId === environmentId);
+            const rows = selected.filter((activity) => activity.environmentId === environmentId);
             return {
               environmentId,
               snapshot: {
@@ -108,9 +106,7 @@ export function agentWidgetContentKey(snapshot: AgentWidgetSnapshot): string {
   return JSON.stringify({
     activeCount: snapshot.activeCount,
     attentionCount: snapshot.attentionCount,
-    activities: snapshot.activities.map(
-      ({ updatedAt: _updatedAt, detail: _detail, ...activity }) => activity,
-    ),
+    activities: snapshot.activities.map(({ updatedAt: _updatedAt, ...activity }) => activity),
     environments: snapshot.environments?.map(({ environmentId, snapshot }) => ({
       environmentId,
       key: agentWidgetContentKey(snapshot),

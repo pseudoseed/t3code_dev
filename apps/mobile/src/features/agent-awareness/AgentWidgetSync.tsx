@@ -9,7 +9,7 @@ import { supportsAgentAwarenessPush } from "./capabilities";
 import { saveWidgetSnapshot } from "../../widgets/widgetStorage";
 
 /** Updates the shared widget snapshot from existing connections, including
- * direct connections without a T3 Connect account. No transcript subscriptions. */
+ * direct connections without a Cloud Connect account. No transcript subscriptions. */
 function IosAgentWidgetSync() {
   const projects = useProjects();
   const threads = useThreadShells();

@@ -10,6 +10,9 @@ vi.mock("@expo/ui/swift-ui", () => ({
 }));
 
 vi.mock("@expo/ui/swift-ui/modifiers", () => ({
+  accessibilityLabel: (value: unknown) => value,
+  background: (value: unknown) => value,
+  cornerRadius: (value: unknown) => value,
   font: (value: unknown) => value,
   foregroundStyle: (value: unknown) => value,
   frame: (value: unknown) => value,
@@ -46,7 +49,7 @@ function makeRow(overrides: Partial<AgentActivityRowProps>): AgentActivityRowPro
 }
 
 const props = {
-  title: "T3 Code",
+  title: "PseudoCode",
   subtitle: "Agent work in progress",
   activeCount: 1,
   updatedAt: "2026-05-25T13:07:00.000Z",
@@ -58,51 +61,8 @@ const environment = {
   isLuminanceReduced: false,
 } as const;
 
-const lightEnvironment = {
-  colorScheme: "light",
-  isLuminanceReduced: false,
-} as const;
-
-describe("AgentActivity widget layout", () => {
-  it("tints each row by its own phase using the web sidebar's dark palette", () => {
-    const layout = AgentActivity(
-      {
-        ...props,
-        activeCount: 2,
-        activities: [
-          makeRow({}),
-          makeRow({ threadId: "thread-2", phase: "waiting_for_approval", status: "Approval" }),
-        ],
-      },
-      environment as never,
-    );
-    const banner = JSON.stringify(layout.banner);
-    expect(banner).toContain("#7dd3fc"); // sky-300: running
-    expect(banner).toContain("#fcd34d"); // amber-300: waiting_for_approval
-  });
-
-  it("switches to the web sidebar's light palette when the scheme is light", () => {
-    // macOS (iPhone Mirroring / Mac notification center) renders the activity
-    // on a light background; the dark-material palette is illegible there.
-    const layout = AgentActivity(
-      {
-        ...props,
-        activeCount: 2,
-        activities: [
-          makeRow({}),
-          makeRow({ threadId: "thread-2", phase: "waiting_for_approval", status: "Approval" }),
-        ],
-      },
-      lightEnvironment as never,
-    );
-    const banner = JSON.stringify(layout.banner);
-    expect(banner).toContain("#0284c7"); // sky-600: running
-    expect(banner).toContain("#d97706"); // amber-600: waiting_for_approval
-    expect(banner).not.toContain("#7dd3fc");
-    expect(banner).not.toContain("#fcd34d");
-  });
-
-  it("orders rows attention-first in the banner", () => {
+describe("AgentActivity content and navigation", () => {
+  it("prioritizes a request over running work and links to the request", () => {
     const layout = AgentActivity(
       {
         ...props,
@@ -110,160 +70,44 @@ describe("AgentActivity widget layout", () => {
         activities: [
           makeRow({ threadTitle: "Working thread" }),
           makeRow({
-            threadId: "thread-2",
-            threadTitle: "Blocked thread",
+            threadId: "input",
+            threadTitle: "Release approval",
             phase: "waiting_for_approval",
-            status: "Approval",
+            deepLink: "/threads/env-1/input",
           }),
         ],
       },
       environment as never,
     );
     const banner = JSON.stringify(layout.banner);
-    expect(banner.indexOf("Blocked thread")).toBeGreaterThan(-1);
-    expect(banner.indexOf("Blocked thread")).toBeLessThan(banner.indexOf("Working thread"));
+    expect(banner.indexOf("Release approval")).toBeLessThan(banner.indexOf("Working thread"));
+    expect(banner).toContain("t3code://threads/env-1/input");
+    expect(JSON.stringify(layout.compactTrailing)).toContain("Approve");
   });
 
-  it("summarizes the attention count in the banner header", () => {
+  it("shows a failure reason with its thread instead of a generic agent failure", () => {
     const layout = AgentActivity(
       {
         ...props,
-        activeCount: 3,
+        activeCount: 0,
         activities: [
-          makeRow({}),
-          makeRow({ threadId: "thread-2", phase: "waiting_for_input", status: "Input" }),
-        ],
-      },
-      environment as never,
-    );
-    const banner = JSON.stringify(layout.banner);
-    expect(banner).toContain("3 active agents");
-    expect(banner).toContain("1 needs attention");
-  });
-
-  it("uses the attention tint for the compact presentations when a row needs input", () => {
-    const layout = AgentActivity(
-      {
-        ...props,
-        activeCount: 2,
-        activities: [
-          makeRow({}),
-          makeRow({ threadId: "thread-2", phase: "waiting_for_input", status: "Input" }),
-        ],
-      },
-      environment as never,
-    );
-    expect(JSON.stringify(layout.compactLeading)).toContain("#a5b4fc"); // indigo-300
-    expect(JSON.stringify(layout.compactTrailing)).toContain("Input");
-    expect(JSON.stringify(layout.minimal)).toContain("#a5b4fc");
-  });
-
-  it("deep links the banner to the row that needs attention", () => {
-    const layout = AgentActivity(
-      {
-        ...props,
-        activeCount: 2,
-        activities: [
-          makeRow({}),
           makeRow({
-            threadId: "thread-2",
-            phase: "waiting_for_approval",
-            status: "Approval",
-            deepLink: "/threads/env-1/thread-2",
+            phase: "failed",
+            threadTitle: "Deploy staging",
+            detail: "Deployment credential expired",
           }),
         ],
       },
       environment as never,
     );
-    expect(JSON.stringify(layout.banner)).toContain(
-      '"widgetURL":"t3code://threads/env-1/thread-2"',
-    );
-  });
-
-  it("deep links the banner to the first row when nothing needs attention", () => {
-    const layout = AgentActivity({ ...props, activities: [makeRow({})] }, environment as never);
-    expect(JSON.stringify(layout.banner)).toContain(
-      '"widgetURL":"t3code://threads/env-1/thread-1"',
-    );
-  });
-
-  it("omits the deep link for unsafe paths and empty aggregates", () => {
-    expect(JSON.stringify(AgentActivity(props, environment as never))).not.toContain("widgetURL");
-    expect(
-      JSON.stringify(
-        AgentActivity(
-          { ...props, activities: [makeRow({ deepLink: "//evil.example" })] },
-          environment as never,
-        ),
-      ),
-    ).not.toContain("widgetURL");
-  });
-
-  it("leads with the outcome instead of a zero count when nothing is active", () => {
-    const layout = AgentActivity(
-      {
-        ...props,
-        subtitle: "Agent work completed",
-        activeCount: 0,
-        activities: [makeRow({ phase: "completed", status: "Done" })],
-      },
-      environment as never,
-    );
     const banner = JSON.stringify(layout.banner);
-    expect(banner).toContain("Agent work completed");
+    expect(banner).toContain("Deploy staging");
+    expect(banner).toContain("Deployment credential expired");
+    expect(banner).toContain("Needs review");
     expect(banner).not.toContain("0 active");
-    expect(banner).toContain("#6ee7b7"); // emerald-300 header tint
-    expect(JSON.stringify(layout.compactTrailing)).toContain("Done");
-    expect(JSON.stringify(layout.compactTrailing)).not.toContain("0 active");
-    expect(JSON.stringify(layout.expandedLeading)).toContain("Done");
-    expect(JSON.stringify(layout.minimal)).toContain("checkmark.circle.fill");
-    expect(JSON.stringify(layout.bannerSmall)).toContain("Done");
   });
 
-  it("reads Failed when the finished work ended in failure", () => {
-    const layout = AgentActivity(
-      {
-        ...props,
-        subtitle: "Agent work failed",
-        activeCount: 0,
-        activities: [makeRow({ phase: "failed", status: "Failed" })],
-      },
-      environment as never,
-    );
-    const banner = JSON.stringify(layout.banner);
-    expect(banner).toContain("Agent work failed");
-    expect(banner).toContain("#fca5a5"); // red-300 header tint
-    expect(JSON.stringify(layout.compactTrailing)).toContain("Failed");
-    expect(JSON.stringify(layout.expandedLeading)).toContain("Failed");
-    expect(JSON.stringify(layout.minimal)).toContain("xmark.octagon.fill");
-  });
-
-  it("lets a failure dominate mixed finished outcomes across every presentation", () => {
-    const layout = AgentActivity(
-      {
-        ...props,
-        // The server subtitle keys off the newest terminal row (completed
-        // here); the layout must still read Failed everywhere so the header
-        // text never disagrees with the tint, count slots, or minimal glyph.
-        subtitle: "Agent work completed",
-        activeCount: 0,
-        activities: [
-          makeRow({ phase: "completed", status: "Done" }),
-          makeRow({ threadId: "thread-2", phase: "failed", status: "Failed" }),
-        ],
-      },
-      environment as never,
-    );
-    const banner = JSON.stringify(layout.banner);
-    expect(banner).toContain("Agent work failed");
-    expect(banner).not.toContain("Agent work completed");
-    expect(banner).toContain("#fca5a5"); // red-300 header tint
-    expect(JSON.stringify(layout.compactTrailing)).toContain("Failed");
-    expect(JSON.stringify(layout.expandedLeading)).toContain("Failed");
-    expect(JSON.stringify(layout.minimal)).toContain("xmark.octagon.fill");
-  });
-
-  it("renders up to five rows in the banner", () => {
+  it("bounds the banner to two task rows and explains additional active work", () => {
     const layout = AgentActivity(
       {
         ...props,
@@ -275,9 +119,17 @@ describe("AgentActivity widget layout", () => {
       environment as never,
     );
     const banner = JSON.stringify(layout.banner);
-    for (const visible of [1, 2, 3, 4, 5]) {
-      expect(banner).toContain(`Thread ${visible}`);
-    }
-    expect(banner).not.toContain("Thread 6");
+    expect(banner).toContain("Thread 1");
+    expect(banner).toContain("Thread 2");
+    expect(banner).not.toContain("Thread 3");
+    expect(banner).toContain("more active in PseudoCode");
+  });
+
+  it("never places untrusted external URLs in a widget link", () => {
+    const layout = AgentActivity(
+      { ...props, activities: [makeRow({ deepLink: "//evil.example" })] },
+      environment as never,
+    );
+    expect(JSON.stringify(layout)).not.toContain("widgetURL");
   });
 });

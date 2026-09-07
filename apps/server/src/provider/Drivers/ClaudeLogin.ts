@@ -4,7 +4,7 @@
  * The Claude CLI's own flow is a copy-code flow: it prints an authorization
  * URL, Anthropic's page shows the user a code after they approve, and the CLI
  * reads that code from stdin. Run with stdout piped it behaves the same way it
- * does in a terminal, so T3 Code relays the URL out and the code in, and the
+ * does in a terminal, so PseudoCode relays the URL out and the code in, and the
  * CLI performs the exchange and stores the credentials itself.
  *
  * Credentials land in this instance's `CLAUDE_CONFIG_DIR`. On macOS the CLI

@@ -1,7 +1,7 @@
-# Keeping T3 Code in Sync
+# Keeping PseudoCode in Sync
 
-The T3 Code web or desktop app and the server it connects to work best when they use the same
-version. If they do not match, T3 Code shows a warning with the right update option for that server.
+The PseudoCode web or desktop app and the server it connects to work best when they use the same
+version. If they do not match, PseudoCode shows a warning with the right update option for that server.
 
 ## Where to Find the Update
 
@@ -26,13 +26,13 @@ The update does not remove saved threads, settings, or project files.
 
 ## Choose the Action You See
 
-| Action                     | What to do                                                                                                                                                                                                                                                                                                                                                                    |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update server**          | Available for the T3 Code Linux background service and for servers run by a current T3 Code desktop app. Select the button and leave T3 Code open while it downloads, installs, restarts, and reconnects. For desktop-app servers this closes and relaunches the desktop app on that machine. If installation fails, the desktop app stays open and reconnects to its server. |
-| **Update the desktop app** | Shown for desktop apps that predate remote updates. Open the T3 Code desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                                                                                                                                                                   |
-| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current T3 Code server, and relaunch it with the copied command and any startup options you normally use.                                                                                                                                                                                                   |
+| Action                     | What to do                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Update server**          | Available for the PseudoCode Linux background service and for servers run by a current PseudoCode desktop app. Select the button and leave PseudoCode open while it downloads, installs, restarts, and reconnects. For desktop-app servers this closes and relaunches the desktop app on that machine. If installation fails, the desktop app stays open and reconnects to its server. |
+| **Update the desktop app** | Shown for desktop apps that predate remote updates. Open the PseudoCode desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                                                                                                                                                                         |
+| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current PseudoCode server, and relaunch it with the copied command and any startup options you normally use.                                                                                                                                                                                                         |
 
-The available action depends on how that server was started. T3 Code does not update connected
+The available action depends on how that server was started. PseudoCode does not update connected
 servers silently in the background.
 
 An older background-service launcher may ask you to run the exact
@@ -47,7 +47,7 @@ update. A failure remains visible with its error and an option to retry.
 **Copy update command** gives you `npx t3@<client-version>`, which relaunches the server directly
 at the matching version. Add whatever startup options you normally use.
 
-If the server instead runs as the T3 Code background service, update the service on the host and
+If the server instead runs as the PseudoCode background service, update the service on the host and
 pin the same version:
 
 ```sh
@@ -58,7 +58,7 @@ npx t3@<client-version> service update
 only resolves the skew when your client happens to be on the latest release. The exact version from
 the warning always works.
 
-See [Running T3 Code in the Background](./background-service.md) for install, status, and removal
+See [Running PseudoCode in the Background](./background-service.md) for install, status, and removal
 commands.
 
 ## Nightly desktop release notes

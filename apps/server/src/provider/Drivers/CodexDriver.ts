@@ -133,7 +133,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         displayName,
         accentColor,
         continuationGroupKey: continuationIdentity.continuationKey,
-        // T3 Code signs in through the Codex CLI but does not install it.
+        // PseudoCode signs in through the Codex CLI but does not install it.
         setup: { canAuthenticate: true, canInstall: false },
       });
       const effectiveConfig = {

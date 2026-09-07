@@ -359,7 +359,7 @@ export function useVoiceInputController(input: {
     offeredRecoveryRef.current = true;
     Alert.alert(
       "Add what you said?",
-      `T3 Code closed before this was added to the draft.\n\n"${recoverableTranscript}"`,
+      `PseudoCode closed before this was added to the draft.\n\n"${recoverableTranscript}"`,
       [
         { text: "Discard", style: "destructive", onPress: discardRecoverableTranscript },
         { text: "Add", onPress: insertRecoverableTranscript },

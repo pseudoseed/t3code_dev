@@ -119,6 +119,7 @@ export const RelayAgentActivityAggregateRow = Schema.Struct({
   modelTitle: TrimmedNonEmptyString,
   phase: RelayAgentAwarenessPhase,
   status: TrimmedNonEmptyString,
+  detail: Schema.optional(TrimmedNonEmptyString),
   updatedAt: TrimmedNonEmptyString,
   deepLink: TrimmedNonEmptyString,
 });

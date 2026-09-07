@@ -37,7 +37,7 @@ export interface ServerDerivedPaths {
   readonly environmentThemesDir: string;
   readonly providerStatusCacheDir: string;
   /**
-   * Root for the per-instance credential directories T3 Code provisions so a
+   * Root for the per-instance credential directories PseudoCode provisions so a
    * second subscription on the same provider signs in without disturbing the
    * first. One subdirectory per provider instance.
    */

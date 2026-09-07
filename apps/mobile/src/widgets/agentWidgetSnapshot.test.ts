@@ -27,6 +27,35 @@ function thread(overrides: Partial<WidgetThread> = {}): WidgetThread {
 }
 
 describe("agent widget snapshots", () => {
+  it("keeps recent error details but excludes old failures from the widget", () => {
+    const now = Date.parse("2026-09-06T18:10:00Z");
+    const failed = thread({
+      hasPendingUserInput: false,
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "error",
+        providerName: "Codex",
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: "Credential expired\nInternal stack details",
+        updatedAt: "2026-09-06T18:00:00Z",
+      },
+    });
+    const snapshot = buildAgentWidgetSnapshot({
+      projects: [project],
+      threads: [failed, { ...failed, id: ThreadId.make("old"), updatedAt: "2026-09-05T18:00:00Z" }],
+      now,
+    });
+    expect(snapshot.activities).toHaveLength(1);
+    expect(snapshot.activities[0]?.detail).toBe("Credential expired");
+    expect(snapshot.activeCount).toBe(0);
+    const changed = buildAgentWidgetSnapshot({
+      projects: [project],
+      threads: [{ ...failed, session: { ...failed.session!, lastError: "Provider rate limit" } }],
+      now,
+    });
+    expect(agentWidgetContentKey(changed)).not.toBe(agentWidgetContentKey(snapshot));
+  });
   it("merges background updates per environment and ignores late or removed-server pushes", () => {
     const secondEnvironment = EnvironmentId.make("environment-2");
     const snapshot = buildAgentWidgetSnapshot({

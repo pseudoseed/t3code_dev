@@ -74,7 +74,7 @@ export interface ShellIntegrationPaths {
 /**
  * Returns the args and env a candidate should spawn with. Unsupported shells
  * and any spawn whose env already carries our markers are returned unchanged,
- * so a nested T3 Code terminal does not stack integrations.
+ * so a nested PseudoCode terminal does not stack integrations.
  */
 export function applyShellIntegration(input: {
   readonly candidate: ShellCandidateLike;

@@ -3,7 +3,7 @@
  *
  * A provider CLI keeps one signed-in account per credential directory, so two
  * instances of the same provider need two directories or the second sign-in
- * overwrites the first. Users should not have to know that, so T3 Code
+ * overwrites the first. Users should not have to know that, so PseudoCode
  * provisions a directory for any instance that does not already have one.
  *
  * The rule has one deliberate exception. The instance whose id equals its
@@ -34,7 +34,7 @@ export interface ProviderCredentialHomeInput {
 }
 
 /**
- * Resolve the credential directory for one instance, creating it when T3 Code
+ * Resolve the credential directory for one instance, creating it when PseudoCode
  * is the one provisioning it.
  *
  * Returns an empty string to mean "use the provider's own default home", which

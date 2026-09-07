@@ -12,7 +12,7 @@ import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-ro
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
-import { T3Wordmark } from "../T3Wordmark";
+import { AppLogo } from "../AppLogo";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -84,7 +84,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 });
 
 /** Fork branding: set VITE_T3CODE_APP_NAME to replace the T3 mark with a name. */
-const BRAND_NAME = import.meta.env.VITE_T3CODE_APP_NAME?.trim() || null;
+const BRAND_NAME = import.meta.env.VITE_T3CODE_APP_NAME?.trim() || "PseudoCode";
 
 function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   return (
@@ -96,14 +96,14 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      {BRAND_NAME ? null : <T3Wordmark aria-label="T3" className="h-2.5 w-auto shrink-0" />}
+      <AppLogo className="size-5 shrink-0" />
       <span
         className={cn(
           "truncate text-sm font-medium tracking-tight",
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        {BRAND_NAME ?? "Code"}
+        {BRAND_NAME}
       </span>
     </Link>
   );

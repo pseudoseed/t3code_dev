@@ -2,7 +2,7 @@
  * CliLoginAuth — a `ProviderAuthController` that drives a provider's own
  * sign-in command.
  *
- * T3 Code never implements a provider's OAuth. It runs the command the vendor
+ * PseudoCode never implements a provider's OAuth. It runs the command the vendor
  * ships (`claude auth login`, `codex login --device-auth`), reads the
  * authorization URL out of that command's output, and relays the user's
  * response back to it. The vendor CLI performs the token exchange, writes the

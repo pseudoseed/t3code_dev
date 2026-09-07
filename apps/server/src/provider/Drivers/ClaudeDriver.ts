@@ -143,7 +143,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         displayName,
         accentColor,
         continuationGroupKey,
-        // T3 Code signs in through the Claude CLI but does not install it.
+        // PseudoCode signs in through the Claude CLI but does not install it.
         setup: { canAuthenticate: true, canInstall: false },
       });
 

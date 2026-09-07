@@ -214,7 +214,7 @@ export function SettingsVoiceRouteScreen() {
             <TextListEditor
               title="Preferred spellings"
               hint="One per line. These are kept exactly as you write them."
-              placeholder={"Ghostty\nT3 Code"}
+              placeholder={"Ghostty\nPseudoCode"}
               value={preferences?.voiceCleanupPreferredSpellings ?? ""}
               onChange={(value) => savePreferences({ voiceCleanupPreferredSpellings: value })}
             />
@@ -222,7 +222,7 @@ export function SettingsVoiceRouteScreen() {
             <TextListEditor
               title="Corrections"
               hint="One per line, as wrong -> right."
-              placeholder={"tea three -> T3\nghosty -> Ghostty"}
+              placeholder={"pseudo code -> PseudoCode\nghosty -> Ghostty"}
               value={preferences?.voiceCleanupCorrections ?? ""}
               onChange={(value) => savePreferences({ voiceCleanupCorrections: value })}
             />

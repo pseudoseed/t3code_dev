@@ -28,7 +28,7 @@ export function DirectPushSettings() {
         label="Use my servers"
         value={enabled}
         disabled={!loaded || busy}
-        subtitle="Receive input and approval alerts without a T3 Connect account. Each server needs Apple notification setup."
+        subtitle="Receive input and approval alerts without a Cloud Connect account. Each server needs Apple notification setup."
         onValueChange={(value) => {
           setBusy(true);
           void (async () => {

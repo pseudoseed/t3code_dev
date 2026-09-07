@@ -1,5 +1,5 @@
 import type { RelayAgentActivityAggregateState } from "@t3tools/contracts/relay";
-import type { AgentAwarenessState } from "@t3tools/shared/agentAwareness";
+import { selectWidgetActivities, type AgentAwarenessState } from "@t3tools/shared/agentAwareness";
 import type { DirectWidgetUpdate } from "@t3tools/contracts";
 
 export function compactWidgetUpdate(input: DirectWidgetUpdate): DirectWidgetUpdate {
@@ -20,7 +20,7 @@ export function isActive(state: AgentAwarenessState) {
 }
 export function activityIdentity(state: AgentAwarenessState | null) {
   if (!state) return "null";
-  const { updatedAt: _updatedAt, detail: _detail, ...rest } = state;
+  const { updatedAt: _updatedAt, ...rest } = state;
   return JSON.stringify(rest);
 }
 const truncate = (value: string) => [...value].slice(0, 60).join("");
@@ -28,13 +28,8 @@ export function aggregateActivity(
   states: Iterable<AgentAwarenessState>,
   now: string,
 ): RelayAgentActivityAggregateState {
-  const active = [...states]
-    .filter(isActive)
-    .sort(
-      (a, b) =>
-        Number(!a.phase.startsWith("waiting")) - Number(!b.phase.startsWith("waiting")) ||
-        b.updatedAt.localeCompare(a.updatedAt),
-    );
+  const selected = selectWidgetActivities(states, Date.parse(now));
+  const active = selected.filter(isActive);
   return {
     title: "Agent activity",
     subtitle: active.length
@@ -42,7 +37,7 @@ export function aggregateActivity(
       : "All caught up",
     activeCount: active.length,
     updatedAt: now,
-    activities: active.slice(0, 3).map((state) => ({
+    activities: selected.slice(0, 3).map((state) => ({
       environmentId: state.environmentId,
       threadId: state.threadId,
       projectTitle: truncate(state.projectTitle),
@@ -50,6 +45,7 @@ export function aggregateActivity(
       modelTitle: truncate(state.modelTitle),
       phase: state.phase,
       status: state.headline,
+      ...(state.detail ? { detail: state.detail } : {}),
       updatedAt: state.updatedAt,
       deepLink: state.deepLink,
     })),

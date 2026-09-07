@@ -7,7 +7,7 @@
  *
  * Each script sources the user's real configuration first and only then emits
  * OSC 133 markers, so a terminal session behaves exactly as it would outside
- * T3 Code. The markers let the client tell prompt, typed input, and command
+ * PseudoCode. The markers let the client tell prompt, typed input, and command
  * output apart; libghostty-vt parses them natively.
  */
 
@@ -17,7 +17,7 @@
  * shim restores the original directory, sources the matching real file, and
  * puts our directory back for the next stage.
  */
-const zshShim = (file: string) => `# T3 Code shell integration shim. Generated; do not edit.
+const zshShim = (file: string) => `# PseudoCode shell integration shim. Generated; do not edit.
 if [[ -f "\${T3CODE_ORIG_ZDOTDIR:-$HOME}/${file}" ]]; then
   __t3code_zdotdir=$ZDOTDIR
   ZDOTDIR="\${T3CODE_ORIG_ZDOTDIR:-$HOME}"
@@ -28,7 +28,7 @@ fi
 `;
 
 const ZSH_MARKERS = `
-# --- T3 Code OSC 133 markers ---
+# --- PseudoCode OSC 133 markers ---
 # A: prompt start, B: prompt end (input starts), C: input end (output starts),
 # D: command finished, carrying the exit status.
 if [[ -z "\${__t3code_integration_loaded:-}" ]]; then
@@ -89,7 +89,7 @@ ${ZSH_MARKERS}`,
  * but before it runs, which is exactly the output-start boundary, and PS1 can
  * carry the rest. `--rcfile` replaces `~/.bashrc`, so we source it ourselves.
  */
-export const BASH_SCRIPT = `# T3 Code shell integration. Generated; do not edit.
+export const BASH_SCRIPT = `# PseudoCode shell integration. Generated; do not edit.
 if [[ -f "\${T3CODE_ORIG_BASHRC:-$HOME/.bashrc}" ]]; then
   source "\${T3CODE_ORIG_BASHRC:-$HOME/.bashrc}"
 fi

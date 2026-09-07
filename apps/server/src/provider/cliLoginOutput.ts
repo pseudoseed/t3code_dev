@@ -9,7 +9,7 @@
  *
  * Host allowlisting is a deliberate control, not defensiveness about our own
  * subprocess: it keeps a hijacked binary or a localized/patched build from
- * getting T3 Code to present an arbitrary link as the provider's login page.
+ * getting PseudoCode to present an arbitrary link as the provider's login page.
  *
  * @module provider/cliLoginOutput
  */

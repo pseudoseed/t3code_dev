@@ -62,7 +62,7 @@ const KINDS: ReadonlyArray<{
     urlPlaceholder: "http://127.0.0.1:8787",
     needsKey: false,
     // It holds the credentials itself and answers on loopback, so there is
-    // nothing for T3 Code to authenticate with.
+    // nothing for PseudoCode to authenticate with.
     description:
       "Every subscription the dashboard polls, including accounts nothing here is signed into.",
   },

@@ -1,34 +1,34 @@
 export const BRAND_ASSET_PATHS = {
   developmentIconComposerProject: "assets/dev/app-icon.icon",
-  developmentIosIconPng: "assets/dev/blueprint-ios-1024.png",
-  developmentUniversalIconPng: "assets/dev/blueprint-universal-1024.png",
+  developmentIosIconPng: "assets/pseudocode/app-icon-1024.png",
+  developmentUniversalIconPng: "assets/pseudocode/app-icon-1024.png",
 
   productionIconComposerProject: "assets/prod/app-icon.icon",
-  productionIosIconPng: "assets/prod/black-ios-1024.png",
-  productionMacIconPng: "assets/prod/black-macos-1024.png",
-  productionLinuxIconPng: "assets/prod/black-universal-1024.png",
-  productionWindowsIconIco: "assets/prod/t3-black-windows.ico",
-  productionWebFaviconIco: "assets/prod/t3-black-web-favicon.ico",
-  productionWebFavicon16Png: "assets/prod/t3-black-web-favicon-16x16.png",
-  productionWebFavicon32Png: "assets/prod/t3-black-web-favicon-32x32.png",
-  productionWebAppleTouchIconPng: "assets/prod/t3-black-web-apple-touch-180.png",
+  productionIosIconPng: "assets/pseudocode/app-icon-1024.png",
+  productionMacIconPng: "assets/pseudocode/app-icon-1024.png",
+  productionLinuxIconPng: "assets/pseudocode/app-icon-1024.png",
+  productionWindowsIconIco: "assets/pseudocode/app-icon.ico",
+  productionWebFaviconIco: "assets/pseudocode/app-icon.ico",
+  productionWebFavicon16Png: "assets/pseudocode/favicon-16.png",
+  productionWebFavicon32Png: "assets/pseudocode/favicon-32.png",
+  productionWebAppleTouchIconPng: "assets/pseudocode/app-icon-180.png",
 
   nightlyIconComposerProject: "assets/nightly/app-icon.icon",
-  nightlyIosIconPng: "assets/nightly/nightly-ios-1024.png",
-  nightlyMacIconPng: "assets/nightly/nightly-macos-1024.png",
-  nightlyLinuxIconPng: "assets/nightly/nightly-universal-1024.png",
-  nightlyWindowsIconIco: "assets/nightly/nightly-windows.ico",
-  nightlyWebFaviconIco: "assets/nightly/nightly-web-favicon.ico",
-  nightlyWebFavicon16Png: "assets/nightly/nightly-web-favicon-16x16.png",
-  nightlyWebFavicon32Png: "assets/nightly/nightly-web-favicon-32x32.png",
-  nightlyWebAppleTouchIconPng: "assets/nightly/nightly-web-apple-touch-180.png",
+  nightlyIosIconPng: "assets/pseudocode/app-icon-1024.png",
+  nightlyMacIconPng: "assets/pseudocode/app-icon-1024.png",
+  nightlyLinuxIconPng: "assets/pseudocode/app-icon-1024.png",
+  nightlyWindowsIconIco: "assets/pseudocode/app-icon.ico",
+  nightlyWebFaviconIco: "assets/pseudocode/app-icon.ico",
+  nightlyWebFavicon16Png: "assets/pseudocode/favicon-16.png",
+  nightlyWebFavicon32Png: "assets/pseudocode/favicon-32.png",
+  nightlyWebAppleTouchIconPng: "assets/pseudocode/app-icon-180.png",
 
-  developmentDesktopIconPng: "assets/dev/blueprint-macos-1024.png",
-  developmentWindowsIconIco: "assets/dev/blueprint-windows.ico",
-  developmentWebFaviconIco: "assets/dev/blueprint-web-favicon.ico",
-  developmentWebFavicon16Png: "assets/dev/blueprint-web-favicon-16x16.png",
-  developmentWebFavicon32Png: "assets/dev/blueprint-web-favicon-32x32.png",
-  developmentWebAppleTouchIconPng: "assets/dev/blueprint-web-apple-touch-180.png",
+  developmentDesktopIconPng: "assets/pseudocode/app-icon-1024.png",
+  developmentWindowsIconIco: "assets/pseudocode/app-icon.ico",
+  developmentWebFaviconIco: "assets/pseudocode/app-icon.ico",
+  developmentWebFavicon16Png: "assets/pseudocode/favicon-16.png",
+  developmentWebFavicon32Png: "assets/pseudocode/favicon-32.png",
+  developmentWebAppleTouchIconPng: "assets/pseudocode/app-icon-180.png",
 } as const;
 
 export type WebAssetBrand = "development" | "nightly" | "production";
@@ -84,8 +84,7 @@ export function resolveWebIconOverrides(
 ): ReadonlyArray<IconOverride> {
   // Fork branding. The apple touch icon is what the boot shell shows while the
   // app loads, so pointing it at T3CODE_APP_ICON rebrands the loading screen.
-  // The favicons stay upstream's: they need .ico and small square crops that a
-  // single source PNG cannot supply without an image toolchain at build time.
+  // Favicons are generated from the same PseudoCode source icon and checked in.
   // T3CODE_WEB_ICON exists so the web copy can be a small square rather than
   // the 1024 source the app icons need.
   const appIconOverride = (process.env.T3CODE_WEB_ICON ?? process.env.T3CODE_APP_ICON)?.trim();

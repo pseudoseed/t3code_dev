@@ -1,6 +1,6 @@
 # Message composer
 
-Messages can contain up to 120,000 characters. If a draft is longer, T3 Code keeps it in the
+Messages can contain up to 120,000 characters. If a draft is longer, PseudoCode keeps it in the
 composer and shows how many characters need to be removed. Shorten the draft or split it into
 multiple messages, then send again in the same thread.
 
@@ -19,9 +19,9 @@ removed. On mobile, tap **+** to open
 the photo library from either the compact or expanded composer. When the connected server supports
 file uploads, **+** opens a menu beside the button with **Photo Library** and **Choose Files**.
 Videos use the server's file upload limit. You can also share photos, videos, and files into
-T3 Code from other apps through the system share sheet. Mobile keeps a local copy of each draft
+PseudoCode from other apps through the system share sheet. Mobile keeps a local copy of each draft
 attachment, so you can still preview it and queue messages while offline. Uploads resume when
-you reconnect. Drafts and queued messages survive app restarts; signing out of T3 Connect keeps
+you reconnect. Drafts and queued messages survive app restarts; signing out of Cloud Connect keeps
 them on your device until you sign back into the same account. Select a received file on mobile
 to preview it or open the system share options.
 
@@ -71,12 +71,12 @@ when starting a thread or changing an existing thread's model.
 
 ## Model defaults
 
-T3 Code remembers the last provider, model, and model options you selected and reuses that
+PseudoCode remembers the last provider, model, and model options you selected and reuses that
 selection for new threads. A model configured in a project's settings overrides the remembered
 selection for that project; resetting the project setting returns it to the remembered selection.
 
-Model options shown as provider defaults remain display values until you choose them in T3 Code.
-T3 Code only sends options you selected explicitly, so an unset reasoning level or service tier can
+Model options shown as provider defaults remain display values until you choose them in PseudoCode.
+PseudoCode only sends options you selected explicitly, so an unset reasoning level or service tier can
 still come from the provider's own configuration.
 
 ## Subagent model
@@ -90,7 +90,7 @@ Choices come from the same provider the thread already runs on, because subagent
 provider's process. A Claude thread cannot spawn a Codex subagent. Switching the thread to a
 different provider clears the choice back to inherit.
 
-**Inherit** means subagents use the thread's own model, which is what T3 Code did before this
+**Inherit** means subagents use the thread's own model, which is what PseudoCode did before this
 control existed. Any other choice becomes the default that subagents start on. An agent that names
 a model when it spawns a subagent still gets that model, so it can send one piece of work to a
 larger or smaller model when it needs to.
@@ -121,17 +121,17 @@ Select a chip in the composer or a sent message to open the source thread, scrol
 and highlight the quoted passage — including in older history. The
 highlight pulses, holds for a moment, then fades on its own; press `Escape` to stop the navigation
 or clear it early. If the source is unavailable or its text has changed, the saved quote stays
-readable and T3 Code shows a warning.
+readable and PseudoCode shows a warning.
 
 Mobile shows the full saved quote and its comment in sent messages. It does not offer
 **Cite in composer** or navigation to a quote's source.
 
 ## Images and videos in messages
 
-On web, desktop, and mobile, select a link to an image or video to open it inside T3 Code.
+On web, desktop, and mobile, select a link to an image or video to open it inside PseudoCode.
 Workspace image and video links open the file viewer. Links to media outside the workspace
 open a media preview.
-Videos opened from the file explorer or a file-viewer tab also play inside T3 Code. They
+Videos opened from the file explorer or a file-viewer tab also play inside PseudoCode. They
 stream from the environment as needed, rather than downloading the entire video before playback.
 Paths in inline code, such as `/tmp/recording.mp4`, work the same way. Image embeds stay inline;
 video embeds show a player with the browser's controls, full screen included. Visible video previews load
@@ -162,7 +162,7 @@ Relative paths resolve from the thread's workspace. Absolute paths and `file://`
 the environment's machine, even when you connect remotely or use your phone. Supported media
 can live outside the workspace, including in Downloads or `/tmp`.
 
-T3 Code serves the original file without adding it to attachment storage. If that file is moved
+PseudoCode serves the original file without adding it to attachment storage. If that file is moved
 or deleted, its preview can no longer load from the environment. A browser or device may still
 have a cached copy. Supported video formats and codecs depend on the browser or device.
 
@@ -183,13 +183,13 @@ page outside the workspace cannot load scripts, styles, or images from files bes
 On web and desktop, the file viewer shows HTML and PDF files as a rendered page. Use the
 source toggle in the viewer's header to switch an HTML file between the page and its markup; the
 choice persists like the rendered-Markdown toggle. A link to a line always opens the source. HTML
-runs in an isolated frame with no access to your T3 Code session. On desktop, the integrated
+runs in an isolated frame with no access to your PseudoCode session. On desktop, the integrated
 browser remains available from the same header for a full browser view.
 
 ## Changing projects
 
 On web and desktop, changing the project from a new thread keeps the current environment when that
-project exists there. If it does not, T3 Code selects another environment that has the project.
+project exists there. If it does not, PseudoCode selects another environment that has the project.
 
 ## Notices above the composer
 
@@ -228,7 +228,7 @@ speech model when you finish talking; if so the composer says so, and the wait i
 per model. With a hardware keyboard, hold `Option+D` to talk. **Settings, Voice Input** switches that to press once to start and again to finish, or turns it off.
 
 A recording can be up to five minutes long. Canceling voice input, leaving the screen, or an audio
-interruption discards the new recording and keeps your existing draft and attachments. T3 Code
+interruption discards the new recording and keeps your existing draft and attachments. PseudoCode
 deletes the local audio file when it is done with it. It sends only the normal message text when you
 submit the draft.
 
@@ -248,7 +248,7 @@ voice settings.
 ### Ignoring other voices
 
 Some speech models can tell voices apart. With one of those selected, turn on **Ignore other voices**
-and T3 Code keeps only the voice that did most of the talking, so a conversation nearby does not end
+and PseudoCode keeps only the voice that did most of the talking, so a conversation nearby does not end
 up in your message. This needs one extra small download.
 
 When it cannot tell which voice is yours, it transcribes the whole recording and tells you it did.
@@ -267,7 +267,7 @@ Two lists help with words that get misheard. **Preferred spellings** are kept ex
 them, which is useful for project and tool names. **Corrections** are `wrong -> right` pairs, one
 per line.
 
-T3 Code also learns from you. When you fix a word that voice input got wrong and then send the
+PseudoCode also learns from you. When you fix a word that voice input got wrong and then send the
 message, that fix is remembered and applied to later transcripts. Everything it has learned is listed
 under **Learned from your edits**, and you can delete any entry.
 
@@ -287,19 +287,19 @@ In a thread with prior conversation context, send `/compact` to reduce context u
 By default, the `/` menu includes skills. To keep this menu command-only, turn off **Show skills in
 slash menu** in **Settings → General**. Skill results use the `/skill:Skill Name` label and add the
 same `$name` skill token to your message. The original skill name remains searchable. If the provider
-also reports that skill as a native slash command, T3 Code hides the duplicate native entry and keeps
+also reports that skill as a native slash command, PseudoCode hides the duplicate native entry and keeps
 the `/skill:Skill Name` label.
 
-A skill token runs the skill wherever it sits in your message. T3 Code sends it to each provider in
+A skill token runs the skill wherever it sits in your message. PseudoCode sends it to each provider in
 the form that provider runs, so the text before and after the token is kept. Skills that only you may
 start, and never the agent on its own, work the same way. A skill you switched off in the provider's
 settings does not appear in either menu.
 
 Provider commands such as `/compact` only run when they open the message, so the `/` menu offers
-them only there. T3 Code's own commands, such as `/model` and `/plan`, and skills stay available on
+them only there. PseudoCode's own commands, such as `/model` and `/plan`, and skills stay available on
 any line.
 
 On desktop, press `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux from a new thread to
-start it in the background. T3 Code opens another new thread and shows an **Open** action for the
+start it in the background. PseudoCode opens another new thread and shows an **Open** action for the
 thread that started. The new thread keeps the selected workspace mode and base branch. If **New
 worktree** is selected, each background thread creates its own worktree.

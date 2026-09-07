@@ -31,7 +31,7 @@ const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
 
 export interface Preferences {
-  /** Use APNs credentials configured on paired environments instead of T3 Connect. */
+  /** Use APNs credentials configured on paired environments instead of Cloud Connect. */
   readonly directPushEnabled?: boolean;
   readonly directLiveActivitiesEnabled?: boolean;
   readonly liveActivitiesEnabled?: boolean;

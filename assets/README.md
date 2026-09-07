@@ -1,3 +1,8 @@
+> PseudoCode fork: app and web builds use `assets/pseudocode/app-icon-1024.png`.
+> Run `vp run icons:export` to derive its favicon, touch icon, and ICO renditions;
+> `vp run icons:check` verifies them. The Icon Composer projects described below
+> are retained upstream design sources and are not used by PseudoCode releases.
+
 # Brand icons
 
 The three Icon Composer projects are the source of truth for full application icons:

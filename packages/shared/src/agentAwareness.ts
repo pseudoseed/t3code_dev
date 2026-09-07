@@ -27,6 +27,25 @@ export interface AgentAwarenessState {
   readonly deepLink: string;
 }
 
+/** Keep active work and recent outcomes on glanceable surfaces, never old failures forever. */
+export function selectWidgetActivities(states: Iterable<AgentAwarenessState>, now: number) {
+  const priority = (state: AgentAwarenessState) =>
+    state.phase.startsWith("waiting")
+      ? 0
+      : state.phase === "running" || state.phase === "starting"
+        ? 1
+        : 2;
+  return [...states]
+    .filter((state) => priority(state) < 2 || now - Date.parse(state.updatedAt) < 60 * 60_000)
+    .sort((a, b) => priority(a) - priority(b) || b.updatedAt.localeCompare(a.updatedAt))
+    .map((state) => {
+      const { detail, ...summary } = state;
+      const reason =
+        state.phase === "failed" ? detail?.trim().split(/\r?\n/)[0]?.slice(0, 140) : undefined;
+      return { ...summary, ...(reason ? { detail: reason } : {}) };
+    });
+}
+
 export interface ProjectThreadAwarenessInput {
   readonly environmentId: EnvironmentId;
   readonly project: Pick<OrchestrationProjectShell, "title">;

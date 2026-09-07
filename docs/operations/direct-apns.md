@@ -47,6 +47,10 @@ Create an APNs signing key in Apple Developer Certificates, Identifiers & Profil
 Keep the downloaded `.p8` file on the server machine, outside the repository. You
 will also need its Key ID, the Apple Team ID, and the exact installed app bundle ID.
 A key restricted to a topic or environment must allow the app and build you use.
+For TestFlight and App Store installs, choose **Production** when configuring the
+APNs key. A Sandbox key is for Xcode development installs, even though TestFlight
+is used for testing. A Production Team Scoped key covers the team's app and Live
+Activity topics; a Topic Specific key must include the topics it sends to.
 The App Store Connect API key used to upload TestFlight builds is a different key;
 it cannot substitute for an APNs signing key.
 
@@ -137,6 +141,11 @@ An over-the-air JavaScript update to an older client is insufficient.
 5. Add the Agent Activity widget, open the app to populate it, then check its
    saved activity and subsequent background updates.
 
+The desktop **Test notification** button sends a local desktop notification only;
+it does not test iPhone APNs delivery. Being active on the desktop does not suppress
+direct iPhone alerts. A registration status confirms that the server saved the
+device registration, not that Apple accepted a push.
+
 Routine widget background pushes are limited to one every 20 minutes per device
 per server, on activity changes. Attention alerts also include a widget snapshot.
 iOS may defer or suppress background execution, particularly after force-quitting
@@ -157,12 +166,20 @@ unregistration, or revoke the phone's session on that server. Every delivery
 checks session validity; revoked or expired sessions stop receiving pushes.
 
 The server logs APNs rejection status and reason without logging device tokens or
-private keys. `BadDeviceToken` and `DeviceTokenNotForTopic` usually indicate a
+private keys. `403 BadEnvironmentKeyInToken` indicates the signing key is not
+accepted for the requested APNs environment. Check the key's environment in Apple
+Developer; for TestFlight, install a Production APNs key, update its Key ID in
+`apns.json`, and restart the host. Changing the phone to Sandbox routing is not a
+fix for a Production device token. No app rebuild is needed to replace the host key.
+
+`BadDeviceToken` and `DeviceTokenNotForTopic` usually indicate a
 signing-environment or bundle-ID mismatch. Invalid/unregistered tokens are removed.
 Transport failures, rate limits, and server errors receive two bounded retries;
 later state changes and phone registration reconcile the current card. The queue
 is in memory, so a server restart does not replay old attention alerts.
 
 References: [Apple APNs requests](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns),
+[Apple APNs key configuration](https://developer.apple.com/help/account/keys/create-a-private-key),
+[Apple token-based connections](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns),
 [Expo signed APNs environment](https://docs.expo.dev/versions/latest/sdk/application/),
 [Apple background updates](https://developer.apple.com/documentation/usernotifications/pushing-background-updates-to-your-app).

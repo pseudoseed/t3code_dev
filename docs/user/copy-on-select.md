@@ -1,6 +1,6 @@
 # Copy on select
 
-Turn on **Settings → General → Copy on select** to have T3 Code copy highlighted text the moment
+Turn on **Settings → General → Copy on select** to have PseudoCode copy highlighted text the moment
 you let go of the mouse button, the way a terminal emulator does. There is no confirmation and no
 keyboard shortcut to press: release the drag and the text is on your clipboard.
 

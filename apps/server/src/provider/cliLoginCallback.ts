@@ -4,8 +4,8 @@
  * A provider CLI that signs in through a loopback redirect binds a local port
  * and waits for the browser to come back to it. That works when the browser is
  * on the same machine as the server. When it is not — a phone, or a browser
- * pointed at a remote T3 Code — the redirect lands on a `localhost` address the
- * browser cannot reach, and the user pastes that failed URL back into T3 Code
+ * pointed at a remote PseudoCode — the redirect lands on a `localhost` address the
+ * browser cannot reach, and the user pastes that failed URL back into PseudoCode
  * instead. This module checks such a paste belongs to the sign-in currently in
  * flight, then delivers it to the CLI's own listener.
  *

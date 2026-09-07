@@ -32,15 +32,15 @@ describe("resolveVoiceCleanupSettings", () => {
       voiceCleanupEnabled: true,
       voiceCleanupModelId: "qwen-2b",
       voiceCleanupPrompt: "Tidy this up.",
-      voiceCleanupPreferredSpellings: "Ghostty\nT3 Code",
-      voiceCleanupCorrections: "tea three -> T3",
+      voiceCleanupPreferredSpellings: "Ghostty\nPseudoCode",
+      voiceCleanupCorrections: "pseudo code -> PseudoCode",
     });
 
     expect(settings.enabled).toBe(true);
     expect(settings.modelId).toBe("qwen-2b");
     expect(settings.systemPrompt).toContain("Tidy this up.");
     expect(settings.systemPrompt).toContain("- Ghostty");
-    expect(settings.systemPrompt).toContain("- tea three -> T3");
+    expect(settings.systemPrompt).toContain("- pseudo code -> PseudoCode");
   });
 });
 

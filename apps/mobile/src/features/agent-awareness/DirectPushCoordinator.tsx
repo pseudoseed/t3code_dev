@@ -80,11 +80,11 @@ function Coordinator() {
 
   useEffect(() => {
     if (!chosen) return;
-    if (enabled) endLocalLiveActivities("Could not close the T3 Connect Live Activity.");
+    if (enabled) endLocalLiveActivities("Could not close the Cloud Connect Live Activity.");
     void runtime
       .runPromise(updateAgentAwarenessRegistrationPreferences({ directPushEnabled: enabled }))
       .catch(() => {
-        console.warn("Could not update T3 Connect notification preferences.");
+        console.warn("Could not update Cloud Connect notification preferences.");
       });
   }, [enabled, chosen]);
 

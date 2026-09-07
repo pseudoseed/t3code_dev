@@ -1,77 +1,202 @@
-import { HStack, Spacer, Text, VStack } from "@expo/ui/swift-ui";
-import { font, foregroundStyle, lineLimit, padding, widgetURL } from "@expo/ui/swift-ui/modifiers";
+import { HStack, Image, Rectangle, Spacer, Text, VStack } from "@expo/ui/swift-ui";
+import {
+  accessibilityLabel,
+  cornerRadius,
+  font,
+  foregroundStyle,
+  frame,
+  lineLimit,
+  resizable,
+  widgetURL,
+} from "@expo/ui/swift-ui/modifiers";
 import { createWidget, type WidgetEnvironment } from "expo-widgets";
 import type { AgentWidgetSnapshot } from "./agentWidgetSnapshot";
 
-/** Serialized for the extension: keep the layout self-contained, including
- * gallery defaults, because WidgetKit can render before the app has synced. */
+/** Serialized for WidgetKit, including gallery defaults and layout helpers. */
 export function AgentWidget(props: Partial<AgentWidgetSnapshot>, environment: WidgetEnvironment) {
   "widget";
   const activities = props.activities ?? [];
   const first = activities[0];
   const accessory = environment.widgetFamily === "accessoryRectangular";
   const small = environment.widgetFamily === "systemSmall";
-  const rows = activities.slice(0, accessory || small ? 1 : 3);
+  const rows = activities.slice(0, accessory || small ? 1 : 2);
   const attention = props.attentionCount ?? 0;
   const count = props.activeCount ?? 0;
   const dark = environment.colorScheme !== "light";
-  const color = attention > 0 ? (dark ? "#fcd34d" : "#92400e") : dark ? "#7dd3fc" : "#075985";
+  const color = (phase?: string) => {
+    if (environment.isLuminanceReduced) return "secondary";
+    if (phase === "waiting_for_approval") return dark ? "#fcd34d" : "#b45309";
+    if (phase === "waiting_for_input") return dark ? "#c4b5fd" : "#6d28d9";
+    if (phase === "failed") return dark ? "#fca5a5" : "#b91c1c";
+    if (phase === "completed") return dark ? "#6ee7b7" : "#047857";
+    return dark ? "#5eead4" : "#0f766e";
+  };
+  const label = (phase: string) =>
+    phase === "waiting_for_approval"
+      ? "Approve request"
+      : phase === "waiting_for_input"
+        ? "Reply needed"
+        : phase === "failed"
+          ? "Needs review"
+          : phase === "completed"
+            ? "Done"
+            : phase === "starting"
+              ? "Starting"
+              : phase === "stale"
+                ? "Update delayed"
+                : "Working";
   const heading =
     attention > 0
-      ? `${attention} need${attention === 1 ? "s" : ""} attention`
+      ? `${attention} need${attention === 1 ? "s" : ""} you`
       : count > 0
-        ? `${count} active agent${count === 1 ? "" : "s"}`
-        : "Recent activity";
+        ? `${count} active`
+        : "Recent results";
   const deepLink = first?.deepLink;
   const url =
     deepLink?.startsWith("/") && !deepLink.startsWith("//")
       ? `t3code://${deepLink.slice(1)}`
       : "t3code://";
+  const extra = Math.max(
+    0,
+    count -
+      rows.filter((row) =>
+        ["starting", "running", "waiting_for_approval", "waiting_for_input"].includes(row.phase),
+      ).length,
+  );
   return (
     <VStack
       alignment="leading"
-      spacing={accessory ? 2 : 6}
-      modifiers={[padding({ all: accessory ? 0 : 12 }), widgetURL(url)]}
+      spacing={accessory ? 3 : small ? 7 : 9}
+      modifiers={[
+        frame({ maxWidth: Infinity, maxHeight: Infinity, alignment: "topLeading" }),
+        widgetURL(url),
+      ]}
     >
-      <Text
-        modifiers={[
-          font({ size: accessory ? 12 : 14, weight: "semibold" }),
-          foregroundStyle(color),
-          lineLimit(1),
-        ]}
-      >
-        {activities.length === 0 ? "Agent activity" : heading}
-      </Text>
-      {rows.map((row) => (
-        <VStack key={`${row.environmentId}:${row.threadId}`} alignment="leading" spacing={1}>
+      <HStack spacing={6}>
+        {!accessory ? (
+          <HStack modifiers={[frame({ width: 20, height: 20 })]}>
+            <Image
+              assetName="AppMark"
+              modifiers={[resizable(), accessibilityLabel("PseudoCode")]}
+            />
+          </HStack>
+        ) : null}
+        <Text
+          modifiers={[
+            font({ size: accessory ? 11 : 12, weight: "semibold" }),
+            foregroundStyle("primary"),
+            lineLimit(1),
+          ]}
+        >
+          PseudoCode
+        </Text>
+        <Spacer minLength={0} />
+        {!small ? (
           <Text
             modifiers={[
-              font({ size: accessory ? 12 : 13, weight: "semibold" }),
-              foregroundStyle("primary"),
-              lineLimit(small ? 2 : 1),
+              font({ size: 11, weight: "semibold" }),
+              foregroundStyle(color(first?.phase)),
+              lineLimit(1),
             ]}
           >
-            {row.threadTitle}
+            {heading}
           </Text>
-          <Text modifiers={[font({ size: 11 }), foregroundStyle("secondary"), lineLimit(1)]}>
-            {row.projectTitle} · {row.headline}
-          </Text>
-        </VStack>
+        ) : null}
+      </HStack>
+      {rows.map((row) => (
+        <HStack key={`${row.environmentId}:${row.threadId}`} alignment="top" spacing={8}>
+          {!accessory ? (
+            <Rectangle
+              modifiers={[
+                frame({ width: 3, height: small ? 44 : 32 }),
+                foregroundStyle(color(row.phase)),
+                cornerRadius(2),
+              ]}
+            />
+          ) : null}
+          <VStack
+            alignment="leading"
+            spacing={3}
+            modifiers={[frame({ maxWidth: Infinity, alignment: "leading" })]}
+          >
+            <Text
+              modifiers={[
+                font({ size: accessory ? 12 : 14, weight: "semibold" }),
+                foregroundStyle("primary"),
+                lineLimit(small ? 2 : 1),
+              ]}
+            >
+              {row.threadTitle}
+            </Text>
+            <HStack spacing={4}>
+              <Text
+                modifiers={[
+                  font({ size: 11 }),
+                  foregroundStyle("secondary"),
+                  lineLimit(small && row.phase === "failed" ? 2 : 1),
+                ]}
+              >
+                {row.phase === "failed" && row.detail && (small || rows.length > 1)
+                  ? row.detail
+                  : row.projectTitle}
+              </Text>
+              {!small ? <Spacer minLength={4} /> : null}
+              {!small ? (
+                <Text
+                  modifiers={[
+                    font({ size: 11, weight: "semibold" }),
+                    foregroundStyle(color(row.phase)),
+                    lineLimit(1),
+                  ]}
+                >
+                  {label(row.phase)}
+                </Text>
+              ) : null}
+            </HStack>
+            {small ? (
+              <Text
+                modifiers={[
+                  font({ size: 11, weight: "semibold" }),
+                  foregroundStyle(color(row.phase)),
+                  lineLimit(1),
+                ]}
+              >
+                {label(row.phase)}
+              </Text>
+            ) : null}
+            {!accessory && !small && rows.length === 1 ? (
+              <Text modifiers={[font({ size: 12 }), foregroundStyle("secondary"), lineLimit(2)]}>
+                {row.phase === "failed"
+                  ? row.detail || "Open thread to review the error"
+                  : row.phase.startsWith("waiting")
+                    ? "Tap to respond and keep work moving"
+                    : row.modelTitle}
+              </Text>
+            ) : null}
+          </VStack>
+        </HStack>
       ))}
       {activities.length === 0 ? (
         <Text modifiers={[font({ size: 12 }), foregroundStyle("secondary"), lineLimit(3)]}>
           {props.activities === undefined
-            ? "Open the app to sync agent activity."
-            : "No agent activity. Open the app to refresh."}
+            ? "Your tasks, at a glance. Open PseudoCode to connect."
+            : "All caught up. Start a task in PseudoCode."}
         </Text>
       ) : null}
       {!accessory ? <Spacer minLength={0} /> : null}
       {!accessory ? (
         <HStack spacing={4}>
-          <Text modifiers={[font({ size: 10 }), foregroundStyle("secondary")]}>
-            {props.updatedAt ? "Updated" : "Open app to refresh"}
+          <Text modifiers={[font({ size: 10 }), foregroundStyle("secondary"), lineLimit(1)]}>
+            {small
+              ? heading
+              : extra > 0
+                ? `+${extra} more active`
+                : first?.phase === "failed" && rows.length > 1
+                  ? "Tap to review"
+                  : "Tap to open"}
           </Text>
-          {props.updatedAt ? (
+          <Spacer minLength={0} />
+          {props.updatedAt && !small ? (
             <Text
               date={new Date(props.updatedAt)}
               dateStyle="time"
@@ -83,9 +208,6 @@ export function AgentWidget(props: Partial<AgentWidgetSnapshot>, environment: Wi
     </VStack>
   );
 }
-
-// A normal widget and a Live Activity use different native storage keys,
-// even when their configuration name is the same.
 const agentWidget = createWidget<AgentWidgetSnapshot>("AgentActivity", AgentWidget);
 agentWidget.reload();
 export default agentWidget;

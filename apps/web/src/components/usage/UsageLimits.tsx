@@ -558,7 +558,7 @@ export function UsageLimitsSection() {
   const [now] = useState(() => Date.now());
 
   // Sources live in one environment's settings. Writing them needs only the
-  // operate scope, like any provider control, so a T3 Connect client can add
+  // operate scope, like any provider control, so a Cloud Connect client can add
   // a hub to whichever environment it is connected to: the primary when there
   // is one, else the first connected environment, with a picker for more.
   const connected = environments.filter(
