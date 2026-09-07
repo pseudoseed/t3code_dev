@@ -277,6 +277,18 @@ under **Learned from your edits**, and you can delete any entry.
 If cleanup fails or takes too long, you get the original transcript instead. You never lose what you
 said.
 
+## Context and cost
+
+The composer shows a small ring beside the send button once the provider reports token usage,
+which today means Claude and Codex threads. Next to the ring is the share of the context window in
+use, and the running cost of the thread once one is known. Open it for the exact token counts and
+the full window size; on mobile, tap it.
+
+The cost is API-equivalent, the same figure the Usage page reports. It is what these tokens would
+cost at list prices, not what you were charged: a subscription plan bills separately. Claude
+reports its own per-turn cost, so those threads show the provider's own number. Codex threads are
+priced from token counts, and a model with no published rate shows no cost rather than a guess.
+
 ## Commands and skills
 
 Type `/` to open the command menu. Type `$` to find and add a skill. Skill rows show their source,

@@ -167,6 +167,11 @@ const ThreadActivityKindsLookupInput = Schema.Struct({
   threadId: ThreadId,
   activityKinds: Schema.Array(Schema.String),
 });
+const RecentThreadActivityKindsLookupInput = Schema.Struct({
+  threadId: ThreadId,
+  activityKinds: Schema.Array(Schema.String),
+  limit: Schema.Number,
+});
 const ThreadActivityIdsLookupInput = Schema.Struct({
   activityIds: Schema.Array(ProjectionThreadActivity.fields.activityId),
 });
@@ -1244,6 +1249,48 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             created_at DESC,
             activity_id DESC
           LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        ) AS recent_activities
+        ORDER BY
+          sequence ASC,
+          created_at ASC,
+          activity_id ASC
+      `,
+  });
+
+  const listRecentThreadActivityRowsByKinds = SqlSchema.findAll({
+    Request: RecentThreadActivityKindsLookupInput,
+    Result: ProjectionThreadActivityDbRowSchema,
+    execute: ({ threadId, activityKinds, limit }) =>
+      sql`
+        SELECT
+          activity_id AS "activityId",
+          thread_id AS "threadId",
+          turn_id AS "turnId",
+          tone,
+          kind,
+          summary,
+          payload_json AS "payload",
+          sequence,
+          created_at AS "createdAt"
+        FROM (
+          SELECT
+            activity_id,
+            thread_id,
+            turn_id,
+            tone,
+            kind,
+            summary,
+            payload_json,
+            sequence,
+            created_at
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND ${sql.in("kind", activityKinds)}
+          ORDER BY
+            sequence DESC,
+            created_at DESC,
+            activity_id DESC
+          LIMIT ${limit}
         ) AS recent_activities
         ORDER BY
           sequence ASC,
@@ -3071,6 +3118,28 @@ pending_approval_requests AS (
       );
     });
 
+  const listRecentThreadActivitiesByKinds: ProjectionSnapshotQueryShape["listRecentThreadActivitiesByKinds"] =
+    Effect.fn("ProjectionSnapshotQuery.listRecentThreadActivitiesByKinds")(
+      function* (threadId, activityKinds, limit) {
+        if (activityKinds.length === 0 || limit <= 0) return [];
+        const rows = yield* listRecentThreadActivityRowsByKinds({
+          threadId,
+          activityKinds,
+          limit,
+        }).pipe(
+          Effect.mapError(
+            toPersistenceSqlOrDecodeError(
+              "ProjectionSnapshotQuery.listRecentThreadActivitiesByKinds:query",
+              "ProjectionSnapshotQuery.listRecentThreadActivitiesByKinds:decodeRows",
+            ),
+          ),
+        );
+        // Raw payloads, not the client projection: server-side readers need the
+        // fields the wire projection strips.
+        return rows.map(mapThreadActivityRow);
+      },
+    );
+
   const getThreadDetailById: ProjectionSnapshotQueryShape["getThreadDetailById"] = (
     threadId,
     query,
@@ -3242,6 +3311,7 @@ pending_approval_requests AS (
     getThreadCheckpointContext,
     getFullThreadDiffContext,
     getThreadShellById,
+    listRecentThreadActivitiesByKinds,
     getThreadDetailById,
     getThreadDetailSnapshot,
   } satisfies ProjectionSnapshotQueryShape;

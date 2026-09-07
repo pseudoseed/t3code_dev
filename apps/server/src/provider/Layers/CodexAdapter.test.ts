@@ -1825,6 +1825,10 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         lastCachedInputTokens: 0,
         lastOutputTokens: 6,
         lastReasoningOutputTokens: 0,
+        // Session running totals: what orchestration prices the thread from.
+        sessionInputTokens: 11_833,
+        sessionCachedInputTokens: 3456,
+        sessionOutputTokens: 6,
         compactsAutomatically: true,
       });
     }),

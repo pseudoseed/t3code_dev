@@ -194,6 +194,22 @@ export interface ProjectionSnapshotQueryShape {
   ) => Effect.Effect<Option.Option<OrchestrationThreadShell>, ProjectionRepositoryError>;
 
   /**
+   * Read the newest activities of the given kinds for one thread, newest last.
+   *
+   * A narrow alternative to {@link getThreadDetailById} for callers that only
+   * need a handful of recent rows. The detail read pulls every message, plan
+   * and checkpoint on the thread alongside its activities, which is far more
+   * than, say, rebuilding cost state from the last few usage snapshots needs
+   * — and it runs on the sequential provider ingestion worker, where the
+   * difference is event streaming latency for every thread.
+   */
+  readonly listRecentThreadActivitiesByKinds: (
+    threadId: ThreadId,
+    activityKinds: ReadonlyArray<string>,
+    limit: number,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationThreadActivity>, ProjectionRepositoryError>;
+
+  /**
    * Read a single active thread detail snapshot by id.
    */
   readonly getThreadDetailById: (

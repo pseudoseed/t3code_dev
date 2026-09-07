@@ -22,6 +22,7 @@ import {
   type CodexFeedbackSubmission,
 } from "@t3tools/client-runtime/state/threads";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
+import { deriveLatestContextWindowSnapshot } from "@t3tools/client-runtime/context-window";
 import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
@@ -144,6 +145,17 @@ export function useThreadComposerState() {
       ),
     });
   }, [feedbackSubmissionsByThreadKey, selectedThreadDetail, selectedThreadKey]);
+
+  // The composer prints the share of the window in use and the thread's
+  // running cost; both come off the newest `context-window.updated` activity.
+  const selectedThreadActivities = selectedThreadDetail?.activities;
+  const selectedThreadContextWindow = useMemo(
+    () =>
+      selectedThreadActivities ? deriveLatestContextWindowSnapshot(selectedThreadActivities) : null,
+    // Keyed on the activity array rather than the whole detail, so unrelated
+    // detail updates do not re-walk it.
+    [selectedThreadActivities],
+  );
 
   const selectedDraft = selectedThreadKey ? composerDrafts[selectedThreadKey] : null;
   const draftMessage = selectedDraft?.text ?? "";
@@ -593,6 +605,7 @@ export function useThreadComposerState() {
 
   return {
     selectedThreadFeed,
+    selectedThreadContextWindow,
     selectedThreadQueueCount,
     activeWorkStartedAt,
     isCompacting,

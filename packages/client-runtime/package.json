@@ -35,6 +35,10 @@
       "types": "./src/mediaActions.ts",
       "default": "./src/mediaActions.ts"
     },
+    "./context-window": {
+      "types": "./src/contextWindow.ts",
+      "default": "./src/contextWindow.ts"
+    },
     "./codex-file-citations": {
       "types": "./src/codexFileCitations.ts",
       "default": "./src/codexFileCitations.ts"

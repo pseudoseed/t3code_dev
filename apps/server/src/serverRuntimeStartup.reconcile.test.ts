@@ -67,6 +67,7 @@ const makeProviderService = (liveThreadIds: ReadonlyArray<ThreadId> = []) =>
 
 const queryWithThreads = (threads: ReadonlyArray<ReturnType<typeof makeThread>>) =>
   ({
+    listRecentThreadActivitiesByKinds: () => Effect.die("unused"),
     getUserInputActivity: () => Effect.die("unused"),
     getCommandReadModel: () => Effect.succeed({ threads } as never),
   }) as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"];

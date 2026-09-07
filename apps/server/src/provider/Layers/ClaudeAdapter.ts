@@ -2168,6 +2168,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return;
     }
 
+    // `sessionCostUsd` is a running total, so carrying it onto later snapshots
+    // is both harmless and wanted: orchestration differences it, and repeating
+    // the last known total simply yields no further charge.
     context.lastKnownTokenUsage = usage;
     context.lastKnownTotalProcessedTokens =
       usage.totalProcessedTokens ?? context.lastKnownTotalProcessedTokens;
@@ -2360,9 +2363,25 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           }
         : undefined);
 
+    // Claude prices the session itself. `total_cost_usd` is the running total
+    // for the whole session, unlike the `usage` beside it, which covers only
+    // this turn — measured against the SDK, three turns reported 0.0033,
+    // 0.0059, 0.0084 while usage stayed flat. Hand the total over as-is;
+    // orchestration charges the thread the increase.
+    const sessionCostUsd =
+      typeof result?.total_cost_usd === "number" &&
+      Number.isFinite(result.total_cost_usd) &&
+      result.total_cost_usd > 0
+        ? result.total_cost_usd
+        : undefined;
+    const pricedUsageSnapshot =
+      usageSnapshot && sessionCostUsd !== undefined
+        ? { ...usageSnapshot, sessionCostUsd }
+        : usageSnapshot;
+
     const turnState = context.turnState;
     if (!turnState) {
-      yield* emitThreadTokenUsage(context, usageSnapshot, {
+      yield* emitThreadTokenUsage(context, pricedUsageSnapshot, {
         rawMethod: "claude/result",
         rawPayload: result ?? { status },
       });
@@ -2436,7 +2455,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       items: [...turnState.items],
     });
 
-    yield* emitThreadTokenUsage(context, usageSnapshot, {
+    yield* emitThreadTokenUsage(context, pricedUsageSnapshot, {
       rawMethod: "claude/result",
       rawPayload: result ?? { status },
     });

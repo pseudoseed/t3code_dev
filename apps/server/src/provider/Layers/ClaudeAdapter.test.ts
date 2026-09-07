@@ -3441,6 +3441,71 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("reports Claude's session cost total, not a per-turn slice", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 9).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1,
+        duration_api_ms: 1,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: "sdk-session-turn-cost",
+        uuid: "result-turn-cost",
+        total_cost_usd: 0.0058764,
+        usage: {
+          input_tokens: 4,
+          cache_read_input_tokens: 1000,
+          output_tokens: 100,
+        },
+        modelUsage: {
+          [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: { contextWindow: 200000, maxOutputTokens: 64000 },
+        },
+      } as unknown as SDKMessage);
+
+      // Task-progress snapshots are built fresh rather than from the last
+      // one, so they carry no total. Orchestration differences these, so a
+      // snapshot without one simply adds nothing to the thread's cost.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-after-cost",
+        description: "Still working",
+        usage: { total_tokens: 5000 },
+        session_id: "sdk-session-turn-cost",
+        uuid: "task-progress-after-cost",
+      } as unknown as SDKMessage);
+      harness.query.finish();
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const sessionCosts = runtimeEvents.flatMap((event) =>
+        event.type === "thread.token-usage.updated" ? [event.payload.usage.sessionCostUsd] : [],
+      );
+
+      assert.deepEqual(sessionCosts, [0.0058764, undefined]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("clamps oversized Claude usage to the reported context window", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

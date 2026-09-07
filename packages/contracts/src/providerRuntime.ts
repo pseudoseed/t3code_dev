@@ -311,6 +311,19 @@ const ThreadMetadataUpdatedPayload = Schema.Struct({
 });
 export type ThreadMetadataUpdatedPayload = typeof ThreadMetadataUpdatedPayload.Type;
 
+/**
+ * How a thread's running cost figure was arrived at.
+ *
+ * - `providerReported` - the provider handed us a cost for the turn.
+ * - `modelPriced` - we priced the thread's tokens against the rate table.
+ *
+ * Mirrors `UsageCostSource` from the usage contract, minus `unpriced`: a
+ * thread with no usable cost carries no `costUsd` at all rather than a zero
+ * that reads as "free".
+ */
+export const ThreadCostSource = Schema.Literals(["providerReported", "modelPriced"]);
+export type ThreadCostSource = typeof ThreadCostSource.Type;
+
 export const ThreadTokenUsageSnapshot = Schema.Struct({
   usedTokens: NonNegativeInt,
   totalProcessedTokens: Schema.optional(NonNegativeInt),
@@ -328,6 +341,35 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
   durationMs: Schema.optional(NonNegativeInt),
   compactsAutomatically: Schema.optional(Schema.Boolean),
   autoCompactThreshold: Schema.optional(PositiveInt),
+  /**
+   * Billed tokens accumulated across the provider session so far, split the
+   * way rates are. Only providers that report running totals set these
+   * (Codex); they exist so orchestration can price a thread without
+   * reconstructing per-turn deltas from a stream of snapshots.
+   * `sessionInputTokens` is inclusive of the cached and cache-creation
+   * portions, matching how Codex reports it. Totals reset whenever the
+   * provider session restarts; orchestration reads a drop as a restart and
+   * carries the earlier session's cost forward.
+   */
+  sessionInputTokens: Schema.optional(NonNegativeInt),
+  sessionCachedInputTokens: Schema.optional(NonNegativeInt),
+  sessionCacheCreationTokens: Schema.optional(NonNegativeInt),
+  sessionOutputTokens: Schema.optional(NonNegativeInt),
+  /**
+   * USD the provider has billed over its current session so far, as the
+   * provider itself reports it. Cumulative, not per turn: Claude's result
+   * message carries the session total while the `usage` beside it covers only
+   * the turn, so this must be differenced rather than summed. Orchestration
+   * charges the thread the increase between snapshots.
+   */
+  sessionCostUsd: Schema.optional(Schema.Number),
+  /**
+   * Running USD cost for the whole thread, stamped by orchestration rather
+   * than by an adapter. It is API-equivalent cost, not money spent: a
+   * subscription plan bills separately. Absent when no cost is knowable.
+   */
+  costUsd: Schema.optional(Schema.Number),
+  costSource: Schema.optional(ThreadCostSource),
 });
 export type ThreadTokenUsageSnapshot = typeof ThreadTokenUsageSnapshot.Type;
 
