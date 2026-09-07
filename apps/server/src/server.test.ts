@@ -95,6 +95,7 @@ const decodeTransferShellSnapshot = Schema.decodeUnknownEffect(
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
+import { DirectPush } from "./push/DirectPush.ts";
 import {
   isThreadDetailEvent,
   resolveAvailableEditorsForConfig,
@@ -734,6 +735,7 @@ const buildAppUnderTest = (options?: {
     ).pipe(
       Layer.provide(
         Layer.mergeAll(
+          Layer.mock(DirectPush)({}),
           Layer.mock(Keybindings.Keybindings)({
             loadConfigState: Effect.succeed({
               keybindings: [],
@@ -1755,6 +1757,40 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.status, 200);
       assertBrowserApiCorsResponseHeaders(response.headers);
       assert.deepEqual(body, testEnvironmentDescriptor);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("protects direct push registration with authentication and operate scope", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const url = yield* getHttpServerUrl("/api/push/register");
+      const body = jsonRequestBody({
+        deviceId: "phone",
+        bundleId: "test.app",
+        apsEnvironment: "production",
+        pushToken: "aabb",
+        activityToken: null,
+        notificationsEnabled: true,
+        liveActivitiesEnabled: true,
+      });
+      const unauthenticated = yield* fetchEffect(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      assert.equal(unauthenticated.status, 401);
+      const token = yield* exchangeAccessToken(defaultDesktopBootstrapToken, {
+        scope: "orchestration:read",
+      });
+      const readOnly = yield* fetchEffect(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token.body.access_token}`,
+        },
+        body,
+      });
+      assert.equal(readOnly.status, 403);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

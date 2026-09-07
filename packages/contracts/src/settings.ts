@@ -199,6 +199,10 @@ export type BrowserLinkTarget = typeof BrowserLinkTarget.Type;
 export const DEFAULT_BROWSER_LINK_TARGET: BrowserLinkTarget = "system";
 
 export const ClientSettingsSchema = Schema.Struct({
+  agentAttentionSound: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  agentAttentionNotifications: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   appearanceContrast: AppearanceContrast.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_APPEARANCE_CONTRAST)),
   ),
@@ -1177,6 +1181,8 @@ export const ServerSettingsPatch = Schema.Struct({
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
+  agentAttentionSound: Schema.optionalKey(Schema.Boolean),
+  agentAttentionNotifications: Schema.optionalKey(Schema.Boolean),
   appearanceContrast: Schema.optionalKey(AppearanceContrast),
   panelAnimationDurationMs: Schema.optionalKey(PanelAnimationDurationMs),
   browserDefaultViewport: Schema.optionalKey(PreviewViewportSetting),

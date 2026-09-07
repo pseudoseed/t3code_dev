@@ -219,6 +219,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "agent-attention-sound",
+    title: "Agent attention sound",
+    to: "/settings/general",
+    searchTerms: ["audio chime input approval needed alert mute notification"],
+  },
+  {
+    id: "agent-attention-notifications",
+    title: "Agent attention notifications",
+    to: "/settings/general",
+    searchTerms: ["system desktop browser input approval needed alert permission"],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/general",

@@ -50,6 +50,7 @@ import {
   FolderPlusIcon,
   CircleDotIcon,
   GitBranchIcon,
+  MessageCircleQuestionIcon,
   PinIcon,
   PlusIcon,
   SearchIcon,
@@ -943,17 +944,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
     thread.settledOverride !== "settled";
-  // In-flight rows (working, or waiting on approval/input) fade as a whole:
-  // there is nothing for the user to do yet, so prominence is reserved for
-  // rows that need a human — done (unread), read-but-unsettled, failed, and
-  // freshly woken. The status label keeps its hue, so waiting rows stay
-  // findable. In-flight rows recede the same as read-ready ones (inbox-zero:
-  // working threads aren't your problem yet) — only the colored status label
-  // stands out.
-  const isInFlight =
-    status === "working" || status === "monitoring" || status === "approval" || status === "input";
-  const shouldRecede =
-    (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
+  // Only idle history recedes. Pending requests need a human, and active
+  // work must stay legible even when another thread is selected.
+  const shouldRecede = status === "ready" && !isUnread && !isWoke && !props.isActive && !isSelected;
   // Status hues follow the system-wide convention set by sidebar v1 and the
   // mobile Live Activity/widgets (amber approval, indigo input, sky working)
   // so a thread reads the same color everywhere it surfaces.
@@ -962,12 +955,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       ? {
           label: "Working",
           icon: "working" as const,
-          // No shimmer: a label that animates forever is noise in a sidebar
-          // full of them (and repaints every vsync on high-refresh displays).
-          // Working is a background state, so it rests at the dim end of what
-          // the old pulse cycled through; only the thread you have open gets
-          // the label at full strength.
-          className: cn("text-sky-600 dark:text-sky-400", !props.isActive && "opacity-75"),
+          className: "bg-sky-500/15 text-sky-800 ring-sky-500/35 dark:text-sky-300",
         }
       : status === "monitoring"
         ? {
@@ -975,25 +963,26 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             // (monitoring-pill D6), so it keeps the label at full strength.
             label: "Monitoring",
             icon: null,
-            className: "text-sky-600 dark:text-sky-400",
+            className: "bg-sky-500/10 text-sky-800 ring-sky-500/25 dark:text-sky-300",
           }
         : status === "approval"
           ? {
-              label: "Approval",
-              icon: null,
-              className: "text-amber-700 dark:text-amber-300",
+              label: "Approval needed",
+              icon: "attention" as const,
+              className: "bg-amber-500/20 text-amber-900 ring-amber-500/50 dark:text-amber-200",
             }
           : status === "input"
             ? {
-                label: "Input",
-                icon: null,
-                className: "text-indigo-600 dark:text-indigo-300",
+                label: "Input needed",
+                icon: "input" as const,
+                className:
+                  "bg-indigo-500/20 text-indigo-800 ring-indigo-500/50 dark:text-indigo-200",
               }
             : status === "failed"
               ? {
                   label: "Failed",
-                  icon: null,
-                  className: "text-red-700 dark:text-red-300",
+                  icon: "attention" as const,
+                  className: "bg-red-500/15 text-red-800 ring-red-500/40 dark:text-red-200",
                 }
               : isWoke
                 ? {
@@ -1005,7 +994,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   ? {
                       label: "Done",
                       icon: "done" as const,
-                      className: "text-emerald-700 dark:text-emerald-300",
+                      className:
+                        "bg-emerald-500/15 text-emerald-800 ring-emerald-500/35 dark:text-emerald-200",
                     }
                   : null;
   const isWokeStatus = topStatus?.icon === "woke";
@@ -1225,10 +1215,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     [onThreadActivate, openPrLink, openPullRequestsInRightPanel, pr, props.isActive, threadRef],
   );
 
-  // All sidebar rows share one surface model. Live threads used to look
-  // like elevated cards while settled threads were plain rows, leaving neither
-  // a useful hierarchy nor a reliable hover cue. Status now lives in the row
-  // content; surface is reserved for interaction (hover, multi-select, route).
+  // Keep selection surfaces independent of status. A static inset marker
+  // makes requests visible without animation or changing row geometry.
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
     props.isActive
@@ -1238,10 +1226,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         : shouldRecede
           ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    isInFlight &&
-      !props.isActive &&
-      !isSelected &&
-      "opacity-70 transition-opacity hover:opacity-100",
+    status === "approval" && "shadow-[inset_3px_0_0] shadow-amber-500 dark:shadow-amber-300",
+    status === "input" && "shadow-[inset_3px_0_0] shadow-indigo-500 dark:shadow-indigo-300",
+    status === "failed" && "shadow-[inset_3px_0_0] shadow-red-500 dark:shadow-red-300",
   );
 
   const title = isRenaming ? (
@@ -1562,21 +1549,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span className="flex-1" />
               )}
               {pinIndicator}
-              {/* The visible state owns this slot's width: status at rest,
-                  actions on hover/keyboard focus or while the popover is open. Keeping
-                  the hidden state out of flow lets the project label reclaim
-                  space without either state overlapping it. */}
-              <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
-                {/* Read-only status labels yield to the hover actions. Woke is
-                    itself an action, so it stays pointer-enabled and visible
-                    while the other controls appear beside it. */}
+              {/* Status stays visible beside hover actions. Only passive
+                  timestamps yield their space; the project label can truncate. */}
+              <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end gap-1 text-xs">
                 <span
                   className={cn(
                     isWokeStatus
                       ? "pointer-events-auto"
-                      : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0",
+                      : topStatus
+                        ? "pointer-events-none"
+                        : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0",
                     "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
-                    snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
+                    snoozeMenuOpen &&
+                      !topStatus &&
+                      "pointer-events-none absolute right-0 opacity-0",
                   )}
                 >
                   {topStatus ? (
@@ -1603,7 +1589,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     ) : (
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 font-medium",
+                          "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ring-1 ring-inset",
                           topStatus.className,
                         )}
                       >
@@ -1611,6 +1597,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
                         ) : topStatus.icon === "done" ? (
                           <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
+                        ) : topStatus.icon === "attention" ? (
+                          <CircleAlertIcon aria-hidden className="size-4 shrink-0" />
+                        ) : topStatus.icon === "input" ? (
+                          <MessageCircleQuestionIcon aria-hidden className="size-4 shrink-0" />
                         ) : null}
                         {/* The label alone is the live region: a role="status"
                             wrapper around the ticking duration would make

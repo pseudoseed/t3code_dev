@@ -326,6 +326,7 @@ const config: ExpoConfig = {
         icon: variant.assets.androidNotificationIcon,
         color: variant.assets.androidNotificationColor,
         mode: APP_VARIANT === "development" ? "development" : "production",
+        enableBackgroundRemoteNotifications: !isIosPersonalTeamBuild,
       },
     ],
     // appleSignIn stays gated here rather than relying on the entitlements

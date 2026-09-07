@@ -22,7 +22,8 @@ export function makeRelayDeviceRegistrationRequest(input: {
   readonly notificationsEnabled: boolean;
   readonly preferences: Preferences;
 }): RelayDeviceRegistrationRequest {
-  const pushAvailable = supportsAgentAwarenessPush();
+  const pushAvailable =
+    supportsAgentAwarenessPush() && input.preferences.directPushEnabled !== true;
   const liveActivitiesEnabled = pushAvailable && input.preferences.liveActivitiesEnabled !== false;
   return {
     deviceId: input.deviceId,

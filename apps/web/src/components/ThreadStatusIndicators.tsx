@@ -505,7 +505,7 @@ export function ThreadStatusLabel({
         render={
           <span
             aria-label={status.label}
-            className={`inline-flex items-center gap-1 text-[10px] ${status.colorClass}`}
+            className={`inline-flex items-center gap-1 rounded bg-sidebar-accent px-1.5 py-0.5 text-xs font-semibold ring-1 ring-current/25 ring-inset ${status.colorClass}`}
           />
         }
       >

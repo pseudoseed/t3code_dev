@@ -1,0 +1,23 @@
+# iOS agent widget
+
+Add the Agent Activity widget from the iOS widget gallery, then open the app and
+connect to an environment to populate it. Small and rectangular Lock Screen
+widgets show one thread; the medium Home Screen widget shows up to three.
+Requests for input or approval appear first, followed by working threads and
+recent results. Tap the widget to open its highest-priority thread.
+
+The widget saves activity received by the app, including direct server
+connections without a T3 Connect account. It shows an empty-state message before
+the first sync. The displayed update time belongs to the saved activity; opening
+the app and reconnecting refreshes the saved snapshot. iOS controls when the
+widget redraws. With **Apple notifications from my servers** enabled and server
+setup complete, the widget also receives occasional background snapshot updates.
+Input and approval alerts include a fresh snapshot. iOS may delay these updates;
+open the app to refresh when needed.
+
+Live Activities on the Lock Screen and Dynamic Island are a separate feature.
+Enable them through T3 Connect, or under **Apple notifications from my servers**
+after configuring your server. The direct option requires no T3 Connect account.
+Open the app while work is active to create a card. It can then receive updates
+while the app is in the background, and ends when work finishes. Open the app
+again during subsequent work to create a new card.

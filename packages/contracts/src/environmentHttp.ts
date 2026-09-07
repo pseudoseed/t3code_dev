@@ -31,6 +31,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import { DirectPushRegistration, DirectPushStatus } from "./directPush.ts";
 import {
   ClientOrchestrationCommand,
   DispatchResult,
@@ -614,7 +615,32 @@ export class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
     }),
   ) {}
 
+export class EnvironmentDirectPushHttpApi extends HttpApiGroup.make("directPush")
+  .add(
+    HttpApiEndpoint.get("status", "/api/push/status", {
+      headers: OptionalBearerHeaders,
+      success: DirectPushStatus,
+      error: EnvironmentOrchestrationSnapshotErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("register", "/api/push/register", {
+      headers: OptionalBearerHeaders,
+      payload: DirectPushRegistration,
+      success: DirectPushStatus,
+      error: EnvironmentOrchestrationDispatchErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("unregister", "/api/push/unregister", {
+      headers: OptionalBearerHeaders,
+      success: Schema.Struct({ ok: Schema.Boolean }),
+      error: EnvironmentOrchestrationSnapshotErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 export class EnvironmentHttpApi extends HttpApi.make("environment")
+  .add(EnvironmentDirectPushHttpApi)
   .add(EnvironmentMetadataHttpApi)
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentOrchestrationHttpApi)

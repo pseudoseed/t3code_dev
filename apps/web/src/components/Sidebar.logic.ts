@@ -832,8 +832,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.hasPendingApprovals) {
     return {
       label: "Pending Approval",
-      colorClass: "text-amber-600 dark:text-amber-300/90",
-      dotClass: "bg-amber-500 dark:bg-amber-300/90",
+      colorClass: "text-amber-600 dark:text-amber-200",
+      dotClass: "bg-amber-500 dark:bg-amber-300",
       pulse: false,
     };
   }
@@ -841,8 +841,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.hasPendingUserInput) {
     return {
       label: "Awaiting Input",
-      colorClass: "text-indigo-600 dark:text-indigo-300/90",
-      dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+      colorClass: "text-indigo-600 dark:text-indigo-200",
+      dotClass: "bg-indigo-500 dark:bg-indigo-300",
       pulse: false,
     };
   }
@@ -850,8 +850,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.session?.status === "running") {
     return {
       label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-sky-600 dark:text-sky-300",
+      dotClass: "bg-sky-500 dark:bg-sky-300",
       pulse: true,
     };
   }
@@ -859,8 +859,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.session?.status === "starting") {
     return {
       label: "Connecting",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-sky-600 dark:text-sky-300",
+      dotClass: "bg-sky-500 dark:bg-sky-300",
       pulse: true,
     };
   }
@@ -884,12 +884,12 @@ export function resolveThreadStatusPill(input: {
   // The turn can settle while native background work runs on. Subagent and
   // workflow fleets read as plain Working; Monitoring is reserved for watch
   // loops (a parent agent babysitting a PR, tailing checks) with no other
-  // live work. Same recede treatment as Working per inbox-zero.
+  // live work. Both remain legible beside pending requests.
   if (thread.backgroundLiveness === "working") {
     return {
       label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-sky-600 dark:text-sky-300",
+      dotClass: "bg-sky-500 dark:bg-sky-300",
       pulse: true,
     };
   }
@@ -897,8 +897,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.backgroundLiveness === "monitoring") {
     return {
       label: "Monitoring",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-sky-600 dark:text-sky-300",
+      dotClass: "bg-sky-500 dark:bg-sky-300",
       pulse: false,
     };
   }

@@ -50,6 +50,23 @@ their pinned threads keep the default newest-first order below the ones you have
 
 ## Unread threads
 
+On web and desktop, active thread statuses use filled badges. **Working** stays legible when
+another thread is selected. **Input needed**, **Approval needed**, and **Failed** have distinct
+icons and a colored edge on the row so they are easy to find without flashing animations.
+
+To hear new input and approval requests, enable **Settings → General → Agent attention sound**.
+Use **Test sound** to check the volume. **Agent attention notifications** enables system alerts;
+allow notification permission when prompted, then use **Test notification** to check delivery.
+Clicking an alert opens its thread on the correct environment. Both settings can be turned off
+independently and apply only to this device.
+
+These alerts work across connected environments while the desktop app or browser tab is running.
+Desktop browser notifications require HTTPS or localhost and a supported browser. Sounds may
+require a click or keypress in the app after opening it. System notification settings and Focus
+mode can suppress banners. Existing requests are not replayed when opening or reconnecting the
+app, and a request that remains pending does not repeatedly chime. These settings do not configure
+mobile push or delivery after the desktop app or browser tab has closed.
+
 A thread that finished work while you were somewhere else is marked **Done** in place of its
 timestamp. Opening the thread clears the mark.
 

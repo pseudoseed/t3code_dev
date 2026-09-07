@@ -160,6 +160,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
+import { AgentAttentionSettings } from "./AgentAttentionSettings";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -566,6 +567,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
         ? ["Provider update checks"]
         : []),
+      ...(settings.agentAttentionSound !== DEFAULT_UNIFIED_SETTINGS.agentAttentionSound
+        ? ["Agent attention sound"]
+        : []),
+      ...(settings.agentAttentionNotifications !==
+      DEFAULT_UNIFIED_SETTINGS.agentAttentionNotifications
+        ? ["Agent attention notifications"]
+        : []),
       ...(settings.continueThreadsAfterServerUpdate !==
       DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate
         ? ["Continue threads after server updates"]
@@ -635,6 +643,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.panelAnimationDurationMs,
       settings.enableLegacyTokenStreaming,
       settings.enableProviderUpdateChecks,
+      settings.agentAttentionSound,
+      settings.agentAttentionNotifications,
       settings.continueThreadsAfterServerUpdate,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
@@ -713,6 +723,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       return;
     }
     updateSettings({
+      agentAttentionSound: DEFAULT_UNIFIED_SETTINGS.agentAttentionSound,
+      agentAttentionNotifications: DEFAULT_UNIFIED_SETTINGS.agentAttentionNotifications,
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
@@ -2225,6 +2237,7 @@ export function GeneralSettingsPanel() {
         ) : null}
       </SettingsSection>
 
+      <AgentAttentionSettings />
       <SettingsSection id="behavior" title="Behavior">
         <SettingsRow
           {...searchableSetting("time-format")}

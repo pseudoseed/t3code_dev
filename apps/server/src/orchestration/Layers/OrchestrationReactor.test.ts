@@ -13,6 +13,7 @@ import * as ThreadSettlementReactor from "../ThreadSettlementReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
+import { DirectPush } from "../../push/DirectPush.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -29,6 +30,14 @@ describe("OrchestrationReactor", () => {
 
     runtime = ManagedRuntime.make(
       Layer.effect(OrchestrationReactor, makeOrchestrationReactor).pipe(
+        Layer.provide(
+          Layer.mock(DirectPush)({
+            start: () =>
+              Effect.sync(() => {
+                started.push("direct-push");
+              }),
+          }),
+        ),
         Layer.provideMerge(
           Layer.succeed(ProviderRuntimeIngestionService, {
             start: () => {
@@ -97,6 +106,7 @@ describe("OrchestrationReactor", () => {
       "thread-deletion-reactor",
       "thread-settlement-reactor",
       "agent-awareness-relay",
+      "direct-push",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));
