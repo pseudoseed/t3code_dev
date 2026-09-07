@@ -29,6 +29,9 @@ const mocks = vi.hoisted(() => ({
   activeCount: 1,
   failStart: false,
   starts: [] as string[],
+  pushEnvironment: "development" as "development" | "production" | null,
+  releaseType: 3,
+  readReleaseType: vi.fn(),
 }));
 vi.mock("@t3tools/client-runtime/state/runtime", () => ({
   createRuntimeCommand: () => ({
@@ -70,7 +73,12 @@ vi.mock("expo-constants", () => ({
 }));
 vi.mock("expo-application", () => ({
   applicationId: "test.app",
-  getIosPushNotificationServiceEnvironmentAsync: async () => "development",
+  ApplicationReleaseType: { UNKNOWN: 0, SIMULATOR: 1, DEVELOPMENT: 3, APP_STORE: 5 },
+  getIosPushNotificationServiceEnvironmentAsync: async () => mocks.pushEnvironment,
+  getIosApplicationReleaseTypeAsync: async () => {
+    mocks.readReleaseType();
+    return mocks.releaseType;
+  },
 }));
 vi.mock("expo-notifications", () => ({
   getPermissionsAsync: async () => ({ granted: true }),
@@ -109,6 +117,9 @@ beforeEach(() => {
   mocks.tokenListeners.clear();
   mocks.activeCount = 1;
   mocks.failStart = false;
+  mocks.pushEnvironment = "development";
+  mocks.releaseType = 3;
+  mocks.readReleaseType.mockClear();
 });
 
 it("creates one card per environment and registers its ActivityKit token", async () => {
@@ -123,12 +134,38 @@ it("creates one card per environment and registers its ActivityKit token", async
     mocks.requests.find((item) => item.request.action === "register")?.request.registration
       ?.apsEnvironment,
   ).toBe("sandbox");
+  expect(mocks.readReleaseType).not.toHaveBeenCalled();
   expect(
     mocks.requests
       .filter((item) => item.request.action === "register")
       .every((item) => item.request.registration?.activityToken === "ccdd"),
   ).toBe(true);
 });
+
+it("registers Apple-distributed installs without an embedded profile and starts their card", async () => {
+  mocks.pushEnvironment = null;
+  mocks.releaseType = 5;
+  const { syncDirectPush } = await import("./directRegistration");
+  await syncDirectPush(EnvironmentId.make("testflight"), true);
+  const registration = mocks.requests.find((item) => item.request.action === "register");
+  expect(registration?.request.registration?.apsEnvironment).toBe("production");
+  expect(registration?.request.registration?.activityToken).toBe("ccdd");
+  expect(mocks.starts).toEqual(["DirectAgentActivity:testflight"]);
+});
+
+it.each([1, 0, 3])(
+  "does not guess a push environment for non-store release type %s",
+  async (releaseType) => {
+    mocks.pushEnvironment = null;
+    mocks.releaseType = releaseType;
+    const { syncDirectPush } = await import("./directRegistration");
+    await expect(syncDirectPush(EnvironmentId.make("unknown"), true)).rejects.toThrow(
+      releaseType === 1 ? "physical iPhone" : "push provisioning profile",
+    );
+    expect(mocks.starts).toEqual([]);
+    expect(mocks.requests.some((item) => item.request.action === "register")).toBe(false);
+  },
+);
 
 it("ends existing cards and removes server registration when disabled", async () => {
   const { syncDirectPush, disableDirectPush } = await import("./directRegistration");

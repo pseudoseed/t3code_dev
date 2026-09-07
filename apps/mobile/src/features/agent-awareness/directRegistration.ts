@@ -109,9 +109,21 @@ export function syncDirectPush(
     const bundleId = Application.applicationId ?? Constants.expoConfig?.ios?.bundleIdentifier;
     if (bundleId !== status.bundleId)
       throw new Error("The server's APNs bundle ID does not match this app.");
-    const apsEnvironment = await Application.getIosPushNotificationServiceEnvironmentAsync();
-    if (!apsEnvironment)
-      throw new Error("Apple push registration needs a signed iPhone or iPad build.");
+    let apsEnvironment = await Application.getIosPushNotificationServiceEnvironmentAsync();
+    if (!apsEnvironment) {
+      // Expo reads embedded.mobileprovision, which Apple-distributed installs can omit.
+      // Its native release-type API recognizes those device installs as App Store builds.
+      const releaseType = await Application.getIosApplicationReleaseTypeAsync();
+      if (releaseType === Application.ApplicationReleaseType.APP_STORE) {
+        apsEnvironment = "production";
+      } else {
+        throw new Error(
+          releaseType === Application.ApplicationReleaseType.SIMULATOR
+            ? "Apple push registration requires a physical iPhone or iPad."
+            : "Could not determine this build's Apple push environment. Check its push provisioning profile.",
+        );
+      }
+    }
     const permission = await Notifications.getPermissionsAsync();
     if (!devicePushToken) rememberDirectPushToken(await readDevicePushToken());
     const pushToken = devicePushToken;

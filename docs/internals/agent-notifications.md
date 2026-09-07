@@ -54,7 +54,10 @@ registration, persistent device records bound to client sessions, and a drainabl
 event worker. The sender uses Node HTTP/2 and cached ES256 provider tokens, retries
 transport/429/5xx failures twice, and removes invalid device/activity tokens. Initial
 hydration and re-registration reconcile cards without replaying historical alerts.
-The mobile client reads its signed APNs environment through Expo Application.
+The mobile client reads the provisioning profile's APNs environment through Expo
+Application. If that lookup returns null, the native App Store release type
+selects production: Apple-distributed installs can omit the embedded profile.
+Other unknown environments remain errors; app branding does not select routing.
 The sender loads `apns.json` from `ServerConfig.secretsDir` at startup, so each
 desktop host can retain private configuration across Finder launches and restarts.
 The file contains `keyFile`, `keyId`, `teamId`, and `bundleId`; a relative key path

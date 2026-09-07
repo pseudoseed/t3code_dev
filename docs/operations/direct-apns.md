@@ -116,8 +116,9 @@ HTTP/2 over TLS on port 443 to `api.push.apple.com` and
 `api.sandbox.push.apple.com`. The phone registers its tokens using its existing
 authenticated server connection, including connections through tunnels.
 
-The app reads its signed APNs entitlement to select sandbox versus production;
-branding and app variant names are not used to guess the token environment.
+The app reads its provisioning profile to select sandbox versus production. If
+the profile lookup returns no environment, a native App Store release type
+selects production. Branding and app variant names do not select token routing.
 TestFlight uses production APNs. An Xcode development install uses sandbox APNs.
 
 ## Install and verify
