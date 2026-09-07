@@ -334,7 +334,7 @@ describe("durable agent mailbox", () => {
               const shell = yield* snapshots.getShellSnapshot();
               expect(
                 shell.threads.find((thread) => thread.id === recipient)?.mailboxPendingCount,
-              ).toBe(0);
+              ).toBeUndefined();
               expect(
                 shell.threads.find((thread) => thread.id === sender)?.mailboxRevision,
               ).toBeGreaterThan(0);

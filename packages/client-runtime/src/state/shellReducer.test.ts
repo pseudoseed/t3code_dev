@@ -155,6 +155,23 @@ describe("applyShellStreamEvent", () => {
       expect(next.threads).toHaveLength(1);
       expect(next.threads[0]?.title).toBe("Updated Thread");
     });
+
+    it("clears a previous mailbox count when the replacement shell omits zero", () => {
+      const snapshotWithPendingMail: OrchestrationShellSnapshot = {
+        ...baseSnapshot,
+        snapshotSequence: 7,
+        threads: [{ ...stubThread, mailboxPendingCount: 2, mailboxRevision: 7 }],
+      };
+      const next = applyShellStreamEvent(snapshotWithPendingMail, {
+        kind: "thread-upserted",
+        sequence: 8,
+        thread: { ...stubThread, mailboxRevision: 8 },
+      });
+
+      expect(next.threads[0]).not.toHaveProperty("mailboxPendingCount");
+      expect(next.threads[0]?.mailboxRevision).toBe(8);
+      expect(snapshotWithPendingMail.threads[0]?.mailboxPendingCount).toBe(2);
+    });
   });
 
   describe("thread-removed", () => {

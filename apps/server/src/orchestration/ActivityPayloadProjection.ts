@@ -359,6 +359,11 @@ function projectAcpContent(value: unknown): Record<string, unknown> | undefined 
 export function projectActivityPayload(
   activity: OrchestrationThreadActivity,
 ): OrchestrationThreadActivity {
+  if (activity.kind === "mailbox.communication") {
+    // Clients render the summary and turn association. Message bodies and
+    // execution details remain in the event store and the paged mailbox query.
+    return { ...activity, payload: null };
+  }
   const payload = asRecord(activity.payload);
   const data = asRecord(payload?.data);
   if (!payload || !data) {

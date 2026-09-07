@@ -224,6 +224,7 @@ const ProjectionFullThreadDiffContextRowSchema = Schema.Struct({
 });
 
 const REQUIRED_SNAPSHOT_PROJECTORS = [
+  ORCHESTRATION_PROJECTOR_NAMES.mailbox,
   ORCHESTRATION_PROJECTOR_NAMES.projects,
   ORCHESTRATION_PROJECTOR_NAMES.threads,
   ORCHESTRATION_PROJECTOR_NAMES.threadMessages,
@@ -2335,7 +2336,9 @@ pending_approval_requests AS (
                       titleRegeneration: mapTitleRegeneration(row),
                       session: sessionByThread.get(row.threadId) ?? null,
                       latestUserMessageAt: row.latestUserMessageAt,
-                      mailboxPendingCount: row.mailboxPendingCount ?? 0,
+                      ...((row.mailboxPendingCount ?? 0) > 0
+                        ? { mailboxPendingCount: row.mailboxPendingCount }
+                        : {}),
                       mailboxRevision: row.mailboxRevision ?? 0,
                       hasPendingApprovals: row.pendingApprovalCount > 0,
                       hasPendingUserInput: row.pendingUserInputCount > 0,
@@ -2487,7 +2490,9 @@ pending_approval_requests AS (
                 titleRegeneration: mapTitleRegeneration(row),
                 session: sessionByThread.get(row.threadId) ?? null,
                 latestUserMessageAt: row.latestUserMessageAt,
-                mailboxPendingCount: row.mailboxPendingCount ?? 0,
+                ...((row.mailboxPendingCount ?? 0) > 0
+                  ? { mailboxPendingCount: row.mailboxPendingCount }
+                  : {}),
                 mailboxRevision: row.mailboxRevision ?? 0,
                 hasPendingApprovals: row.pendingApprovalCount > 0,
                 hasPendingUserInput: row.pendingUserInputCount > 0,
@@ -2785,7 +2790,9 @@ pending_approval_requests AS (
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
         latestUserMessageAt: threadRow.value.latestUserMessageAt,
-        mailboxPendingCount: threadRow.value.mailboxPendingCount ?? 0,
+        ...((threadRow.value.mailboxPendingCount ?? 0) > 0
+          ? { mailboxPendingCount: threadRow.value.mailboxPendingCount }
+          : {}),
         mailboxRevision: threadRow.value.mailboxRevision ?? 0,
         hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
         hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,

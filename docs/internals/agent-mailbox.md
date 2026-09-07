@@ -22,6 +22,12 @@ queried when needed; shell subscriptions carry pending counts and revision numbe
 turn history pages contain at most 30 entries, with stable cursors. Clients use the existing
 environment RPC connection for local, remote, relay, and tunnel access.
 
+Thread activity transports retain each communication summary and turn association, but omit the
+duplicate mailbox payload. Full message context and execution details remain in the event store
+and paged mailbox history, including turns with no messages. Snapshot consistency waits for the
+mailbox projector alongside the other read-model projectors. Shell rows omit zero pending counts;
+the revision field remains present so clients can discover mailbox support and refresh cleared inboxes.
+
 MCP credentials bind an invocation to its environment, thread, and provider session. A server-issued
 turn key further binds it to the current execution. The engine revalidates that identity when a
 mutation reaches the command queue; checking only before enqueueing would permit a stale-key race.
