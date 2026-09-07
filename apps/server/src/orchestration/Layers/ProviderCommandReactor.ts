@@ -472,6 +472,11 @@ const make = Effect.gen(function* () {
       return;
     }
     const session = thread.session;
+    // A rejected follow-up did not end the agent's existing work. Its runtime
+    // events own liveness; the failure activity below describes this message.
+    if (session?.status === "running" && session.activeTurnId !== null) {
+      return;
+    }
     yield* setThreadSession({
       threadId: input.threadId,
       session: {

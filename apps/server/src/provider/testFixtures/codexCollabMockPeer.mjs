@@ -28,6 +28,12 @@ rl.on("line", (line) => {
     return;
   }
   const { id, method } = message;
+  if (script.recordTurnRequests && method?.startsWith("turn/")) {
+    NodeFS.appendFileSync(
+      `${process.env.T3_CODEX_COLLAB_SCRIPT}.requests`,
+      `${JSON.stringify({ method, params: message.params })}\n`,
+    );
+  }
   if (method === undefined && script.serverRequests?.some((request) => request.id === id)) {
     NodeFS.appendFileSync(
       `${process.env.T3_CODEX_COLLAB_SCRIPT}.responses`,
@@ -107,6 +113,29 @@ rl.on("line", (line) => {
       return;
     }
     write({ id, result: fixture.responses.threadStart });
+    return;
+  }
+  if (method === "turn/steer") {
+    if (script.steerError) {
+      write({ id, error: script.steerError });
+      return;
+    }
+    if (message.params?.expectedTurnId !== activeTurn?.id) {
+      write({ id, error: { code: -32600, message: "no active turn to steer" } });
+      return;
+    }
+    write({ id, result: script.steerResult ?? { turnId: activeTurn.id } });
+    if (script.completeOnSteer) {
+      write({
+        jsonrpc: "2.0",
+        method: "turn/completed",
+        params: {
+          threadId: script.rootThreadId,
+          turn: { ...activeTurn, status: "completed" },
+        },
+      });
+      activeTurn = undefined;
+    }
     return;
   }
   if (method === "turn/start") {

@@ -29,6 +29,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexClient from "effect-codex-app-server/client";
@@ -1185,6 +1186,17 @@ export const makeCodexSessionRuntime = (
     const collabChildLiveTurnsRef = yield* Ref.make(new Map<string, string>());
     const suppressMemoryConsolidationNotification = makeMemoryConsolidationNotificationFilter();
     const closedRef = yield* Ref.make(false);
+    const sendSemaphore = yield* Semaphore.make(1);
+    let supportsSteering = true;
+    let lastTurnConfiguration:
+      | {
+          readonly turnId: TurnId;
+          readonly model: CodexSessionRuntimeSendTurnInput["model"];
+          readonly effort: CodexSessionRuntimeSendTurnInput["effort"];
+          readonly serviceTier: CodexSessionRuntimeSendTurnInput["serviceTier"];
+          readonly interactionMode: CodexSessionRuntimeSendTurnInput["interactionMode"];
+        }
+      | undefined;
 
     // `~` is not shell-expanded when env vars are set via
     // `child_process.spawn`; `expandHomePath` lets a configured
@@ -2344,6 +2356,53 @@ export const makeCodexSessionRuntime = (
             browserToolsAvailable:
               options.browserToolsAvailable ?? hasConfiguredMcpServer(options.appServerArgs),
           });
+          const session = yield* Ref.get(sessionRef);
+          // Steering cannot apply settings. Keep configuration changes on the
+          // existing turn/start path, which lets Codex apply the overrides.
+          if (
+            supportsSteering &&
+            session.activeTurnId !== undefined &&
+            lastTurnConfiguration?.turnId === session.activeTurnId &&
+            lastTurnConfiguration.model === normalizedModel &&
+            lastTurnConfiguration.effort === input.effort &&
+            lastTurnConfiguration.serviceTier === input.serviceTier &&
+            lastTurnConfiguration.interactionMode === input.interactionMode
+          ) {
+            const steered = yield* client
+              .request("turn/steer", {
+                threadId: providerThreadId,
+                expectedTurnId: session.activeTurnId,
+                input: params.input,
+              })
+              .pipe(
+                Effect.catchTag("CodexAppServerRequestError", (error) => {
+                  // Only explicit rejections can safely fall back: a lost or
+                  // malformed acknowledgement may already have delivered input.
+                  if (error.operation === "receive-response") {
+                    if (error.code === -32601) {
+                      supportsSteering = false;
+                      return Effect.succeed(null);
+                    }
+                    if (
+                      error.errorMessage === "no active turn to steer" ||
+                      error.errorMessage.startsWith("expected active turn id ")
+                    ) {
+                      return Effect.succeed(null);
+                    }
+                  }
+                  return Effect.fail(error);
+                }),
+              );
+            if (steered !== null) {
+              // Notifications own liveness: the turn may have completed while
+              // this acknowledgement was in flight. Do not resurrect it.
+              return {
+                threadId: options.threadId,
+                turnId: TurnId.make(steered.turnId),
+                resumeCursor: { threadId: providerThreadId },
+              };
+            }
+          }
           const rawResponse = yield* client.raw.request("turn/start", params);
           const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(
             Effect.mapError((error) =>
@@ -2355,6 +2414,13 @@ export const makeCodexSessionRuntime = (
             ),
           );
           const turnId = TurnId.make(response.turn.id);
+          lastTurnConfiguration = {
+            turnId,
+            model: normalizedModel,
+            effort: input.effort,
+            serviceTier: input.serviceTier,
+            interactionMode: input.interactionMode,
+          };
           yield* updateSession(sessionRef, (session) => ({
             status: "running",
             // Codex accepts follow-ups while the current turn is still
@@ -2371,7 +2437,7 @@ export const makeCodexSessionRuntime = (
               ? { resumeCursor: { threadId: resumedProviderThreadId } }
               : {}),
           } satisfies ProviderTurnStartResult;
-        }),
+        }).pipe(sendSemaphore.withPermit),
       interruptTurn: (turnId) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;
