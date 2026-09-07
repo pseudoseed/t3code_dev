@@ -163,6 +163,7 @@ it.effect("continues marked sessions after activation with provider-specific inp
     const fallbackProviderInstanceId = ProviderInstanceId.make("claudeAgent");
     const continuationSent = yield* Deferred.make<void>();
     const continuationCleared = yield* Deferred.make<void>();
+    const communicationRecorded = yield* Deferred.make<void>();
     const sends: ProviderSendTurnInput[] = [];
     const dispatched: OrchestrationCommand[] = [];
     const upserts: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
@@ -239,12 +240,24 @@ it.effect("continues marked sessions after activation with provider-specific inp
         listBindings: () => Effect.die("unused"),
       },
       dispatch: (command) =>
-        Effect.sync(() => dispatched.push(command)).pipe(
-          Effect.as({ sequence: dispatched.length }),
-        ),
+        Effect.gen(function* () {
+          dispatched.push(command);
+          if (
+            dispatched.filter(
+              (entry) =>
+                entry.type === "thread.mailbox" &&
+                entry.operation.kind === "finish" &&
+                entry.operation.state === "submitted",
+            ).length === 2
+          ) {
+            yield* Deferred.succeed(communicationRecorded, undefined);
+          }
+          return { sequence: dispatched.length };
+        }),
     });
     yield* Deferred.await(continuationSent);
     yield* Deferred.await(continuationCleared);
+    yield* Deferred.await(communicationRecorded);
 
     assert.deepStrictEqual(
       sends.toSorted((left, right) => String(left.threadId).localeCompare(String(right.threadId))),
@@ -257,16 +270,35 @@ it.effect("continues marked sessions after activation with provider-specific inp
         },
       ],
     );
+    const preparations = dispatched.filter(
+      (command) => command.type === "thread.mailbox" && command.operation.kind === "prepare",
+    );
+    assert.strictEqual(preparations.length, 2);
+    for (const command of preparations) {
+      if (command.type === "thread.mailbox" && command.operation.kind === "prepare") {
+        assert.strictEqual(command.operation.includeIncoming, false);
+        const executionId = command.operation.executionId;
+        const finish = dispatched.find(
+          (entry) =>
+            entry.type === "thread.mailbox" &&
+            entry.operation.kind === "finish" &&
+            entry.operation.executionId === executionId,
+        );
+        assert.isDefined(finish);
+      }
+    }
     assert.deepStrictEqual(
-      dispatched.map((command) =>
-        command.type === "thread.session.set"
-          ? {
-              threadId: command.threadId,
-              status: command.session.status,
-              activeTurnId: command.session.activeTurnId,
-            }
-          : null,
-      ),
+      dispatched
+        .filter((command) => command.type === "thread.session.set")
+        .map((command) =>
+          command.type === "thread.session.set"
+            ? {
+                threadId: command.threadId,
+                status: command.session.status,
+                activeTurnId: command.session.activeTurnId,
+              }
+            : null,
+        ),
       [
         {
           threadId: codex.id,

@@ -2482,19 +2482,29 @@ export function makeOpenCodeAdapter(
               });
               const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
               if (mcpSession && !server.external) {
-                yield* runOpenCodeSdk("mcp.add", () =>
-                  client.mcp.add({
-                    name: "t3-code",
-                    config: {
-                      type: "remote",
-                      url: mcpSession.endpoint,
-                      headers: {
-                        Authorization: mcpSession.authorizationHeader,
+                const added = yield* runOpenCodeSdk("mcp.add", (signal) =>
+                  client.mcp.add(
+                    {
+                      name: "t3-code",
+                      config: {
+                        type: "remote",
+                        url: mcpSession.endpoint,
+                        headers: {
+                          Authorization: mcpSession.authorizationHeader,
+                        },
+                        oauth: false,
                       },
-                      oauth: false,
                     },
-                  }),
+                    { signal },
+                  ),
                 );
+                const status = added.data?.["t3-code"];
+                if (status?.status !== "connected") {
+                  return yield* new OpenCodeRuntimeError({
+                    operation: "mcp.add",
+                    detail: `OpenCode could not connect its thread tools (${status?.status ?? "missing status"}). Check the T3 MCP endpoint and restart the session.`,
+                  });
+                }
               }
               // Resume: re-adopt the session named by the durable cursor —
               // OpenCode scopes history by session id. The probe recovers only
@@ -3402,6 +3412,10 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        // OpenCode shares MCP clients across every session in a directory and
+        // does not attach the invoking session identity to tool calls. Only an
+        // owned, per-thread server can hold this thread's MCP credential.
+        agentMcp: !openCodeSettings.serverUrl,
       },
       startSession,
       sendTurn,

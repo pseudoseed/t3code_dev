@@ -156,6 +156,37 @@ describe("projectActivityPayload", () => {
     );
   }
 
+  it("keeps every mailbox turn visible without duplicating its durable context on the wire", () => {
+    const activities: OrchestrationThreadActivity[] = [0, 1].map((count) => ({
+      ...makeActivity(`mailbox-${count}`, "", {}),
+      kind: "mailbox.communication",
+      tone: "info",
+      summary: `Turn communication · ${count} incoming · completed`,
+      payload: {
+        mailbox: true,
+        sourceThreadId: "sender",
+        executionId: `execution-${count}`,
+        incoming: count === 0 ? [] : ["message"],
+      },
+    }));
+    const original = JSON.stringify(activities);
+    const projected = projectThreadDetailSnapshot({
+      snapshotSequence: 7,
+      thread: makeThread(activities),
+    }).thread.activities;
+
+    expect(projected).toHaveLength(2);
+    expect(projected.map(({ summary, turnId }) => ({ summary, turnId }))).toEqual(
+      activities.map(({ summary, turnId }) => ({ summary, turnId })),
+    );
+    expect(deriveWorkLogEntries(projected)).toHaveLength(2);
+    expect(deriveWorkLogEntries(projected)).toEqual(deriveWorkLogEntries(activities));
+    expect(comparableThreadFeed(projected)).toEqual(comparableThreadFeed(activities));
+    expect(projected.map(({ payload }) => payload)).toEqual([null, null]);
+    expect(JSON.stringify(projected).length).toBeLessThan(original.length);
+    expect(JSON.stringify(activities)).toBe(original);
+  });
+
   it("drops unread bulk while retaining command, file, tool, and summary inputs", () => {
     const projected = projectActivityPayload(fixtures[0]!);
     expect(projected.payload).toEqual({

@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as McpProviderSession from "./McpProviderSession.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 
 const environmentId = EnvironmentId.make("environment-1");
@@ -30,6 +31,23 @@ const makeRegistry = (now: () => number, httpServer = fakeHttpServer) =>
       Effect.provideService(ServerEnvironment.ServerEnvironment, fakeEnvironment),
       Effect.provide(NodeServices.layer),
     );
+
+it.effect("a mailbox-only credential authenticates but cannot authorize preview tools", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry(() => 1_000);
+    const issued = yield* registry.issue({
+      threadId: ThreadId.make("mailbox-only"),
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      previewEnabled: false,
+    });
+    const scope = yield* registry.resolve(
+      issued.config.authorizationHeader.replace(/^Bearer\s+/, ""),
+    );
+    expect(scope?.capabilities.has("mailbox")).toBe(true);
+    expect(scope?.capabilities.has("preview")).toBe(false);
+    expect(issued.config.previewEnabled).toBe(false);
+  }),
+);
 
 it.effect("stores only a token hash, resolves the bearer token, and revokes by thread", () =>
   Effect.gen(function* () {
@@ -126,4 +144,76 @@ it.effect("does not keep credentials of other threads alive", () =>
 
     expect(yield* registry.resolve(token)).toBeUndefined();
   }),
+);
+
+it.effect(
+  "renews a still-owned idle credential after unrelated traffic prunes expired credentials",
+  () =>
+    Effect.gen(function* () {
+      let timestamp = 1_000;
+      const registry = yield* makeRegistry(() => timestamp);
+      const threadId = ThreadId.make("idle-provider-thread");
+      const issued = yield* registry.issue({
+        threadId,
+        providerInstanceId: ProviderInstanceId.make("codex"),
+      });
+      yield* Effect.acquireRelease(
+        Effect.sync(() => McpProviderSession.setMcpProviderSession(issued.config)),
+        () => Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId)),
+      );
+      const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+      const abandoned = yield* registry.issue({
+        threadId: ThreadId.make("abandoned-provider-thread"),
+        providerInstanceId: ProviderInstanceId.make("claude"),
+      });
+      const abandonedToken = abandoned.config.authorizationHeader.replace(/^Bearer\s+/, "");
+
+      timestamp += 101;
+      const otherThreadId = ThreadId.make("new-provider-thread");
+      const other = yield* registry.issue({
+        threadId: otherThreadId,
+        providerInstanceId: ProviderInstanceId.make("codex"),
+      });
+      expect(
+        yield* registry.resolve(other.config.authorizationHeader.replace(/^Bearer\s+/, "")),
+      ).toBeDefined();
+      yield* registry.touch(otherThreadId);
+      expect(yield* registry.resolve(token)).toBeUndefined();
+      expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
+
+      yield* registry.touch(threadId);
+      const renewed = yield* registry.resolve(token);
+      expect(renewed?.providerSessionId).toBe(issued.config.providerSessionId);
+      expect(renewed?.capabilities.has("mailbox")).toBe(true);
+      yield* registry.touch(ThreadId.make("abandoned-provider-thread"));
+      expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
+    }),
+);
+
+it.effect(
+  "never renews a revoked credential even while its provider still owns the cached config",
+  () =>
+    Effect.gen(function* () {
+      const registry = yield* makeRegistry(() => 1_000);
+      for (const revoke of ["thread", "session", "all"] as const) {
+        const threadId = ThreadId.make(`revoked-idle-${revoke}`);
+        const issued = yield* registry.issue({
+          threadId,
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        });
+        yield* Effect.acquireRelease(
+          Effect.sync(() => McpProviderSession.setMcpProviderSession(issued.config)),
+          () => Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId)),
+        );
+        if (revoke === "thread") yield* registry.revokeThread(threadId);
+        else if (revoke === "session")
+          yield* registry.revokeProviderSession(issued.config.providerSessionId);
+        else yield* registry.revokeAll;
+
+        yield* registry.touch(threadId);
+        expect(
+          yield* registry.resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, "")),
+        ).toBeUndefined();
+      }
+    }),
 );

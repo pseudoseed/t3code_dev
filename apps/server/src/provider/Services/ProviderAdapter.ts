@@ -28,6 +28,8 @@ import type * as Stream from "effect/Stream";
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
 export interface ProviderAdapterCapabilities {
+  /** False when the adapter cannot safely attach thread-scoped MCP tools. */
+  readonly agentMcp?: boolean;
   /**
    * Declares whether changing the model on an existing session is supported.
    */

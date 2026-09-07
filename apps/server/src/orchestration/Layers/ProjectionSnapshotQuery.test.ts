@@ -480,6 +480,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             updatedAt: "2026-02-24T00:00:07.000Z",
           },
           latestUserMessageAt: "2026-02-24T00:00:04.000Z",
+          mailboxRevision: 0,
           hasPendingApprovals: true,
           hasPendingUserInput: false,
           hasActionableProposedPlan: false,
@@ -684,6 +685,50 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         [ThreadId.make("thread-archived")],
       );
       assert.equal(archivedShellSnapshot.threads[0]?.archivedAt, "2026-04-06T00:00:06.000Z");
+    }),
+  );
+
+  it.effect("omits zero mailbox counts while retaining support and refresh revisions", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id, project_id, title, model_selection_json, runtime_mode,
+          interaction_mode, created_at, updated_at, archived_at
+        ) VALUES
+          ('mailbox-active', 'project-mailbox', 'Active mailbox',
+            '{"provider":"codex","model":"gpt-5-codex"}', 'full-access', 'default',
+            '2026-09-07T00:00:00.000Z', '2026-09-07T00:00:00.000Z', NULL),
+          ('mailbox-archived', 'project-mailbox', 'Archived mailbox',
+            '{"provider":"codex","model":"gpt-5-codex"}', 'full-access', 'default',
+            '2026-09-07T00:00:00.000Z', '2026-09-07T00:00:00.000Z',
+            '2026-09-07T00:00:01.000Z')
+      `;
+      const readShells = Effect.gen(function* () {
+        const active = (yield* snapshotQuery.getShellSnapshot()).threads[0]!;
+        const archived = (yield* snapshotQuery.getArchivedShellSnapshot()).threads[0]!;
+        const single = yield* snapshotQuery.getThreadShellById(ThreadId.make("mailbox-active"));
+        assert.equal(single._tag, "Some");
+        if (single._tag !== "Some") return yield* Effect.die("Active thread shell is missing");
+        return [active, archived, single.value];
+      });
+
+      for (const shell of yield* readShells) {
+        assert.notProperty(shell, "mailboxPendingCount");
+        assert.equal(shell.mailboxRevision, 0);
+      }
+      yield* sql`UPDATE projection_threads SET mailbox_pending_count = 2, mailbox_revision = 7`;
+      for (const shell of yield* readShells) {
+        assert.equal(shell.mailboxPendingCount, 2);
+        assert.equal(shell.mailboxRevision, 7);
+      }
+      yield* sql`UPDATE projection_threads SET mailbox_pending_count = 0, mailbox_revision = 8`;
+      for (const shell of yield* readShells) {
+        assert.notProperty(shell, "mailboxPendingCount");
+        assert.equal(shell.mailboxRevision, 8);
+      }
     }),
   );
 

@@ -224,6 +224,7 @@ const ProjectionFullThreadDiffContextRowSchema = Schema.Struct({
 });
 
 const REQUIRED_SNAPSHOT_PROJECTORS = [
+  ORCHESTRATION_PROJECTOR_NAMES.mailbox,
   ORCHESTRATION_PROJECTOR_NAMES.projects,
   ORCHESTRATION_PROJECTOR_NAMES.threads,
   ORCHESTRATION_PROJECTOR_NAMES.threadMessages,
@@ -489,6 +490,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
+          mailbox_pending_count AS "mailboxPendingCount",
+          mailbox_revision AS "mailboxRevision",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -529,6 +532,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
+          mailbox_pending_count AS "mailboxPendingCount",
+          mailbox_revision AS "mailboxRevision",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -571,6 +576,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
+          mailbox_pending_count AS "mailboxPendingCount",
+          mailbox_revision AS "mailboxRevision",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -1035,6 +1042,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
+          mailbox_pending_count AS "mailboxPendingCount",
+          mailbox_revision AS "mailboxRevision",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -2327,6 +2336,10 @@ pending_approval_requests AS (
                       titleRegeneration: mapTitleRegeneration(row),
                       session: sessionByThread.get(row.threadId) ?? null,
                       latestUserMessageAt: row.latestUserMessageAt,
+                      ...((row.mailboxPendingCount ?? 0) > 0
+                        ? { mailboxPendingCount: row.mailboxPendingCount }
+                        : {}),
+                      mailboxRevision: row.mailboxRevision ?? 0,
                       hasPendingApprovals: row.pendingApprovalCount > 0,
                       hasPendingUserInput: row.pendingUserInputCount > 0,
                       hasActionableProposedPlan: row.hasActionableProposedPlan > 0,
@@ -2477,6 +2490,10 @@ pending_approval_requests AS (
                 titleRegeneration: mapTitleRegeneration(row),
                 session: sessionByThread.get(row.threadId) ?? null,
                 latestUserMessageAt: row.latestUserMessageAt,
+                ...((row.mailboxPendingCount ?? 0) > 0
+                  ? { mailboxPendingCount: row.mailboxPendingCount }
+                  : {}),
+                mailboxRevision: row.mailboxRevision ?? 0,
                 hasPendingApprovals: row.pendingApprovalCount > 0,
                 hasPendingUserInput: row.pendingUserInputCount > 0,
                 hasActionableProposedPlan: row.hasActionableProposedPlan > 0,
@@ -2773,6 +2790,10 @@ pending_approval_requests AS (
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
         latestUserMessageAt: threadRow.value.latestUserMessageAt,
+        ...((threadRow.value.mailboxPendingCount ?? 0) > 0
+          ? { mailboxPendingCount: threadRow.value.mailboxPendingCount }
+          : {}),
+        mailboxRevision: threadRow.value.mailboxRevision ?? 0,
         hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
         hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,
         hasActionableProposedPlan: threadRow.value.hasActionableProposedPlan > 0,

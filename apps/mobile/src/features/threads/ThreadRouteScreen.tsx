@@ -1,3 +1,4 @@
+import { AgentMailboxSheet } from "./AgentMailbox";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import {
   StackActions,
@@ -206,6 +207,9 @@ function ThreadRouteContent(
   const { selectedThread, selectedThreadProject, selectedEnvironmentConnection } =
     useThreadSelection();
   useRecordThreadView(selectedThread);
+  const [mailboxOpen, setMailboxOpen] = useState(false);
+  const openMailbox = useCallback(() => setMailboxOpen(true), []);
+  const closeMailbox = useCallback(() => setMailboxOpen(false), []);
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
   // "Load earlier turns" header state for windowed (paginated) thread loads.
@@ -824,6 +828,24 @@ function ThreadRouteContent(
   };
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(threadGitControlProps);
   const compactRightHeaderItems = useThreadGitRightHeaderItems(threadGitControlProps);
+  const mailboxSupported = selectedThread?.mailboxRevision !== undefined;
+  const mailboxPendingCount = selectedThread?.mailboxPendingCount ?? 0;
+  const mailboxHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      !mailboxSupported
+        ? []
+        : [
+            withNativeGlassHeaderItem({
+              type: "button",
+              identifier: "thread-mailbox",
+              label: "Mailbox",
+              accessibilityLabel: `Agent mailbox, ${mailboxPendingCount} pending`,
+              icon: { name: "envelope", type: "sfSymbol" },
+              onPress: openMailbox,
+            }),
+          ],
+    [mailboxSupported, mailboxPendingCount, openMailbox],
+  );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       {
@@ -869,6 +891,12 @@ function ThreadRouteContent(
     if (Platform.OS !== "android") return [];
 
     const actions: AndroidHeaderAction[] = [];
+    if (mailboxSupported)
+      actions.push({
+        accessibilityLabel: `Agent mailbox, ${mailboxPendingCount} pending`,
+        icon: "envelope",
+        onPress: openMailbox,
+      });
     if (props.onReturnToThread) {
       actions.push({
         accessibilityLabel: "Return to chat",
@@ -904,6 +932,9 @@ function ThreadRouteContent(
     }
     return actions;
   }, [
+    mailboxSupported,
+    mailboxPendingCount,
+    openMailbox,
     fileInspector.supported,
     handleOpenFilesInspector,
     handleOpenTerminal,
@@ -1005,6 +1036,17 @@ function ThreadRouteContent(
 
   return (
     <>
+      {selectedThread.mailboxRevision !== undefined ? (
+        <AgentMailboxSheet
+          key={`${selectedThread.environmentId}:${selectedThread.id}`}
+          environmentId={selectedThread.environmentId}
+          threadId={selectedThread.id}
+          pendingCount={selectedThread.mailboxPendingCount ?? 0}
+          revision={selectedThread.mailboxRevision}
+          open={mailboxOpen}
+          close={closeMailbox}
+        />
+      ) : null}
       {activeInspectorRenderer ? <InspectorPaneRoleActivation /> : null}
       <NativeStackScreenOptions
         options={{
@@ -1036,7 +1078,10 @@ function ThreadRouteContent(
           // reserved for future breadcrumbs/status).
           unstable_headerRightItems:
             Platform.OS === "ios"
-              ? () => (layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems)
+              ? () => [
+                  ...(layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems),
+                  ...mailboxHeaderItems,
+                ]
               : undefined,
           unstable_headerSubtitle: usesNativeHeaderGlass ? headerSubtitle : undefined,
         }}

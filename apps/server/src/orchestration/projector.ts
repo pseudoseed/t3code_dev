@@ -229,6 +229,8 @@ export function projectEvent(
   };
 
   switch (event.type) {
+    case "thread.mailbox-updated":
+      return Effect.succeed(nextBase);
     case "project.created":
       return decodeForEvent(ProjectCreatedPayload, event.payload, event.type, "payload").pipe(
         Effect.map((payload) => {

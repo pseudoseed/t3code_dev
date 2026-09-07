@@ -14,11 +14,17 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { beforeEach } from "vite-plus/test";
-import type { PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2";
+import { afterEach, beforeEach } from "vite-plus/test";
+import type {
+  McpRemoteConfig,
+  McpStatus,
+  PermissionRequest,
+  QuestionRequest,
+} from "@opencode-ai/sdk/v2";
 
 import {
   ApprovalRequestId,
+  EnvironmentId,
   OpenCodeSettings,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -27,6 +33,7 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import type { OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
@@ -59,6 +66,9 @@ type MessageEntry = {
 
 const runtimeMock = {
   state: {
+    mcpAddCalls: [] as Array<{ baseUrl: string; name: string; config: McpRemoteConfig }>,
+    mcpStatus: { status: "connected" } as McpStatus | undefined,
+    mcpAddError: null as Error | null,
     startCalls: [] as string[],
     sessionCreateUrls: [] as string[],
     sessionCreateInputs: [] as Array<Record<string, unknown>>,
@@ -115,6 +125,9 @@ const runtimeMock = {
     forkCalls: [] as Array<{ sessionID: string; directory?: string }>,
   },
   reset() {
+    this.state.mcpAddCalls.length = 0;
+    this.state.mcpStatus = { status: "connected" };
+    this.state.mcpAddError = null;
     this.state.startCalls.length = 0;
     this.state.sessionCreateUrls.length = 0;
     this.state.sessionCreateInputs.length = 0;
@@ -188,7 +201,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
     }),
   connectToOpenCodeServer: ({ serverUrl, serverPassword }) =>
     Effect.gen(function* () {
-      const url = serverUrl ?? "http://127.0.0.1:4301";
+      const url = serverUrl || "http://127.0.0.1:4301";
       // Always register a finalizer so the closeCalls/closeError probes fire;
       // production attaches none for external servers.
       yield* Effect.addFinalizer(() =>
@@ -210,6 +223,15 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
   runOpenCodeCommand: () => Effect.succeed({ stdout: "", stderr: "", code: 0 }),
   createOpenCodeSdkClient: ({ baseUrl, serverPassword }) =>
     ({
+      mcp: {
+        add: async ({ name, config }: { name: string; config: McpRemoteConfig }) => {
+          runtimeMock.state.mcpAddCalls.push({ baseUrl, name, config });
+          if (runtimeMock.state.mcpAddError) throw runtimeMock.state.mcpAddError;
+          return {
+            data: runtimeMock.state.mcpStatus ? { [name]: runtimeMock.state.mcpStatus } : {},
+          };
+        },
+      },
       session: {
         create: async (input: Record<string, unknown>) => {
           runtimeMock.state.sessionCreateUrls.push(baseUrl);
@@ -451,6 +473,10 @@ const openCodeAdapterTestSettings = Schema.decodeSync(OpenCodeSettings)({
   serverPassword: "secret-password",
 });
 
+const openCodeLocalAdapterTestSettings = Schema.decodeSync(OpenCodeSettings)({
+  binaryPath: "fake-opencode",
+});
+
 const OpenCodeAdapterTestLayer = Layer.effect(
   OpenCodeAdapter,
   makeOpenCodeAdapter(openCodeAdapterTestSettings),
@@ -474,7 +500,23 @@ const OpenCodeAdapterTestLayer = Layer.effect(
 
 beforeEach(() => {
   runtimeMock.reset();
+  McpProviderSession.clearAllMcpProviderSessions();
 });
+afterEach(() => McpProviderSession.clearAllMcpProviderSessions());
+
+const attachThreadMcp = (threadId: ThreadId) => {
+  const config = {
+    previewEnabled: false,
+    threadId,
+    environmentId: EnvironmentId.make("mailbox-adapter-test"),
+    providerInstanceId: ProviderInstanceId.make("opencode"),
+    providerSessionId: `session-${threadId}`,
+    endpoint: "http://127.0.0.1:15560/mcp",
+    authorizationHeader: `Bearer credential-${threadId}`,
+  };
+  McpProviderSession.setMcpProviderSession(config);
+  return config;
+};
 
 const advanceTestClock = (ms: number) =>
   TestClock.adjust(`${ms} millis`).pipe(Effect.andThen(Effect.yieldNow));
@@ -511,6 +553,130 @@ const questionRequest = (id: string, sessionID: string): QuestionRequest => ({
 });
 
 it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
+  it.effect(
+    "keeps shared external OpenCode chat working without exposing either thread's MCP credential",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        NodeAssert.equal(adapter.capabilities.agentMcp, false);
+        for (const suffix of ["a", "b"]) {
+          const threadId = asThreadId(`external-mailbox-${suffix}`);
+          attachThreadMcp(threadId);
+          runtimeMock.state.createdSessionIds.push(`ses_external_${suffix}`);
+          yield* adapter.startSession({
+            provider: ProviderDriverKind.make("opencode"),
+            threadId,
+            cwd: "/tmp/shared-project",
+            runtimeMode: "full-access",
+          });
+          yield* adapter.sendTurn({
+            threadId,
+            input: `Ordinary chat ${suffix}`,
+            modelSelection: createModelSelection(
+              ProviderInstanceId.make("opencode"),
+              "openai/gpt-4.1",
+            ),
+          });
+        }
+        NodeAssert.deepEqual(runtimeMock.state.mcpAddCalls, []);
+        NodeAssert.deepEqual(
+          runtimeMock.state.promptCalls.map((input) => (input as { sessionID: string }).sessionID),
+          ["ses_external_a", "ses_external_b"],
+        );
+        NodeAssert.equal((yield* adapter.listSessions()).length, 2);
+      }),
+  );
+
+  it.effect(
+    "attaches mailbox-only credentials before starting a locally managed OpenCode session",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* makeOpenCodeAdapter(openCodeLocalAdapterTestSettings);
+        const threadId = asThreadId("local-mailbox");
+        const mcp = attachThreadMcp(threadId);
+        NodeAssert.equal(adapter.capabilities.agentMcp, true);
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({
+          threadId,
+          input: "Read the mailbox",
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("opencode"),
+            "openai/gpt-4.1",
+          ),
+        });
+        NodeAssert.deepEqual(runtimeMock.state.mcpAddCalls, [
+          {
+            baseUrl: "http://127.0.0.1:4301",
+            name: "t3-code",
+            config: {
+              type: "remote",
+              url: mcp.endpoint,
+              headers: { Authorization: mcp.authorizationHeader },
+              oauth: false,
+            },
+          },
+        ]);
+        NodeAssert.equal(runtimeMock.state.promptCalls.length, 1);
+      }).pipe(Effect.scoped),
+  );
+
+  for (const status of [
+    { status: "failed", error: "unreachable" },
+    { status: "needs_auth" },
+    { status: "disabled" },
+    undefined,
+  ] as const) {
+    it.effect(
+      `rejects local startup when MCP registration returns ${status?.status ?? "no status"}`,
+      () =>
+        Effect.gen(function* () {
+          const adapter = yield* makeOpenCodeAdapter(openCodeLocalAdapterTestSettings);
+          const threadId = asThreadId(`local-mailbox-${status?.status ?? "missing"}`);
+          attachThreadMcp(threadId);
+          runtimeMock.state.mcpStatus = status;
+          const result = yield* adapter
+            .startSession({
+              provider: ProviderDriverKind.make("opencode"),
+              threadId,
+              runtimeMode: "full-access",
+            })
+            .pipe(Effect.result);
+          NodeAssert.equal(result._tag, "Failure");
+          NodeAssert.equal(result.failure._tag, "ProviderAdapterProcessError");
+          NodeAssert.match(result.failure.detail, /OpenCode could not connect its thread tools/);
+          NodeAssert.deepEqual(runtimeMock.state.sessionCreateInputs, []);
+          NodeAssert.deepEqual(runtimeMock.state.promptCalls, []);
+          NodeAssert.deepEqual(runtimeMock.state.closeCalls, ["http://127.0.0.1:4301"]);
+          NodeAssert.equal(yield* adapter.hasSession(threadId), false);
+        }).pipe(Effect.scoped),
+    );
+  }
+
+  it.effect("propagates an MCP transport failure and closes the owned OpenCode server", () =>
+    Effect.gen(function* () {
+      const adapter = yield* makeOpenCodeAdapter(openCodeLocalAdapterTestSettings);
+      const threadId = asThreadId("local-mailbox-transport-failure");
+      attachThreadMcp(threadId);
+      runtimeMock.state.mcpAddError = new Error("connection refused");
+      const result = yield* adapter
+        .startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.result);
+      NodeAssert.equal(result._tag, "Failure");
+      NodeAssert.equal(result.failure._tag, "ProviderAdapterProcessError");
+      NodeAssert.equal(result.failure.detail, "connection refused");
+      NodeAssert.deepEqual(runtimeMock.state.sessionCreateInputs, []);
+      NodeAssert.deepEqual(runtimeMock.state.closeCalls, ["http://127.0.0.1:4301"]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("reuses a configured OpenCode server URL instead of spawning a local server", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;

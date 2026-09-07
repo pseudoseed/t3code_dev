@@ -1,6 +1,7 @@
 import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 
 export interface McpProviderSessionConfig {
+  readonly previewEnabled?: boolean;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly providerSessionId: string;

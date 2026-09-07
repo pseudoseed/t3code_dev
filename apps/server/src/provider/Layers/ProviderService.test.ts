@@ -73,6 +73,7 @@ import * as ServerConfig from "../../config.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
+import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 
 const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
 const serverConfigTestLayer = ServerConfig.layerTest(process.cwd(), process.cwd()).pipe(
@@ -2867,16 +2868,30 @@ boundedListing.layer("ProviderServiceLive session listing", (it) => {
   );
 });
 
-describe("agent browser access", () => {
-  const revokedThreads: Array<ThreadId> = [];
-
-  const startSessionWith = (enableAgentBrowserAccess: boolean, threadId: ThreadId) =>
+describe("agent MCP capabilities", () => {
+  const startSessionWith = (
+    enableAgentBrowserAccess: boolean,
+    threadId: ThreadId,
+    agentMcp?: boolean,
+  ) =>
     Effect.gen(function* () {
-      const issued: Array<ThreadId> = [];
+      const issued: Array<{
+        threadId: ThreadId;
+        providerInstanceId: ProviderInstanceId;
+        previewEnabled?: boolean;
+      }> = [];
+      const revoked: ThreadId[] = [];
       const codex = makeFakeCodexAdapter();
+      const adapter = {
+        ...codex.adapter,
+        capabilities: {
+          ...codex.adapter.capabilities,
+          ...(agentMcp !== undefined ? { agentMcp } : {}),
+        },
+      };
       const providerAdapterLayer = Layer.succeed(
         ProviderAdapterRegistry.ProviderAdapterRegistry,
-        makeAdapterRegistryMock({ [CODEX_DRIVER]: codex.adapter }),
+        makeAdapterRegistryMock({ [CODEX_DRIVER]: adapter }),
       );
       const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
         Layer.provide(SqlitePersistenceMemory),
@@ -2887,10 +2902,13 @@ describe("agent browser access", () => {
       const providerLayer = makeProviderServiceLive({
         issueMcpCredential: (request) =>
           Effect.sync(() => {
-            issued.push(request.threadId);
+            issued.push(request);
             return undefined;
           }),
-        revokeMcpCredential: (revoked) => Effect.sync(() => void revokedThreads.push(revoked)),
+        revokeMcpCredential: (threadId) =>
+          Effect.sync(() => {
+            revoked.push(threadId);
+          }),
       }).pipe(
         Layer.provide(providerAdapterLayer),
         Layer.provide(directoryLayer),
@@ -2905,51 +2923,76 @@ describe("agent browser access", () => {
         ),
       );
 
-      yield* Effect.gen(function* () {
+      const turns = yield* Effect.gen(function* () {
         const provider = yield* ProviderService.ProviderService;
-        return yield* provider.startSession(threadId, {
+        const seedOldCredential = () =>
+          McpProviderSession.setMcpProviderSession({
+            threadId,
+            providerInstanceId: codexInstanceId,
+            environmentId: EnvironmentId.make("test-environment"),
+            providerSessionId: `old-${threadId}`,
+            endpoint: "http://127.0.0.1:15560/mcp",
+            authorizationHeader: `Bearer stale-${threadId}`,
+          });
+        if (agentMcp === false) seedOldCredential();
+        yield* provider.startSession(threadId, {
           provider: CODEX_DRIVER,
           providerInstanceId: codexInstanceId,
           threadId,
           runtimeMode: "full-access",
         });
+        if (agentMcp !== false) return [];
+        assert.equal(McpProviderSession.readMcpProviderSession(threadId), undefined);
+        const input = { threadId, input: "ordinary user chat" };
+        const first = yield* provider.sendTurn(input);
+        // Lose the in-memory session while preserving its durable binding;
+        // the next send must recover chat without restoring its MCP credential.
+        yield* adapter.stopAll();
+        seedOldCredential();
+        const recovered = yield* provider.sendTurn(input);
+        assert.equal(McpProviderSession.readMcpProviderSession(threadId), undefined);
+        return [first.turnId, recovered.turnId];
       }).pipe(Effect.provide(providerLayer));
 
-      return issued;
+      return { issued, revoked, turns, starts: codex.startSession.mock.calls.length };
     });
 
-  // Credential issuance is the observable that matters: it is the only place a
-  // credential is minted, and `/mcp` accepts nothing else, so withholding it is
-  // what actually denies every provider and external MCP client.
-  it.effect("requests no MCP credential when agent browser access is off", () =>
-    Effect.gen(function* () {
-      const issued = yield* startSessionWith(false, asThreadId("thread-browser-off"));
-
-      assert.deepEqual(issued, []);
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-
-  it.effect("revokes an already-issued credential when access is off", () =>
-    Effect.gen(function* () {
-      const threadId = asThreadId("thread-browser-revoke");
-      revokedThreads.length = 0;
-
-      yield* startSessionWith(false, threadId);
-
-      // Clearing the in-memory map is not enough: a token issued before the
-      // toggle flipped stays valid against `/mcp` for its whole liveness
-      // window, and later turns refresh it.
-      assert.deepEqual(revokedThreads, [threadId]);
-    }).pipe(Effect.provide(NodeServices.layer)),
+  it.effect(
+    "attaches mailbox tools with preview capability disabled when browser access is off",
+    () =>
+      Effect.gen(function* () {
+        const threadId = asThreadId("thread-browser-off");
+        const { issued } = yield* startSessionWith(false, threadId);
+        assert.deepEqual(issued, [
+          { threadId, providerInstanceId: codexInstanceId, previewEnabled: false },
+        ]);
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.effect("requests an MCP credential when agent browser access is on", () =>
     Effect.gen(function* () {
       const threadId = asThreadId("thread-browser-on");
 
-      const issued = yield* startSessionWith(true, threadId);
+      const { issued } = yield* startSessionWith(true, threadId);
 
-      assert.deepEqual(issued, [threadId]);
+      assert.deepEqual(issued, [
+        { threadId, providerInstanceId: codexInstanceId, previewEnabled: true },
+      ]);
     }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "revokes unsupported MCP credentials on startup and recovery while ordinary chat succeeds",
+    () =>
+      Effect.gen(function* () {
+        for (const suffix of ["a", "b"]) {
+          const threadId = asThreadId(`unsupported-mcp-${suffix}`);
+          const { issued, revoked, turns, starts } = yield* startSessionWith(true, threadId, false);
+          assert.deepEqual(issued, []);
+          assert.deepEqual(revoked, [threadId, threadId]);
+          assert.equal(starts, 2);
+          assert.deepEqual(turns, [asTurnId(`turn-${threadId}`), asTurnId(`turn-${threadId}`)]);
+        }
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

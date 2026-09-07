@@ -1,3 +1,6 @@
+import { MessageId } from "@t3tools/contracts";
+import { mailboxTurnContext } from "./orchestration/AgentMailbox.ts";
+import { readMcpProviderSession } from "./mcp/McpProviderSession.ts";
 import {
   CommandId,
   DEFAULT_MODEL,
@@ -585,13 +588,71 @@ export const reconcileProviderSessions = Effect.gen(function* () {
               });
             }
             const capabilities = yield* providerService.getCapabilities(providerInstanceId);
-            yield* providerService.sendTurn({
+            const executionId = MessageId.make(`continuation:${yield* crypto.randomUUIDv4}`);
+            const turnKey = yield* crypto.randomUUIDv4;
+            const mcpSession = readMcpProviderSession(thread.id);
+            const mailboxStartedAt = DateTime.formatIso(yield* DateTime.now);
+            yield* orchestrationEngine.dispatch({
+              type: "thread.mailbox",
+              commandId: CommandId.make(yield* crypto.randomUUIDv4),
               threadId: thread.id,
-              ...(capabilities.promptlessTurnContinuation === true
-                ? { continuation: true }
-                : { input: SERVER_UPDATE_CONTINUATION_PROMPT }),
-              interactionMode: thread.interactionMode,
+              operation: {
+                kind: "prepare",
+                executionId,
+                turnKey,
+                providerSessionId: mcpSession?.providerSessionId ?? null,
+                contextBudget: 1_600,
+                includeIncoming: false,
+              },
+              createdAt: mailboxStartedAt,
             });
+            const result = yield* providerService
+              .sendTurn({
+                threadId: thread.id,
+                ...(capabilities.promptlessTurnContinuation === true
+                  ? {
+                      continuation: true,
+                      ...(mcpSession ? { input: mailboxTurnContext(turnKey, "[]") } : {}),
+                    }
+                  : {
+                      input: `${SERVER_UPDATE_CONTINUATION_PROMPT}${mcpSession ? mailboxTurnContext(turnKey, "[]") : ""}`,
+                    }),
+                interactionMode: thread.interactionMode,
+              })
+              .pipe(
+                Effect.tapError(() =>
+                  orchestrationEngine
+                    .dispatch({
+                      type: "thread.mailbox",
+                      commandId: CommandId.make(`mailbox-failed:${executionId}`),
+                      threadId: thread.id,
+                      operation: { kind: "finish", executionId, turnId: null, state: "failed" },
+                      createdAt: mailboxStartedAt,
+                    })
+                    .pipe(Effect.catch(() => Effect.void)),
+                ),
+              );
+            yield* orchestrationEngine
+              .dispatch({
+                type: "thread.mailbox",
+                commandId: CommandId.make(`mailbox-submitted:${executionId}`),
+                threadId: thread.id,
+                operation: {
+                  kind: "finish",
+                  executionId,
+                  turnId: result.turnId,
+                  state: "submitted",
+                },
+                createdAt: DateTime.formatIso(yield* DateTime.now),
+              })
+              .pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not record continued mailbox turn", {
+                    threadId: thread.id,
+                    cause,
+                  }),
+                ),
+              );
           });
           const continuationExit = yield* Effect.exit(continuation);
           if (Exit.isSuccess(continuationExit) || Cause.hasInterrupts(continuationExit.cause)) {

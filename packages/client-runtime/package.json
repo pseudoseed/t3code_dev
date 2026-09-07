@@ -131,6 +131,10 @@
       "types": "./src/state/projects.ts",
       "default": "./src/state/projects.ts"
     },
+    "./state/mailbox": {
+      "types": "./src/state/mailbox.ts",
+      "default": "./src/state/mailbox.ts"
+    },
     "./state/issues": {
       "types": "./src/state/issues.ts",
       "default": "./src/state/issues.ts"

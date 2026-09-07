@@ -1,4 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeURL from "node:url";
+import { makeAgentMailbox } from "../AgentMailbox.ts";
+import {
+  setMcpProviderSession,
+  clearAllMcpProviderSessions,
+} from "../../mcp/McpProviderSession.ts";
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -14,6 +22,7 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import {
   ApprovalRequestId,
+  CheckpointRef,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EnvironmentId,
@@ -26,6 +35,7 @@ import {
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -65,6 +75,7 @@ import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
+import { TestClock } from "effect/testing";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ServerActivation } from "../../serverActivation.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
@@ -123,6 +134,7 @@ describe("ProviderCommandReactor", () => {
   const createdBaseDirs = new Set<string>();
 
   afterEach(async () => {
+    clearAllMcpProviderSessions();
     if (scope) {
       await Effect.runPromise(Scope.close(scope, Exit.void));
     }
@@ -176,6 +188,10 @@ describe("ProviderCommandReactor", () => {
     readonly beforeReadySessionDispatch?: () => Effect.Effect<void>;
     readonly compactThreadEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
     readonly interruptTurnEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
+    readonly beforeReactorStart?: () => Promise<void>;
+    readonly clock?: Clock.Clock;
+    readonly agentMcp?: boolean;
+    readonly getCapabilitiesEffect?: ProviderServiceShape["getCapabilities"];
     readonly stopSessionEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
     readonly startSessionEffect?: (
       session: ProviderSession,
@@ -376,10 +392,13 @@ describe("ProviderCommandReactor", () => {
       respondToUserInput: respondToUserInput as ProviderServiceShape["respondToUserInput"],
       stopSession: stopSession as ProviderServiceShape["stopSession"],
       listSessions: () => Effect.succeed(runtimeSessions),
-      getCapabilities: (_provider) =>
-        Effect.succeed({
-          sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
-        }),
+      getCapabilities:
+        input?.getCapabilitiesEffect ??
+        ((_provider) =>
+          Effect.succeed({
+            sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
+            ...(input?.agentMcp === undefined ? {} : { agentMcp: input.agentMcp }),
+          })),
       assertConversationRollbackSupported: () => unsupported(),
       getInstanceInfo: (instanceId) => {
         const raw = String(instanceId);
@@ -413,9 +432,14 @@ describe("ProviderCommandReactor", () => {
       },
     };
 
+    const backgroundLiveness = ThreadBackgroundLiveness.make();
+    const backgroundLayer = Layer.succeed(
+      ThreadBackgroundLiveness.ThreadBackgroundLivenessService,
+      backgroundLiveness,
+    );
     const orchestrationLayer = OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
-      Layer.provide(ThreadBackgroundLiveness.layer),
+      Layer.provide(backgroundLayer),
       Layer.provide(ThreadPlanProgress.layer),
       Layer.provide(OrchestrationProjectionPipelineLive),
       Layer.provide(OrchestrationEventStoreLive),
@@ -424,7 +448,7 @@ describe("ProviderCommandReactor", () => {
       Layer.provide(SqlitePersistenceMemory),
     );
     const projectionSnapshotLayer = OrchestrationProjectionSnapshotQueryLive.pipe(
-      Layer.provide(ThreadBackgroundLiveness.layer),
+      Layer.provide(backgroundLayer),
       Layer.provide(ThreadPlanProgress.layer),
       Layer.provide(RepositoryIdentityResolver.layer),
       Layer.provide(SqlitePersistenceMemory),
@@ -495,7 +519,11 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
     );
-    runtime = ManagedRuntime.make(layer);
+    runtime = ManagedRuntime.make(
+      input?.clock
+        ? layer.pipe(Layer.provideMerge(Layer.succeed(Clock.Clock, input.clock)))
+        : layer,
+    );
 
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
@@ -564,6 +592,7 @@ describe("ProviderCommandReactor", () => {
       );
     }
 
+    await input?.beforeReactorStart?.();
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(
       reactor
@@ -577,6 +606,7 @@ describe("ProviderCommandReactor", () => {
 
     return {
       engine,
+      backgroundLiveness,
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       readPendingTurnStarts: () =>
         runtime!.runPromise(
@@ -612,6 +642,948 @@ describe("ProviderCommandReactor", () => {
       },
     };
   }
+
+  const seedWakeMailbox = Effect.fn("test.seedWakeMailbox")(function* (count = 1) {
+    const mailbox = yield* makeAgentMailbox;
+    const engine = yield* OrchestrationEngineService;
+    const sender = ThreadId.make("idle-wake-sender");
+    const recipient = ThreadId.make("thread-1");
+    const execution = MessageId.make("idle-wake-sender-turn");
+    yield* engine.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("idle-wake-sender"),
+      threadId: sender,
+      projectId: asProjectId("project-1"),
+      title: "Sender",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    yield* mailbox.update({
+      threadId: recipient,
+      commandId: CommandId.make("pause-for-seeding"),
+      operation: { kind: "auto-wake", enabled: false },
+    });
+    yield* mailbox.update({
+      threadId: sender,
+      commandId: CommandId.make("idle-wake-link"),
+      operation: { kind: "link", peerThreadId: recipient, linked: true },
+    });
+    yield* mailbox.prepare(sender, execution, "sender-session");
+    for (let i = 0; i < count; i++)
+      yield* mailbox.dispatch(sender, {
+        kind: "send",
+        id: `idle-mail-${i}`,
+        executionId: execution,
+        toThreadId: recipient,
+        body: `Complete integration task ${i}`,
+        replyTo: null,
+      });
+    return mailbox;
+  });
+  const registerWakeSession = () =>
+    setMcpProviderSession({
+      environmentId: EnvironmentId.make("mailbox-test"),
+      threadId: ThreadId.make("thread-1"),
+      providerSessionId: "idle-recipient-session",
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      endpoint: "http://127.0.0.1/mcp",
+      authorizationHeader: "test",
+    });
+
+  effectIt.effect(
+    "recovers an admitted mailbox turn at startup after activation without duplicating it",
+    () =>
+      Effect.gen(function* () {
+        const activation = yield* Deferred.make<void>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            serverActivation: Deferred.await(activation),
+            beforeReactorStart: async () => {
+              registerWakeSession();
+              await runtime!.runPromise(
+                Effect.gen(function* () {
+                  const mailbox = yield* seedWakeMailbox();
+                  yield* mailbox.update({
+                    threadId: ThreadId.make("thread-1"),
+                    commandId: CommandId.make("before-start-resume"),
+                    operation: { kind: "auto-wake", enabled: true },
+                  });
+                  yield* mailbox.wake(ThreadId.make("thread-1"));
+                }).pipe(Effect.provide(NodeServices.layer)),
+              );
+            },
+          }),
+        );
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(makeAgentMailbox.pipe(Effect.provide(NodeServices.layer))),
+        );
+        const queued = (yield* mailbox.get({ threadId: ThreadId.make("thread-1") })).turns[0]!;
+        expect(queued.state).toBe("pending");
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const resumed = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.executionId === queued.executionId &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* Deferred.succeed(activation, undefined);
+        yield* Fiber.join(resumed);
+        const inbox = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(inbox.turns).toHaveLength(1);
+        expect(inbox.turns[0]?.executionId).toBe(queued.executionId);
+        expect(inbox.pendingCount).toBe(0);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        const snapshot = yield* Effect.promise(() => harness.readModel());
+        expect(snapshot.threads.find((t) => t.id === "thread-1")?.messages).toHaveLength(1);
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "makes unconfirmed delivery after restart visible and leaves the queued message available to retry",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            beforeReactorStart: async () => {
+              await runtime!.runPromise(
+                Effect.gen(function* () {
+                  const mailbox = yield* seedWakeMailbox();
+                  yield* mailbox.update({
+                    threadId: ThreadId.make("thread-1"),
+                    commandId: CommandId.make("enable-before-unconfirmed-restart"),
+                    operation: { kind: "auto-wake", enabled: true },
+                  });
+                  yield* mailbox.prepare(
+                    ThreadId.make("thread-1"),
+                    MessageId.make("unconfirmed-old-execution"),
+                    "old-provider-session",
+                  );
+                }).pipe(Effect.provide(NodeServices.layer)),
+              );
+            },
+          }),
+        );
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(makeAgentMailbox.pipe(Effect.provide(NodeServices.layer))),
+        );
+        const inbox = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(inbox.autoWake?.enabled).toBe(false);
+        expect(inbox.autoWake?.reason).toContain("could not be confirmed");
+        expect(inbox.turns[0]?.state).toBe("failed");
+        expect(inbox.pendingCount).toBe(1);
+        expect(harness.startSession).not.toHaveBeenCalled();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "a user turn arriving during automatic startup takes priority and receives the queued mail",
+    () =>
+      Effect.gen(function* () {
+        const starting = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            startSessionEffect: (session) =>
+              Deferred.succeed(starting, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as(session),
+              ),
+          }),
+        );
+        registerWakeSession();
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+        );
+        yield* mailbox.update({
+          threadId: ThreadId.make("thread-1"),
+          commandId: CommandId.make("race-begin-auto"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Deferred.await(starting);
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const userSent = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.executionId === "user-wins-race" &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make("race-user-start"),
+          threadId: ThreadId.make("thread-1"),
+          message: {
+            messageId: MessageId.make("user-wins-race"),
+            role: "user",
+            text: "User priority instruction",
+            attachments: [],
+          },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          createdAt: "2026-09-07T19:00:00.000Z",
+        });
+        yield* Deferred.succeed(release, undefined);
+        yield* Fiber.join(userSent);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+          input: expect.stringContaining("User priority instruction"),
+        });
+        const inbox = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(inbox.turns[0]).toMatchObject({ source: "user", incoming: ["idle-mail-0"] });
+        expect(inbox.turns[1]).toMatchObject({ source: "mailbox", state: "failed" });
+        expect(inbox.pendingCount).toBe(0);
+        expect(harness.interruptTurn).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "wakes queued mail at the snooze deadline and replaces the deadline when snoozed again",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-01-01T00:00:00.000Z"));
+        const clock = yield* Clock.Clock;
+        const harness = yield* Effect.promise(() => createHarness({ clock }));
+        registerWakeSession();
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+        );
+        yield* harness.engine.dispatch({
+          type: "thread.snooze",
+          commandId: CommandId.make("snooze-mailbox"),
+          threadId: ThreadId.make("thread-1"),
+          snoozedUntil: "2026-01-01T00:02:00.000Z",
+        });
+        yield* mailbox.update({
+          threadId: ThreadId.make("thread-1"),
+          commandId: CommandId.make("enable-snoozed-mailbox"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        yield* harness.engine.dispatch({
+          type: "thread.snooze",
+          commandId: CommandId.make("resnooze-mailbox"),
+          threadId: ThreadId.make("thread-1"),
+          snoozedUntil: "2026-01-01T00:03:00.000Z",
+        });
+        yield* Effect.promise(() => harness.drain());
+        yield* TestClock.adjust("2 minutes");
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const woke = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.source === "mailbox" &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* TestClock.adjust("1 minute");
+        yield* Fiber.join(woke);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect((yield* mailbox.get({ threadId: ThreadId.make("thread-1") })).pendingCount).toBe(0);
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "coalesces queued messages into bounded automatic turns and drains the remainder after completion",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        registerWakeSession();
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox(10).pipe(Effect.provide(NodeServices.layer))),
+        );
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const firstSent = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.source === "mailbox" &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* mailbox.update({
+          threadId: ThreadId.make("thread-1"),
+          commandId: CommandId.make("resume-batch"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Fiber.join(firstSent);
+        const first = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(first.turns[0]?.incoming).toHaveLength(8);
+        expect(first.pendingCount).toBe(2);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        const session = (yield* Effect.promise(() => harness.readModel())).threads.find(
+          (t) => t.id === "thread-1",
+        )!.session!;
+        yield* harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("batch-running"),
+          threadId: ThreadId.make("thread-1"),
+          session: { ...session, status: "running", activeTurnId: asTurnId("turn-1") },
+          createdAt: "2026-01-01T00:01:01.000Z",
+        });
+        yield* harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("batch-ready"),
+          threadId: ThreadId.make("thread-1"),
+          session: { ...session, status: "ready", activeTurnId: null },
+          createdAt: "2026-01-01T00:02:00.000Z",
+        });
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        const remainingEvents = yield* harness.engine.subscribeDomainEvents.pipe(
+          Scope.provide(scope!),
+        );
+        const secondSent = yield* Effect.forkScoped(
+          Stream.runHead(
+            remainingEvents.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.source === "mailbox" &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* harness.engine.dispatch({
+          type: "thread.turn.diff.complete",
+          commandId: CommandId.make("batch-checkpoint"),
+          threadId: ThreadId.make("thread-1"),
+          turnId: asTurnId("turn-1"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoint/batch"),
+          status: "ready",
+          files: [],
+          completedAt: "2026-01-01T00:02:01.000Z",
+          createdAt: "2026-01-01T00:02:01.000Z",
+        });
+        yield* Fiber.join(secondSent);
+        const final = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(final.pendingCount).toBe(0);
+        expect(final.turns.map((t) => t.incoming.length)).toEqual([2, 8]);
+        expect(new Set(final.turns.flatMap((t) => t.incoming)).size).toBe(10);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(2);
+        expect(harness.interruptTurn).not.toHaveBeenCalled();
+        expect(harness.stopSession).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "pauses failed automatic starts without a retry loop and retries preserved mail on resume",
+    () =>
+      Effect.gen(function* () {
+        let attempts = 0;
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            startSessionEffect: (session) => {
+              attempts++;
+              return attempts === 1
+                ? Effect.fail(
+                    new ProviderAdapterRequestError({
+                      provider: "codex",
+                      method: "startSession",
+                      detail: "Credentials unavailable",
+                    }),
+                  )
+                : Effect.succeed(session);
+            },
+          }),
+        );
+        registerWakeSession();
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+        );
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const failed = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.activity-appended" &&
+                  e.payload.activity.kind === "provider.turn.start.failed",
+              ),
+            ),
+          ),
+        );
+        yield* mailbox.update({
+          threadId: ThreadId.make("thread-1"),
+          commandId: CommandId.make("attempt-wake"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Fiber.join(failed);
+        yield* Effect.promise(() => harness.drain());
+        const failure = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(failure.autoWake?.enabled).toBe(false);
+        expect(failure.turns[0]?.state).toBe("failed");
+        expect(failure.pendingCount).toBe(1);
+        expect(attempts).toBe(1);
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const retryEvents = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const retried = yield* Effect.forkScoped(
+          Stream.runHead(
+            retryEvents.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.source === "mailbox" &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* mailbox.update({
+          threadId: ThreadId.make("thread-1"),
+          commandId: CommandId.make("retry-wake"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Fiber.join(retried);
+        expect(attempts).toBe(2);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect((yield* mailbox.get({ threadId: ThreadId.make("thread-1") })).pendingCount).toBe(0);
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect("archiving during provider startup defers mail until unarchive", () =>
+    Effect.gen(function* () {
+      const starting = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          startSessionEffect: (session) =>
+            Deferred.succeed(starting, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as(session),
+            ),
+        }),
+      );
+      registerWakeSession();
+      const mailbox = yield* Effect.promise(() =>
+        runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+      );
+      yield* mailbox.update({
+        threadId: ThreadId.make("thread-1"),
+        commandId: CommandId.make("archive-wake-enable"),
+        operation: { kind: "auto-wake", enabled: true },
+      });
+      yield* Deferred.await(starting);
+      yield* harness.engine.dispatch({
+        type: "thread.archive",
+        threadId: ThreadId.make("thread-1"),
+        commandId: CommandId.make("archive-starting-recipient"),
+      });
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+      expect((yield* mailbox.get({ threadId: ThreadId.make("thread-1") })).pendingCount).toBe(1);
+      const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+      const sent = yield* Effect.forkScoped(
+        Stream.runHead(
+          events.pipe(
+            Stream.filter(
+              (e) =>
+                e.type === "thread.mailbox-updated" &&
+                e.payload.change.kind === "turn" &&
+                e.payload.change.turn.state === "submitted",
+            ),
+          ),
+        ),
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.unarchive",
+        threadId: ThreadId.make("thread-1"),
+        commandId: CommandId.make("unarchive-recipient"),
+      });
+      yield* Fiber.join(sent);
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      expect((yield* mailbox.get({ threadId: ThreadId.make("thread-1") })).pendingCount).toBe(0);
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+    }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "pauses unsupported mailbox configurations before starting or consuming mail",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness({ agentMcp: false }));
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+        );
+        yield* mailbox.update({
+          threadId: ThreadId.make("thread-1"),
+          commandId: CommandId.make("unsupported-mailbox-enable"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Effect.promise(() => harness.drain());
+        const inbox = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+        expect(inbox.autoWake).toMatchObject({
+          enabled: false,
+          reason: expect.stringContaining("locally managed"),
+        });
+        expect(inbox.pendingCount).toBe(1);
+        expect(inbox.turns[0]).toMatchObject({ state: "failed", incoming: [] });
+        expect(harness.startSession).not.toHaveBeenCalled();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "recovers automatic wake when provider capability lookup fails and retries after repair",
+    () =>
+      Effect.gen(function* () {
+        let configured = false;
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            getCapabilitiesEffect: () =>
+              configured
+                ? Effect.succeed({ agentMcp: true, sessionModelSwitch: "in-session" })
+                : Effect.fail(
+                    new ProviderAdapterRequestError({
+                      provider: "codex",
+                      method: "getCapabilities",
+                      detail: "Provider instance is unavailable",
+                    }),
+                  ),
+          }),
+        );
+        registerWakeSession();
+        const threadId = ThreadId.make("thread-1");
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+        );
+        yield* mailbox.update({
+          threadId,
+          commandId: CommandId.make("capability-lookup-wake"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Effect.promise(() => harness.drain());
+        const failed = yield* mailbox.get({ threadId });
+        expect(failed.autoWake?.enabled).toBe(false);
+        expect(failed.turns).toHaveLength(1);
+        expect(failed.turns[0]).toMatchObject({ state: "failed", incoming: [] });
+        expect(failed.pendingCount).toBe(1);
+        expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
+        expect(harness.startSession).not.toHaveBeenCalled();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+
+        configured = true;
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const retried = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (event) =>
+                  event.type === "thread.mailbox-updated" &&
+                  event.payload.change.kind === "turn" &&
+                  event.payload.change.turn.source === "mailbox" &&
+                  event.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* mailbox.update({
+          threadId,
+          commandId: CommandId.make("repaired-capability-wake"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Fiber.join(retried);
+        const final = yield* mailbox.get({ threadId });
+        expect(final.autoWake?.enabled).toBe(true);
+        expect(final.pendingCount).toBe(0);
+        expect(final.turns.map((turn) => turn.state)).toEqual(["submitted", "failed"]);
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "wakes mail when the last background task completes through a progress event",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        registerWakeSession();
+        const threadId = ThreadId.make("thread-1");
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+        );
+        for (const taskId of ["first-member", "last-member"])
+          harness.backgroundLiveness.recordTaskLiveness({
+            threadId,
+            taskId,
+            taskType: "agent",
+            status: "running",
+            kind: "started",
+          });
+        yield* mailbox.update({
+          threadId,
+          commandId: CommandId.make("background-mailbox-enable"),
+          operation: { kind: "auto-wake", enabled: true },
+        });
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const complete = (taskId: string) =>
+          Effect.gen(function* () {
+            harness.backgroundLiveness.recordTaskLiveness({
+              threadId,
+              taskId,
+              taskType: "agent",
+              status: "completed",
+              kind: "progress",
+            });
+            yield* harness.engine.dispatch({
+              type: "thread.activity.append",
+              threadId,
+              commandId: CommandId.make(`progress-${taskId}`),
+              activity: {
+                id: EventId.make(`progress-${taskId}`),
+                kind: "task.progress",
+                tone: "info",
+                summary: "Workflow member completed",
+                payload: { taskId, status: "completed" },
+                turnId: null,
+                createdAt: "2026-01-01T00:01:00.000Z",
+              },
+              createdAt: "2026-01-01T00:01:00.000Z",
+            });
+          });
+        yield* complete("first-member");
+        yield* Effect.promise(() => harness.drain());
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+        const sent = yield* Effect.forkScoped(
+          Stream.runHead(
+            events.pipe(
+              Stream.filter(
+                (e) =>
+                  e.type === "thread.mailbox-updated" &&
+                  e.payload.change.kind === "turn" &&
+                  e.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        yield* complete("last-member");
+        yield* Fiber.join(sent);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect((yield* mailbox.get({ threadId })).pendingCount).toBe(0);
+        expect(harness.interruptTurn).not.toHaveBeenCalled();
+      }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect("a user pause during provider startup prevents automatic dispatch", () =>
+    Effect.gen(function* () {
+      const starting = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          startSessionEffect: (session) =>
+            Deferred.succeed(starting, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as(session),
+            ),
+        }),
+      );
+      registerWakeSession();
+      const mailbox = yield* Effect.promise(() =>
+        runtime!.runPromise(seedWakeMailbox().pipe(Effect.provide(NodeServices.layer))),
+      );
+      yield* mailbox.update({
+        threadId: ThreadId.make("thread-1"),
+        commandId: CommandId.make("begin-pausable-wake"),
+        operation: { kind: "auto-wake", enabled: true },
+      });
+      yield* Deferred.await(starting);
+      yield* mailbox.update({
+        threadId: ThreadId.make("thread-1"),
+        commandId: CommandId.make("pause-during-start"),
+        operation: { kind: "auto-wake", enabled: false },
+      });
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+      const inbox = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+      expect(inbox.pendingCount).toBe(1);
+      expect(inbox.autoWake?.enabled).toBe(false);
+      expect(inbox.turns[0]?.state).toBe("failed");
+      expect(
+        (yield* Effect.promise(() => harness.readModel())).threads.find((t) => t.id === "thread-1")
+          ?.session?.status,
+      ).toBe("ready");
+      const events = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+      const resumed = yield* Effect.forkScoped(
+        Stream.runHead(
+          events.pipe(
+            Stream.filter(
+              (e) =>
+                e.type === "thread.mailbox-updated" &&
+                e.payload.change.kind === "turn" &&
+                e.payload.change.turn.source === "mailbox" &&
+                e.payload.change.turn.state === "submitted",
+            ),
+          ),
+        ),
+      );
+      yield* mailbox.update({
+        threadId: ThreadId.make("thread-1"),
+        commandId: CommandId.make("resume-after-startup-pause"),
+        operation: { kind: "auto-wake", enabled: true },
+      });
+      yield* Fiber.join(resumed);
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      expect((yield* mailbox.get({ threadId: ThreadId.make("thread-1") })).pendingCount).toBe(0);
+    }).pipe(Effect.scoped),
+  );
+
+  effectIt.effect(
+    "preserves a running test process and automatically starts queued mail only after its turn and checkpoint finish",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const mailbox = yield* Effect.promise(() =>
+          runtime!.runPromise(makeAgentMailbox.pipe(Effect.provide(NodeServices.layer))),
+        );
+        setMcpProviderSession({
+          environmentId: EnvironmentId.make("mailbox-test"),
+          threadId: ThreadId.make("thread-1"),
+          providerSessionId: "recipient-session",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          endpoint: "http://127.0.0.1/mcp",
+          authorizationHeader: "test",
+        });
+        const senderId = ThreadId.make("mailbox-sender");
+        const senderExecution = MessageId.make("mailbox-sender-turn");
+        yield* harness.engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("mailbox-create-sender"),
+          threadId: senderId,
+          projectId: asProjectId("project-1"),
+          title: "Sender",
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* mailbox.update({
+          threadId: senderId,
+          commandId: CommandId.make("mailbox-link-test"),
+          operation: { kind: "link", peerThreadId: ThreadId.make("thread-1"), linked: true },
+        });
+        yield* mailbox.prepare(senderId, senderExecution, "sender-session");
+        const running = Promise.withResolvers<void>();
+        const passed = Promise.withResolvers<void>();
+        const exited = Promise.withResolvers<number | null>();
+        let child: ReturnType<typeof NodeChildProcess.fork> | undefined;
+        let interrupted = false;
+        let didRun = false;
+        let didPass = false;
+        let processOutput = "";
+        harness.sendTurn.mockImplementationOnce(() =>
+          Effect.promise(async () => {
+            child = NodeChildProcess.fork(
+              NodeURL.fileURLToPath(
+                new URL("../test-fixtures/mailbox-test-worker.mjs", import.meta.url),
+              ),
+              [],
+              { stdio: ["ignore", "pipe", "pipe", "ipc"] },
+            );
+            child.stdout?.on("data", (data) => {
+              processOutput += String(data);
+            });
+            child.stderr?.on("data", (data) => {
+              processOutput += String(data);
+            });
+            child.once("error", (error) => {
+              running.reject(error);
+              passed.reject(error);
+              exited.reject(error);
+            });
+            child.on("message", (message) => {
+              if (typeof message === "object" && message !== null && "type" in message) {
+                if (message.type === "test-running") {
+                  didRun = true;
+                  running.resolve();
+                }
+                if (message.type === "test-passed") {
+                  didPass = true;
+                  passed.resolve();
+                }
+              }
+            });
+            child.once("exit", (code) => {
+              const failure = new Error(
+                `Test process exited before its receipt (${code}): ${processOutput}`,
+              );
+              if (!didRun) running.reject(failure);
+              if (!didPass) passed.reject(failure);
+              exited.resolve(code);
+            });
+            await passed.promise;
+            return { threadId: ThreadId.make("thread-1"), turnId: asTurnId("turn-test-process") };
+          }).pipe(
+            Effect.onInterrupt(() =>
+              Effect.sync(() => {
+                interrupted = true;
+                child?.kill();
+              }),
+            ),
+          ),
+        );
+        const subscription = yield* harness.engine.subscribeDomainEvents.pipe(
+          Scope.provide(scope!),
+        );
+        const finished = yield* Effect.forkScoped(
+          Stream.runHead(
+            subscription.pipe(
+              Stream.filter(
+                (event) =>
+                  event.type === "thread.mailbox-updated" &&
+                  event.payload.change.kind === "turn" &&
+                  event.payload.change.turn.executionId === "user-running-test" &&
+                  event.payload.change.turn.state === "submitted",
+              ),
+            ),
+          ),
+        );
+        try {
+          yield* harness.engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make("run-real-test"),
+            threadId: ThreadId.make("thread-1"),
+            message: {
+              messageId: MessageId.make("user-running-test"),
+              role: "user",
+              text: "Run tests",
+              attachments: [],
+            },
+            runtimeMode: "approval-required",
+            interactionMode: "default",
+            createdAt: "2026-01-01T00:01:00.000Z",
+          });
+          yield* Effect.promise(() => running.promise);
+          const session = (yield* Effect.promise(() => harness.readModel())).threads.find(
+            (t) => t.id === "thread-1",
+          )!.session!;
+          yield* harness.engine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make("test-worker-running"),
+            threadId: ThreadId.make("thread-1"),
+            session: { ...session, status: "running", activeTurnId: asTurnId("turn-test-process") },
+            createdAt: "2026-01-01T00:01:01.000Z",
+          });
+          yield* mailbox.dispatch(senderId, {
+            kind: "send",
+            id: "while-testing",
+            executionId: senderExecution,
+            toThreadId: ThreadId.make("thread-1"),
+            body: "Backend contract ready",
+            replyTo: null,
+          });
+          yield* Effect.promise(() => harness.drain());
+          const inbox = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+          expect(inbox.pendingCount).toBe(1);
+          expect(inbox.turns[0]?.incoming).toEqual([]);
+          expect(child?.exitCode).toBeNull();
+          expect(interrupted).toBe(false);
+          expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+          expect(harness.interruptTurn).not.toHaveBeenCalled();
+          expect(harness.stopSession).not.toHaveBeenCalled();
+          child!.send({ type: "release-test" });
+          yield* Effect.promise(() => passed.promise);
+          expect(yield* Effect.promise(() => exited.promise)).toBe(0);
+          yield* Fiber.join(finished);
+          const after = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+          expect(after.turns[0]?.turnId).toBe("turn-test-process");
+          expect(after.pendingCount).toBe(1);
+          expect(interrupted).toBe(false);
+          const autoSent = yield* harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!));
+          const woke = yield* Effect.forkScoped(
+            Stream.runHead(
+              autoSent.pipe(
+                Stream.filter(
+                  (event) =>
+                    event.type === "thread.mailbox-updated" &&
+                    event.payload.change.kind === "turn" &&
+                    event.payload.change.turn.source === "mailbox" &&
+                    event.payload.change.turn.state === "submitted",
+                ),
+              ),
+            ),
+          );
+          yield* harness.engine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make("test-worker-completed"),
+            threadId: ThreadId.make("thread-1"),
+            session: { ...session, status: "ready", activeTurnId: null },
+            createdAt: "2026-01-01T00:02:00.000Z",
+          });
+          yield* Effect.promise(() => harness.drain());
+          expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+          yield* harness.engine.dispatch({
+            type: "thread.turn.diff.complete",
+            commandId: CommandId.make("test-worker-checkpoint"),
+            threadId: ThreadId.make("thread-1"),
+            turnId: asTurnId("turn-test-process"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("refs/t3/checkpoint/test"),
+            status: "ready",
+            files: [],
+            completedAt: "2026-01-01T00:02:01.000Z",
+            createdAt: "2026-01-01T00:02:01.000Z",
+          });
+          yield* Fiber.join(woke);
+          expect(harness.sendTurn).toHaveBeenCalledTimes(2);
+          expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({
+            input: expect.stringContaining("Backend contract ready"),
+          });
+          const consumed = yield* mailbox.get({ threadId: ThreadId.make("thread-1") });
+          expect(consumed.turns[0]).toMatchObject({
+            source: "mailbox",
+            incoming: ["while-testing"],
+            state: "submitted",
+          });
+          expect(consumed.pendingCount).toBe(0);
+          expect(harness.interruptTurn).not.toHaveBeenCalled();
+          expect(harness.stopSession).not.toHaveBeenCalled();
+        } finally {
+          child?.kill();
+        }
+      }).pipe(Effect.scoped),
+  );
 
   effectIt.effect.each(["new", "ready", "stopped"] as const)(
     "handles sign-out for a %s thread before worktree repair, text helpers, or startup",
@@ -3918,6 +4890,19 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
+    const stopEvents = await harness.runEffect(
+      harness.engine.subscribeDomainEvents.pipe(Scope.provide(scope!)),
+    );
+    const stopped = harness.runEffect(
+      Stream.runHead(
+        stopEvents.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "thread.session-set" && event.payload.session.status === "stopped",
+          ),
+        ),
+      ),
+    );
     await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.session.stop",
@@ -3927,7 +4912,8 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    await stopped;
+    expect(harness.stopSession).toHaveBeenCalledTimes(1);
     const readModel = await harness.readModel();
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session).not.toBeNull();
