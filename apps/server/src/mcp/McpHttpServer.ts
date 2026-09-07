@@ -1,3 +1,4 @@
+import { MailboxToolkit, MailboxToolkitHandlersLive } from "./toolkits/mailbox.ts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -222,6 +223,7 @@ const IssueToolkitRegistrationLive = McpServer.toolkit(IssueToolkit).pipe(
 );
 
 export const ToolkitRegistrationLive = Layer.mergeAll(
+  McpServer.toolkit(MailboxToolkit).pipe(Layer.provide(MailboxToolkitHandlersLive)),
   PreviewToolkitRegistrationLive,
   IssueToolkitRegistrationLive,
 );

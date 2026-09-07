@@ -1,3 +1,4 @@
+import type { MailboxChange, ThreadId } from "@t3tools/contracts";
 import {
   EventId,
   MessageId,
@@ -206,16 +207,134 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
   command,
   readModel,
   userInputActivity,
+  mailboxChanges,
+  mailboxParticipants,
 }: {
   readonly command: OrchestrationCommand;
   readonly readModel: OrchestrationReadModel;
   readonly userInputActivity?: OrchestrationThreadActivity;
+  readonly mailboxChanges?: ReadonlyArray<MailboxChange>;
+  readonly mailboxParticipants?: ReadonlyArray<ThreadId>;
 }): Effect.fn.Return<
   DecideOrchestrationCommandResult,
   OrchestrationCommandRejection | PlatformError.PlatformError,
   Crypto.Crypto
 > {
   switch (command.type) {
+    case "thread.mailbox": {
+      if (!mailboxChanges)
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "Mailbox commands require durable mailbox state.",
+        });
+      const events: PlannedOrchestrationEvent[] = [];
+      for (const change of mailboxChanges) {
+        events.push({
+          ...(yield* withEventBase({
+            commandId: command.commandId,
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+          })),
+          type: "thread.mailbox-updated",
+          payload: { threadId: command.threadId, change, createdAt: command.createdAt },
+        });
+        if (
+          change.kind === "turn" &&
+          change.turn.state === "pending" &&
+          change.turn.source === "mailbox"
+        ) {
+          const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+          const started = yield* decideOrchestrationCommand({
+            readModel,
+            command: {
+              type: "thread.turn.start",
+              commandId: command.commandId,
+              threadId: thread.id,
+              message: {
+                messageId: change.turn.executionId,
+                role: "user",
+                attachments: [],
+                text: "Automatic mailbox turn: Process the queued messages from collaborating agents. Continue their requested work where it fits the user's instructions, and reply with useful results. Do not send acknowledgments that only generate another reply.",
+              },
+              runtimeMode: thread.runtimeMode,
+              interactionMode: thread.interactionMode,
+              createdAt: command.createdAt,
+            },
+          });
+          for (const event of Array.isArray(started) ? started : [started]) {
+            events.push(
+              event.type === "thread.turn-start-requested"
+                ? { ...event, payload: { ...event.payload, mailboxWake: true } }
+                : event,
+            );
+          }
+        }
+        const key =
+          change.kind === "message"
+            ? change.message.id
+            : change.kind === "turn"
+              ? change.turn.executionId
+              : change.kind === "state"
+                ? change.messageId
+                : command.commandId;
+        const summary =
+          change.kind === "link"
+            ? change.linked
+              ? "Collaborating threads linked"
+              : "Collaborating threads unlinked"
+            : change.kind === "message"
+              ? "Agent message queued"
+              : change.kind === "turn"
+                ? `Turn communication · ${change.turn.incoming.length} incoming · ${change.turn.state}`
+                : change.kind === "state"
+                  ? `Agent message ${change.state}`
+                  : change.kind === "auto-wake"
+                    ? `Automatic mailbox wake ${change.enabled ? "enabled" : "paused"}`
+                    : "Agent checked inbox";
+        for (const participant of mailboxParticipants ?? [command.threadId]) {
+          events.push({
+            ...(yield* withEventBase({
+              commandId: command.commandId,
+              aggregateKind: "thread",
+              aggregateId: participant,
+              occurredAt: command.createdAt,
+            })),
+            type: "thread.activity-appended",
+            payload: {
+              threadId: participant,
+              activity: {
+                id: EventId.make(`mailbox:${change.kind}:${participant}:${key}`),
+                kind: "mailbox.communication",
+                summary:
+                  participant !== command.threadId &&
+                  (change.kind === "turn" || change.kind === "read")
+                    ? "Agent received mailbox messages"
+                    : summary,
+                tone: "info",
+                createdAt: command.createdAt,
+                turnId: change.kind === "turn" ? change.turn.turnId : null,
+                payload: {
+                  mailbox: true,
+                  sourceThreadId: command.threadId,
+                  ...(change.kind === "message"
+                    ? {
+                        messageId: change.message.id,
+                        fromThreadId: change.message.fromThreadId,
+                        toThreadId: change.message.toThreadId,
+                        executionId: change.message.executionId,
+                      }
+                    : change.kind === "turn"
+                      ? { executionId: change.turn.executionId, incoming: change.turn.incoming }
+                      : {}),
+                },
+              },
+            },
+          });
+        }
+      }
+      return events;
+    }
     case "project.create": {
       yield* requireProjectAbsent({
         readModel,
@@ -1299,6 +1418,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.session-stop-requested",
         payload: {
           threadId: command.threadId,
+          ...(command.onlyIfSettled ? { preserveMailboxWake: true } : {}),
           createdAt: command.createdAt,
         },
       };

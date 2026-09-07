@@ -242,3 +242,11 @@ Preferred spellings and `wrong -> right` pairs sent to the [cleanup model](#clea
 [26]: ../user/environment-theme.md
 [27]: ./voice-input.md
 [28]: ../../apps/mobile/modules/t3-voice/ios/SpeakerFilter.swift
+
+## Agent mailbox
+
+A durable inbox/outbox shared by explicitly linked threads in one environment. Sending queues
+context that wakes idle recipients and waits while they work. A mailbox execution receipt records the
+frozen incoming IDs, explicit reads, and sent messages for an agent turn. **Included** means the
+message or its retrieval reference was supplied, **acknowledged** means receipt was explicitly confirmed, and **resolved** means the
+recipient marked the work done. See [Agent mailbox](./agent-mailbox.md).

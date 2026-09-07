@@ -1,3 +1,4 @@
+import { makeMailboxRepository } from "../MailboxRepository.ts";
 import type {
   OrchestrationClientOrigin,
   OrchestrationEvent,
@@ -83,6 +84,7 @@ function commandToAggregateRef(command: OrchestrationCommand): {
 
 const makeOrchestrationEngine = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const mailbox = yield* makeMailboxRepository;
   const eventStore = yield* OrchestrationEventStore;
   const commandReceiptRepository = yield* OrchestrationCommandReceiptRepository;
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
@@ -201,7 +203,46 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           envelope.command.type === "thread.user-input.respond"
             ? yield* projectionSnapshotQuery.getUserInputActivity(envelope.command)
             : Option.none();
+        const mailboxChanges =
+          envelope.command.type === "thread.mailbox"
+            ? envelope.command.operation.kind === "wake" &&
+              threadBackgroundLiveness.getThreadBackgroundLiveness(envelope.command.threadId) !==
+                null
+              ? []
+              : yield* mailbox.decide(envelope.command, commandReadModel).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationCommandInvariantError({
+                        commandType: envelope.command.type,
+                        detail: cause.message,
+                        cause,
+                      }),
+                  ),
+                )
+            : undefined;
+        const mailboxParticipants = new Set<ThreadId>();
+        if (envelope.command.type === "thread.mailbox") {
+          mailboxParticipants.add(envelope.command.threadId);
+          for (const change of mailboxChanges ?? []) {
+            const participants = yield* mailbox
+              .participants(envelope.command.threadId, change)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationCommandInvariantError({
+                      commandType: envelope.command.type,
+                      detail: cause.message,
+                      cause,
+                    }),
+                ),
+              );
+            for (const participant of participants) mailboxParticipants.add(participant);
+          }
+        }
         const eventBase = yield* decideOrchestrationCommand({
+          ...(mailboxChanges === undefined
+            ? {}
+            : { mailboxChanges, mailboxParticipants: [...mailboxParticipants] }),
           command: envelope.command,
           readModel: commandReadModel,
           ...(Option.isSome(userInputActivity)
@@ -245,7 +286,13 @@ const makeOrchestrationEngine = Effect.gen(function* () {
               }
 
               const lastSavedEvent = committedEvents.at(-1) ?? null;
-              if (lastSavedEvent === null) {
+              if (
+                lastSavedEvent === null &&
+                !(
+                  envelope.command.type === "thread.mailbox" &&
+                  envelope.command.operation.kind === "wake"
+                )
+              ) {
                 return yield* new OrchestrationCommandInvariantError({
                   commandType: envelope.command.type,
                   detail: "Command produced no events.",
@@ -254,10 +301,11 @@ const makeOrchestrationEngine = Effect.gen(function* () {
 
               yield* commandReceiptRepository.upsert({
                 commandId: envelope.command.commandId,
-                aggregateKind: lastSavedEvent.aggregateKind,
-                aggregateId: lastSavedEvent.aggregateId,
-                acceptedAt: lastSavedEvent.occurredAt,
-                resultSequence: lastSavedEvent.sequence,
+                // A command can write activities to peer threads; its receipt belongs to its origin.
+                aggregateKind: aggregateRef.aggregateKind,
+                aggregateId: aggregateRef.aggregateId,
+                acceptedAt: lastSavedEvent?.occurredAt ?? (yield* nowIso),
+                resultSequence: lastSavedEvent?.sequence ?? commandReadModel.snapshotSequence,
                 status: "accepted",
                 error: null,
               });
@@ -265,7 +313,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
               return {
                 committedEvents,
                 attachmentCleanups,
-                lastSequence: lastSavedEvent.sequence,
+                lastSequence: lastSavedEvent?.sequence ?? commandReadModel.snapshotSequence,
                 nextCommandReadModel,
               } as const;
             }),

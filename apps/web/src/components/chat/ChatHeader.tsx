@@ -1,3 +1,4 @@
+import { AgentMailbox } from "./AgentMailbox";
 import {
   type EnvironmentId,
   type EditorId,
@@ -303,6 +304,13 @@ export const ChatHeader = memo(function ChatHeader({
       className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
       onContextMenu={handleHeaderContextMenu}
     >
+      {isServerThread ? (
+        <AgentMailbox
+          key={activeThreadId}
+          environmentId={activeThreadEnvironmentId}
+          threadId={activeThreadId}
+        />
+      ) : null}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"

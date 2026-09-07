@@ -1,3 +1,4 @@
+import { makeMailboxRepository } from "../MailboxRepository.ts";
 import {
   ApprovalRequestId,
   type ChatAttachment,
@@ -56,6 +57,7 @@ import {
 } from "../../attachmentStore.ts";
 
 export const ORCHESTRATION_PROJECTOR_NAMES = {
+  mailbox: "projection.mailbox",
   projects: "projection.projects",
   threads: "projection.threads",
   threadMessages: "projection.thread-messages",
@@ -489,6 +491,7 @@ const runAttachmentSideEffects = Effect.fn("runAttachmentSideEffects")(function*
 const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjectionPipeline")(
   function* () {
     const sql = yield* SqlClient.SqlClient;
+    const mailbox = yield* makeMailboxRepository;
     const eventStore = yield* OrchestrationEventStore;
     const projectionStateRepository = yield* ProjectionStateRepository;
     const projectionProjectRepository = yield* ProjectionProjectRepository;
@@ -1801,6 +1804,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     });
 
     const projectors: ReadonlyArray<ProjectorDefinition> = [
+      { name: ORCHESTRATION_PROJECTOR_NAMES.mailbox, apply: mailbox.project },
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.projects,
         apply: applyProjectsProjection,

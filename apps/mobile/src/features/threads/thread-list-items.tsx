@@ -584,6 +584,11 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
                 {thread.title}
               </Text>
               <View className="flex-row items-center gap-2">
+                {thread.mailboxPendingCount ? (
+                  <Text className="text-xs text-muted-foreground">
+                    ✉ {thread.mailboxPendingCount}
+                  </Text>
+                ) : null}
                 {statusPill}
                 <Text className="text-base tabular-nums text-foreground-tertiary">{timestamp}</Text>
                 <SymbolView
@@ -643,6 +648,11 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
               {thread.title}
             </Text>
             <View className="flex-row items-center gap-2">
+              {thread.mailboxPendingCount ? (
+                <Text className="text-xs text-muted-foreground">
+                  ✉ {thread.mailboxPendingCount}
+                </Text>
+              ) : null}
               {statusPill}
               <Text
                 className={cn(

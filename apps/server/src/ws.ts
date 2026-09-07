@@ -1,3 +1,4 @@
+import { makeAgentMailbox } from "./orchestration/AgentMailbox.ts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -600,6 +601,7 @@ const makeWsRpcLayer = (
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const issues = yield* IssueService.IssueService;
+      const mailbox = yield* makeAgentMailbox;
       const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const sessions = yield* SessionStore.SessionStore;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
@@ -2081,6 +2083,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.pullRequestsComment, pullRequests.comment(input), {
             "rpc.aggregate": "pull-requests",
           }),
+        [WS_METHODS.mailboxGet]: (input) =>
+          observeRpcEffect(WS_METHODS.mailboxGet, mailbox.get(input)),
+        [WS_METHODS.mailboxUpdate]: (input) =>
+          observeRpcEffect(WS_METHODS.mailboxUpdate, mailbox.update(input)),
         [WS_METHODS.issuesList]: (input) =>
           observeRpcEffect(WS_METHODS.issuesList, issues.list(input), {
             "rpc.aggregate": "issues",

@@ -1,3 +1,4 @@
+import { MailboxChange, ThreadMailboxCommand } from "./mailbox.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
@@ -613,6 +614,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
+  mailboxPendingCount: Schema.optional(NonNegativeInt),
+  mailboxRevision: Schema.optional(NonNegativeInt),
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,
   hasActionableProposedPlan: Schema.Boolean,
@@ -1211,6 +1214,7 @@ const ThreadTitleRegenerationCompleteCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadMailboxCommand,
   ThreadAutoSettleCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
@@ -1230,6 +1234,7 @@ export const OrchestrationCommand = Schema.Union([
 export type OrchestrationCommand = typeof OrchestrationCommand.Type;
 
 export const OrchestrationEventType = Schema.Literals([
+  "thread.mailbox-updated",
   "project.created",
   "project.meta-updated",
   "project.deleted",
@@ -1434,6 +1439,7 @@ export const ThreadMessageSentPayload = Schema.Struct({
 });
 
 export const ThreadTurnStartRequestedPayload = Schema.Struct({
+  mailboxWake: Schema.optional(Schema.Boolean),
   threadId: ThreadId,
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
@@ -1478,6 +1484,7 @@ export const ThreadRevertedPayload = Schema.Struct({
 });
 
 export const ThreadSessionStopRequestedPayload = Schema.Struct({
+  preserveMailboxWake: Schema.optional(Schema.Boolean),
   threadId: ThreadId,
   createdAt: IsoDateTime,
 });
@@ -1543,6 +1550,11 @@ const EventBaseFields = {
 } as const;
 
 export const OrchestrationEvent = Schema.Union([
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.mailbox-updated"),
+    payload: Schema.Struct({ threadId: ThreadId, change: MailboxChange, createdAt: IsoDateTime }),
+  }),
   Schema.Struct({
     ...EventBaseFields,
     type: Schema.Literal("project.created"),

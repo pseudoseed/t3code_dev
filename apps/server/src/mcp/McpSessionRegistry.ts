@@ -12,6 +12,7 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpProviderSession from "./McpProviderSession.ts";
 
 export interface McpCredentialRequest {
+  readonly previewEnabled?: boolean;
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
 }
@@ -27,8 +28,8 @@ export interface McpSessionRegistryShape {
   ) => Effect.Effect<McpInvocationContext.McpInvocationScope | undefined>;
   /**
    * Records a sign of life for every credential bound to `threadId`. Provider
-   * turns call this so that a session which is plainly alive keeps its
-   * credential even when it goes a long time without touching an MCP tool.
+   * turns call this to renew a still-owned session's credential, including
+   * after an idle interval longer than the bearer liveness window.
    */
   readonly touch: (threadId: ThreadId) => Effect.Effect<void>;
   readonly revokeProviderSession: (providerSessionId: string) => Effect.Effect<void>;
@@ -60,11 +61,10 @@ export interface McpSessionRegistryOptions {
  * How long a credential outlives the last sign of life from its provider
  * session.
  *
- * Liveness is refreshed both by MCP traffic and by `touch` on every provider
- * turn, so a session that is still doing work never expires no matter how long
- * it goes between browser tool calls. This window therefore only bounds
- * credentials whose session died without a clean stop — the normal paths
- * (`stopSession`, `stopAll`) revoke eagerly and do not wait for it.
+ * Valid MCP traffic and trusted provider turns refresh liveness. Expired
+ * bearers cannot authenticate, but their hashes are retained while the exact
+ * provider session still owns its configuration so its next turn can renew
+ * them. Normal stop paths revoke eagerly; revocation cannot be renewed.
  *
  * The bound matters because `/mcp` is mounted outside the environment auth
  * stack and is reachable on whatever host the server binds to, so this token is
@@ -111,7 +111,10 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   const pruneDead = (records: ReadonlyMap<string, CredentialRecord>, timestamp: number) => {
     const next = new Map(
       Array.from(records).filter(
-        ([, record]) => timestamp - record.lastAliveAt <= livenessWindowMs,
+        ([, record]) =>
+          timestamp - record.lastAliveAt <= livenessWindowMs ||
+          McpProviderSession.readMcpProviderSession(record.scope.threadId)?.providerSessionId ===
+            record.scope.providerSessionId,
       ),
     );
     return next.size === records.size ? records : next;
@@ -128,7 +131,11 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
         threadId: ThreadId.make(request.threadId),
         providerSessionId,
         providerInstanceId: ProviderInstanceId.make(request.providerInstanceId),
-        capabilities: new Set(["preview", "issues"]),
+        capabilities: new Set<McpInvocationContext.McpCapability>([
+          "issues",
+          "mailbox",
+          ...(request.previewEnabled === false ? [] : ["preview" as const]),
+        ]),
         issuedAt,
       };
       yield* SynchronizedRef.update(state, ({ records }) => {
@@ -139,6 +146,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
       return {
         config: {
           environmentId,
+          previewEnabled: request.previewEnabled !== false,
           threadId: scope.threadId,
           providerSessionId,
           providerInstanceId: scope.providerInstanceId,
@@ -157,7 +165,9 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
       return yield* SynchronizedRef.modify(state, ({ records }) => {
         const current = pruneDead(records, timestamp);
         const record = current.get(tokenHash);
-        if (!record) return [undefined, { records: current }] as const;
+        // Only a trusted provider turn can renew an expired, still-owned record.
+        if (!record || timestamp - record.lastAliveAt > livenessWindowMs)
+          return [undefined, { records: current }] as const;
         const next = new Map(current);
         next.set(tokenHash, { ...record, lastAliveAt: timestamp });
         return [record.scope, { records: next }] as const;

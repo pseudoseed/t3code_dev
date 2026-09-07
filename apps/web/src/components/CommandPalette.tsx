@@ -47,6 +47,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   LinkIcon,
+  MailIcon,
   MessageSquareIcon,
   PaletteIcon,
   SettingsIcon,
@@ -98,6 +99,7 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
+import { openAgentMailbox } from "../mailboxBus";
 import { onOpenCommandPalette } from "../commandPaletteBus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -1621,6 +1623,26 @@ function OpenCommandPaletteDialog(props: {
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
       groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+    });
+  }
+
+  if (
+    activeThread &&
+    threads.some(
+      (thread) =>
+        thread.environmentId === activeThread.environmentId &&
+        thread.id === activeThread.id &&
+        thread.mailboxRevision !== undefined,
+    )
+  ) {
+    actionItems.push({
+      kind: "action",
+      value: "action:agent-mailbox",
+      searchTerms: ["mailbox", "inbox", "agents", "collaboration", "messages", "link threads"],
+      title: "Open agent mailbox",
+      icon: <MailIcon className={ITEM_ICON_CLASS} />,
+      run: async () =>
+        openAgentMailbox(scopeThreadRef(activeThread.environmentId, activeThread.id)),
     });
   }
 

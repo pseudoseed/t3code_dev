@@ -1,3 +1,7 @@
+import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
+import { makeAgentMailbox } from "../AgentMailbox.ts";
+import * as Predicate from "effect/Predicate";
+import { readMcpProviderSession } from "../../mcp/McpProviderSession.ts";
 import {
   type ChatAttachment,
   CommandId,
@@ -18,6 +22,7 @@ import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Fiber from "effect/Fiber";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -69,6 +74,15 @@ type ProviderIntentEvent = Extract<
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
       | "thread.session-stop-requested"
+      | "thread.mailbox-updated"
+      | "thread.session-set"
+      | "thread.turn-diff-completed"
+      | "thread.unarchived"
+      | "thread.unsnoozed"
+      | "thread.snoozed"
+      | "thread.archived"
+      | "thread.deleted"
+      | "thread.activity-appended"
       | "thread.settled";
   }
 >;
@@ -316,6 +330,40 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
 
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
+  const mailbox = yield* makeAgentMailbox;
+  const mailboxTimers = new Map<ThreadId, { until: string; fiber: Fiber.Fiber<void> }>();
+  const wakeMailbox = Effect.fn("wakeMailbox")(function* (
+    threadId: ThreadId,
+    resumePending = false,
+  ) {
+    const until = yield* mailbox.repository.snoozedUntil(threadId);
+    const enabled = (yield* mailbox.repository.autoWake(threadId)).enabled;
+    const existing = mailboxTimers.get(threadId);
+    if (enabled && until !== null && existing?.until === until) return;
+    if (existing) {
+      yield* Fiber.interrupt(existing.fiber);
+      mailboxTimers.delete(threadId);
+    }
+    if (!enabled) return;
+    const delay =
+      until === null ? 0 : Date.parse(until) - DateTime.toEpochMillis(yield* DateTime.now);
+    if (until !== null && delay > 0) {
+      const fiber = yield* Effect.sleep(delay).pipe(
+        Effect.andThen(Effect.sync(() => mailboxTimers.delete(threadId))),
+        Effect.andThen(mailbox.wake(threadId, resumePending)),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not wake snoozed mailbox", {
+            threadId,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+        Effect.forkScoped,
+      );
+      mailboxTimers.set(threadId, { until, fiber });
+      return;
+    }
+    yield* mailbox.wake(threadId, resumePending);
+  });
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerAuthService = yield* ProviderAuthService;
@@ -1197,7 +1245,23 @@ const make = Effect.gen(function* () {
 
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
+      if (event.payload.mailboxWake && (yield* mailbox.repository.exists(event.payload.threadId))) {
+        const request = (yield* mailbox.repository.turns(
+          event.payload.threadId,
+          event.payload.messageId,
+        ))[0];
+        if (request?.state === "pending")
+          yield* mailbox.finish(event.payload.threadId, event.payload.messageId, null, "failed");
+      }
       return;
+    }
+    if (event.payload.mailboxWake) {
+      const request = (yield* mailbox.repository.turns(thread.id, event.payload.messageId))[0];
+      if (request?.state !== "pending") return;
+      if (!(yield* mailbox.repository.canWake(thread.id, event.payload.messageId))) {
+        yield* mailbox.finish(thread.id, event.payload.messageId, null, "failed");
+        return;
+      }
     }
     const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
     if (!message || message.role !== "user") {
@@ -1249,6 +1313,26 @@ const make = Effect.gen(function* () {
           }),
         ),
       );
+
+    if (event.payload.mailboxWake) {
+      const instanceId =
+        event.payload.modelSelection?.instanceId ?? thread.modelSelection.instanceId;
+      const capabilities = yield* providerService.getCapabilities(instanceId).pipe(
+        Effect.map(Option.some),
+        Effect.catchCause((cause) => recoverTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      );
+      if (Option.isNone(capabilities)) return;
+      if (capabilities.value.agentMcp === false) {
+        yield* mailbox.finish(thread.id, event.payload.messageId, null, "failed");
+        yield* mailbox.dispatch(thread.id, {
+          kind: "auto-wake",
+          enabled: false,
+          reason:
+            "This provider configuration cannot use agent mailbox tools. For OpenCode, select a locally managed instance instead of an external server, then resume automatic wake.",
+        });
+        return;
+      }
+    }
 
     const authCommandHandled = yield* Effect.gen(function* () {
       // Native account commands belong to the thread's existing provider session.
@@ -1446,9 +1530,98 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    const cancelMailboxStart = Effect.fn("cancelMailboxStart")(function* () {
+      yield* mailbox.finish(thread.id, event.payload.messageId, null, "failed");
+      const latest = yield* resolveThread(thread.id);
+      const session =
+        latest?.session ??
+        (latest === undefined
+          ? (yield* projectionSnapshotQuery.getArchivedShellSnapshot()).threads.find(
+              (entry) => entry.id === thread.id,
+            )?.session
+          : null);
+      if (session?.status === "starting" && session.activeTurnId === null) {
+        const now = DateTime.formatIso(yield* DateTime.now);
+        yield* setThreadSession({
+          threadId: thread.id,
+          session: { ...session, status: "ready", updatedAt: now },
+          createdAt: now,
+        });
+      }
+    });
+
+    // A user can pause or unlink while session startup is in progress.
+    if (event.payload.mailboxWake) {
+      const request = (yield* mailbox.repository.turns(thread.id, event.payload.messageId))[0];
+      if (request?.state !== "pending") return;
+      const latest = yield* resolveThread(thread.id);
+      if (
+        !latest ||
+        latest.archivedAt !== null ||
+        !(yield* mailbox.repository.autoWake(thread.id)).enabled
+      ) {
+        yield* cancelMailboxStart();
+        return;
+      }
+    }
+
+    const mailboxTurn = yield* mailbox
+      .prepare(
+        event.payload.threadId,
+        event.payload.messageId,
+        readMcpProviderSession(event.payload.threadId)?.providerSessionId ?? null,
+        Math.min(
+          32_000,
+          PROVIDER_SEND_TURN_MAX_INPUT_CHARS - (sendTurnRequest.value.input?.length ?? 0),
+        ),
+      )
+      .pipe(
+        Effect.map(Option.some),
+        Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      );
+    if (Option.isNone(mailboxTurn)) return;
+    const executionId = mailboxTurn.value.executionId;
+    if (event.payload.mailboxWake && mailboxTurn.value.context === "") {
+      yield* cancelMailboxStart();
+      yield* appendTurnStartFailure(
+        "Mailbox turn could not start",
+        "The provider session did not expose its mailbox tools. Restart the session and resume automatic wake.",
+      );
+      return;
+    }
+    if (event.payload.mailboxWake && mailboxTurn.value.incomingCount === 0) {
+      yield* cancelMailboxStart();
+      return;
+    }
     yield* providerService
-      .sendTurn(sendTurnRequest.value)
-      .pipe(Effect.asVoid, Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+      .sendTurn({
+        ...sendTurnRequest.value,
+        input: `${sendTurnRequest.value.input ?? ""}${mailboxTurn.value.context}` || undefined,
+      })
+      .pipe(
+        Effect.catchCause((cause) =>
+          mailbox.finish(event.payload.threadId, executionId, null, "failed").pipe(
+            Effect.catch(() => Effect.void),
+            Effect.andThen(recoverTurnStartFailure(cause)),
+            Effect.as(null),
+          ),
+        ),
+        Effect.tap((result) =>
+          result === null
+            ? Effect.void
+            : mailbox.finish(event.payload.threadId, executionId, result.turnId, "submitted").pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not record mailbox turn delivery", {
+                    threadId: event.payload.threadId,
+                    executionId,
+                    cause,
+                  }),
+                ),
+              ),
+        ),
+        Effect.asVoid,
+        Effect.forkScoped,
+      );
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -1710,6 +1883,30 @@ const make = Effect.gen(function* () {
       eventType: event.type,
     });
     switch (event.type) {
+      case "thread.mailbox-updated": {
+        const change = event.payload.change;
+        if (change.kind === "message") yield* wakeMailbox(change.message.toThreadId);
+        else if (change.kind === "link" && change.linked) {
+          yield* wakeMailbox(event.payload.threadId);
+          yield* wakeMailbox(change.peerThreadId);
+        } else if (
+          change.kind === "auto-wake" ||
+          (change.kind === "state" && change.state === "queued")
+        ) {
+          yield* wakeMailbox(event.payload.threadId, change.kind === "auto-wake");
+        }
+        return;
+      }
+      case "thread.session-set":
+      case "thread.turn-diff-completed":
+      case "thread.unarchived":
+      case "thread.unsnoozed":
+      case "thread.snoozed":
+      case "thread.archived":
+      case "thread.deleted":
+      case "thread.activity-appended":
+        yield* wakeMailbox(event.payload.threadId);
+        return;
       case "thread.meta-updated":
         yield* threadTitleRegenerationWorker.enqueue(event);
         return;
@@ -1798,6 +1995,23 @@ const make = Effect.gen(function* () {
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
         event.type === "thread.session-stop-requested" ||
+        event.type === "thread.mailbox-updated" ||
+        event.type === "thread.session-set" ||
+        event.type === "thread.turn-diff-completed" ||
+        event.type === "thread.unarchived" ||
+        event.type === "thread.unsnoozed" ||
+        event.type === "thread.snoozed" ||
+        event.type === "thread.archived" ||
+        event.type === "thread.deleted" ||
+        (event.type === "thread.activity-appended" &&
+          (event.payload.activity.kind === "approval.resolved" ||
+            event.payload.activity.kind === "user-input.resolved" ||
+            event.payload.activity.kind === "task.completed" ||
+            event.payload.activity.kind === "task.updated" ||
+            (event.payload.activity.kind === "task.progress" &&
+              Predicate.isObject(event.payload.activity.payload) &&
+              "status" in event.payload.activity.payload &&
+              typeof event.payload.activity.payload.status === "string"))) ||
         event.type === "thread.settled"
       ) {
         return yield* worker.enqueue(event);
@@ -1807,6 +2021,35 @@ const make = Effect.gen(function* () {
     // Subscribe before returning, even while event handling waits for server activation.
     const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
     yield* forkParked(Stream.runForEach(domainEvents, processEvent));
+
+    const recoverMailbox = Effect.gen(function* () {
+      for (const { threadId } of yield* mailbox.repository.wakeCandidates()) {
+        const previous = (yield* mailbox.repository.turns(threadId))[0];
+        const thread = yield* projectionSnapshotQuery.getThreadShellById(threadId);
+        if (
+          previous?.state === "prepared" &&
+          previous.providerSessionId !== readMcpProviderSession(threadId)?.providerSessionId &&
+          Option.isSome(thread) &&
+          thread.value.session?.status !== "starting" &&
+          thread.value.session?.status !== "running" &&
+          thread.value.session?.activeTurnId == null
+        ) {
+          yield* mailbox.finish(threadId, previous.executionId, previous.turnId, "failed");
+          yield* mailbox.dispatch(threadId, {
+            kind: "auto-wake",
+            enabled: false,
+            reason:
+              "Delivery could not be confirmed after restart. Review the last turn, then resume automatic wake to retry queued mail.",
+          });
+          continue;
+        }
+        yield* wakeMailbox(threadId, true);
+      }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Could not recover queued mailbox turns", { cause: Cause.pretty(cause) }),
+      ),
+    );
 
     // The domain event stream is hot, so work pending before this reactor
     // starts cannot be resumed. Correlated completions only clear the request
@@ -1829,8 +2072,10 @@ const make = Effect.gen(function* () {
     const activation = yield* ServerActivation;
     if (activation === undefined) {
       yield* clearInterrupted;
+      yield* recoverMailbox;
     } else {
       yield* forkParked(clearInterrupted);
+      yield* forkParked(recoverMailbox);
     }
   });
 

@@ -69,6 +69,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   FetchHttpClient,
@@ -169,6 +170,14 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as Data from "effect/Data";
+import { makeAgentMailbox } from "./orchestration/AgentMailbox.ts";
+import { OrchestrationEngineLive } from "./orchestration/Layers/OrchestrationEngine.ts";
+import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/ProjectionPipeline.ts";
+import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery.ts";
+import * as ThreadBackgroundLiveness from "./orchestration/ThreadBackgroundLiveness.ts";
+import * as ThreadPlanProgress from "./orchestration/ThreadPlanProgress.ts";
+import { OrchestrationCommandReceiptRepositoryLive } from "./persistence/Layers/OrchestrationCommandReceipts.ts";
+import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
 import {
@@ -377,9 +386,11 @@ const browserOtlpTracingLayer = Layer.mergeAll(
   Layer.succeed(HttpClient.TracerDisabledWhen, () => true),
 );
 
-const makeAuthTestLayer = () =>
+const makeAuthTestLayer = (persistence?: SqlClient.SqlClient) =>
   EnvironmentAuth.layer.pipe(
-    Layer.provide(SqlitePersistenceMemory),
+    Layer.provideMerge(
+      persistence ? Layer.succeed(SqlClient.SqlClient, persistence) : SqlitePersistenceMemory,
+    ),
     Layer.provide(ServerSecretStore.layer),
     Layer.provide(
       Layer.mock(ServerEnvironment.ServerEnvironmentIdentity)({
@@ -492,6 +503,7 @@ const buildAppUnderTest = (options?: {
   onPairingChangesSubscribed?: Effect.Effect<void>;
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   layers?: {
+    persistence?: SqlClient.SqlClient;
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     environmentTheme?: Partial<EnvironmentTheme.EnvironmentThemeService["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
@@ -1141,7 +1153,7 @@ const buildAppUnderTest = (options?: {
           ),
         };
       }),
-      Layer.provideMerge(makeAuthTestLayer()),
+      Layer.provideMerge(makeAuthTestLayer(options?.layers?.persistence)),
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
@@ -1578,6 +1590,89 @@ const getWsServerUrl = (
       yield* getAuthenticatedSessionCookieHeader(options?.credential),
     );
   });
+
+const makeMailboxRpcFixture = Effect.fn("server.test.makeMailboxRpcFixture")(function* () {
+  // The RPC and engine use the same SQLite connection. Provider reactors are
+  // absent so this transport test cannot launch an agent or consume its queue.
+  const context = yield* Layer.build(
+    Layer.mergeAll(
+      OrchestrationEngineLive.pipe(
+        Layer.provide(OrchestrationProjectionSnapshotQueryLive),
+        Layer.provide(OrchestrationProjectionPipelineLive),
+      ),
+      OrchestrationProjectionSnapshotQueryLive,
+    ).pipe(
+      Layer.provide(ThreadBackgroundLiveness.layer),
+      Layer.provide(ThreadPlanProgress.layer),
+      Layer.provide(OrchestrationEventStoreLive),
+      Layer.provide(OrchestrationCommandReceiptRepositoryLive),
+      Layer.provide(RepositoryIdentityResolver.layer),
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-mailbox-rpc-" })),
+    ),
+  );
+  return yield* Effect.gen(function* () {
+    const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+    const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+    const persistence = yield* SqlClient.SqlClient;
+    const mailbox = yield* makeAgentMailbox;
+    const sender = ThreadId.make("mailbox-rpc-api");
+    const recipient = ThreadId.make("mailbox-rpc-web");
+    const executionId = MessageId.make("mailbox-rpc-sender-turn");
+    const createdAt = "2026-09-07T12:00:00.000Z";
+    for (const threadId of [sender, recipient]) {
+      const projectId = ProjectId.make(`project-${threadId}`);
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make(`project-${threadId}`),
+        projectId,
+        title: threadId,
+        workspaceRoot: `/tmp/${threadId}`,
+        defaultModelSelection,
+        createdAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`thread-${threadId}`),
+        threadId,
+        projectId,
+        title: threadId,
+        modelSelection: defaultModelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      });
+    }
+    yield* mailbox.prepare(sender, executionId, "mailbox-rpc-provider-session");
+    const send = mailbox.dispatch(sender, {
+      kind: "send",
+      id: "mailbox-rpc-request",
+      executionId,
+      toThreadId: recipient,
+      body: "The API contract is ready for the web repository.",
+      replyTo: null,
+    });
+    yield* buildAppUnderTest({
+      layers: { orchestrationEngine: engine, projectionSnapshotQuery: snapshotQuery, persistence },
+    });
+    return { engine, mailbox, sender, recipient, executionId, send };
+  }).pipe(Effect.provide(context));
+});
+
+const getTicketWsServerUrl = Effect.fn("server.test.getTicketWsServerUrl")(function* (
+  scope: string,
+) {
+  const token = yield* exchangeAccessToken(defaultDesktopBootstrapToken, { scope });
+  assert.equal(token.response.status, 200);
+  const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
+    headers: { authorization: `Bearer ${token.body.access_token ?? ""}` },
+  });
+  assert.equal(ticketResponse.status, 200);
+  const { ticket } = yield* responseJsonEffect<{ readonly ticket: string }>(ticketResponse);
+  return `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
+});
 
 // Mirrors NodeHttpServer.layerTest, which does not expose server options,
 // with the production `websocket: { perMessageDeflate: true }` setting.
@@ -5236,6 +5331,223 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         failureMessage.includes("Unauthorized") ||
           failureMessage.includes("An error occurred during Open"),
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "mailbox RPC shares durable state between cookie and ticket clients across reconnect",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeMailboxRpcFixture();
+        const cookieUrl = yield* getWsServerUrl("/ws");
+        const ticketUrl = yield* getTicketWsServerUrl("orchestration:read orchestration:operate");
+        yield* Effect.scoped(
+          withWsRpcClient(cookieUrl, (writer) =>
+            Effect.gen(function* () {
+              const queued = yield* Effect.scoped(
+                withWsRpcClient(ticketUrl, (reader) =>
+                  Effect.gen(function* () {
+                    const items = yield* Queue.unbounded<OrchestrationShellStreamItem>();
+                    yield* reader[ORCHESTRATION_WS_METHODS.subscribeShell]({
+                      requestCompletionMarker: true,
+                    }).pipe(
+                      Stream.runForEach((item) => Queue.offer(items, item)),
+                      Effect.forkScoped,
+                    );
+                    yield* awaitSubscriptionSynchronized(
+                      items,
+                      "mailbox ticket client initial snapshot",
+                    );
+                    yield* writer[WS_METHODS.mailboxUpdate]({
+                      threadId: fixture.sender,
+                      commandId: CommandId.make("mailbox-rpc-link"),
+                      operation: { kind: "link", peerThreadId: fixture.recipient, linked: true },
+                    });
+                    yield* writer[WS_METHODS.mailboxUpdate]({
+                      threadId: fixture.recipient,
+                      commandId: CommandId.make("mailbox-rpc-pause"),
+                      operation: { kind: "auto-wake", enabled: false },
+                    });
+                    yield* fixture.send;
+                    const updates = yield* collectQueueUntil(
+                      items,
+                      (item) =>
+                        item.kind === "thread-upserted" &&
+                        item.thread.id === fixture.recipient &&
+                        item.thread.mailboxPendingCount === 1,
+                      "mailbox pending count on second client",
+                    );
+                    const queuedEvent = updates.findLast(
+                      (item) =>
+                        item.kind === "thread-upserted" && item.thread.id === fixture.recipient,
+                    );
+                    assert.equal(queuedEvent?.kind, "thread-upserted");
+                    if (queuedEvent?.kind !== "thread-upserted")
+                      return yield* Effect.die("Missing mailbox update");
+                    const inbox = yield* reader[WS_METHODS.mailboxGet]({
+                      threadId: fixture.recipient,
+                    });
+                    const source = yield* reader[WS_METHODS.mailboxGet]({
+                      threadId: fixture.sender,
+                    });
+                    assert.deepEqual(inbox.peers, [fixture.sender]);
+                    assert.equal(inbox.autoWake?.enabled, false);
+                    assert.equal(inbox.pendingCount, 1);
+                    assert.equal(inbox.messages[0]?.state, "queued");
+                    assert.deepEqual(source.turns[0]?.sent, ["mailbox-rpc-request"]);
+                    assert.equal(source.turns[0]?.executionId, fixture.executionId);
+                    return {
+                      inbox,
+                      source,
+                      sequence: queuedEvent.sequence,
+                      revision: queuedEvent.thread.mailboxRevision ?? 0,
+                    };
+                  }),
+                ),
+              );
+
+              // The reader's socket and subscription are now closed. A different
+              // authenticated client changes controls while the reader is offline.
+              yield* writer[WS_METHODS.mailboxUpdate]({
+                threadId: fixture.recipient,
+                commandId: CommandId.make("mailbox-rpc-resume-offline"),
+                operation: { kind: "auto-wake", enabled: true },
+              });
+              const reconnectUrl = yield* getTicketWsServerUrl(
+                "orchestration:read orchestration:operate",
+              );
+              yield* Effect.scoped(
+                withWsRpcClient(reconnectUrl, (reconnected) =>
+                  Effect.gen(function* () {
+                    const replay = yield* reconnected[ORCHESTRATION_WS_METHODS.subscribeShell]({
+                      afterSequence: queued.sequence,
+                      requestCompletionMarker: true,
+                    }).pipe(
+                      Stream.takeUntil((item) => item.kind === "synchronized"),
+                      Stream.runCollect,
+                    );
+                    assert.equal(
+                      replay.some(
+                        (item) =>
+                          item.kind === "thread-upserted" &&
+                          item.thread.id === fixture.recipient &&
+                          (item.thread.mailboxRevision ?? 0) > queued.revision,
+                      ),
+                      true,
+                    );
+                    const inbox = yield* reconnected[WS_METHODS.mailboxGet]({
+                      threadId: fixture.recipient,
+                    });
+                    assert.equal(inbox.autoWake?.enabled, true);
+                    assert.equal(inbox.pendingCount, 1);
+                    assert.deepEqual(inbox.messages, queued.inbox.messages);
+                    const source = yield* reconnected[WS_METHODS.mailboxGet]({
+                      threadId: fixture.sender,
+                    });
+                    assert.deepEqual(source.turns, queued.source.turns);
+                    yield* reconnected[WS_METHODS.mailboxUpdate]({
+                      threadId: fixture.recipient,
+                      commandId: CommandId.make("mailbox-rpc-pause-reconnected"),
+                      operation: { kind: "auto-wake", enabled: false },
+                    });
+                    assert.equal(
+                      (yield* writer[WS_METHODS.mailboxGet]({ threadId: fixture.recipient }))
+                        .autoWake?.enabled,
+                      false,
+                    );
+                  }),
+                ),
+              );
+            }),
+          ),
+        );
+      }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect(
+    "mailbox RPC read-only authorization leaves queued messages and controls unchanged",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeMailboxRpcFixture();
+        yield* fixture.mailbox.update({
+          threadId: fixture.sender,
+          commandId: CommandId.make("mailbox-read-only-link"),
+          operation: { kind: "link", peerThreadId: fixture.recipient, linked: true },
+        });
+        yield* fixture.send;
+        const before = yield* fixture.mailbox.get({ threadId: fixture.recipient });
+        const beforeSequence = yield* fixture.engine.latestSequence;
+        const wsUrl = yield* getTicketWsServerUrl("orchestration:read");
+        yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            Effect.gen(function* () {
+              const inbox = yield* client[WS_METHODS.mailboxGet]({ threadId: fixture.recipient });
+              assert.deepEqual(inbox, before);
+              const operations = [
+                { kind: "auto-wake", enabled: false },
+                { kind: "state", messageId: "mailbox-rpc-request", state: "dismissed" },
+                { kind: "link", peerThreadId: fixture.sender, linked: false },
+              ] as const;
+              for (const operation of operations) {
+                const denied = yield* client[WS_METHODS.mailboxUpdate]({
+                  threadId: fixture.recipient,
+                  commandId: CommandId.make(`mailbox-read-only-${operation.kind}`),
+                  operation,
+                }).pipe(Effect.flip);
+                assert.equal(denied._tag, "EnvironmentAuthorizationError");
+                if (denied._tag === "EnvironmentAuthorizationError")
+                  assert.equal(denied.requiredScope, "orchestration:operate");
+              }
+            }),
+          ),
+        );
+        assert.equal(yield* fixture.engine.latestSequence, beforeSequence);
+        assert.deepEqual(yield* fixture.mailbox.get({ threadId: fixture.recipient }), before);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("mailbox RPC allows reads and rejects changes from a read-only connection", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationCommand[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                commands.push(command);
+                return { sequence: commands.length };
+              }),
+          },
+        },
+      });
+      const token = yield* exchangeAccessToken(defaultDesktopBootstrapToken, {
+        scope: "orchestration:read",
+      });
+      assert.equal(token.response.status, 200);
+      const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
+        headers: { authorization: `Bearer ${token.body.access_token ?? ""}` },
+      });
+      const { ticket } = yield* responseJsonEffect<{ readonly ticket: string }>(ticketResponse);
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const missing = yield* client[WS_METHODS.mailboxGet]({
+              threadId: ThreadId.make("missing-mailbox"),
+            }).pipe(Effect.flip);
+            assert.equal(missing._tag, "MailboxError");
+            const denied = yield* client[WS_METHODS.mailboxUpdate]({
+              threadId: defaultThreadId,
+              commandId: CommandId.make("read-only-mailbox-link"),
+              operation: { kind: "link", peerThreadId: ThreadId.make("peer"), linked: true },
+            }).pipe(Effect.flip);
+            assert.equal(denied._tag, "EnvironmentAuthorizationError");
+            if (denied._tag === "EnvironmentAuthorizationError")
+              assert.equal(denied.requiredScope, "orchestration:operate");
+          }),
+        ),
+      );
+      assert.deepEqual(commands, []);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

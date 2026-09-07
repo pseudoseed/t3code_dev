@@ -1,3 +1,4 @@
+import { MailboxGetInput, MailboxGetResult, MailboxUpdateInput, MailboxError } from "./mailbox.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -387,6 +388,10 @@ export const WS_METHODS = {
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
   pullRequestsLabelCandidates: "pullRequests.labelCandidates",
   pullRequestsSetLabels: "pullRequests.setLabels",
+
+  // Agent mailbox methods
+  mailboxGet: "mailbox.get",
+  mailboxUpdate: "mailbox.update",
 
   // Source control methods
   issuesList: "issues.list",
@@ -815,6 +820,17 @@ export const WsSourceControlLookupRepositoryRpc = Rpc.make(
     error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsMailboxGetRpc = Rpc.make(WS_METHODS.mailboxGet, {
+  payload: MailboxGetInput,
+  success: MailboxGetResult,
+  error: Schema.Union([MailboxError, EnvironmentAuthorizationError]),
+});
+export const WsMailboxUpdateRpc = Rpc.make(WS_METHODS.mailboxUpdate, {
+  payload: MailboxUpdateInput,
+  success: Schema.Void,
+  error: Schema.Union([MailboxError, EnvironmentAuthorizationError]),
+});
 
 export const WsIssuesListRpc = Rpc.make(WS_METHODS.issuesList, {
   payload: IssueListInput,
@@ -1391,6 +1407,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsDiffFileContentsRpc,
   WsPullRequestsRunActionRpc,
   WsPullRequestsUpdateRpc,
+  WsMailboxGetRpc,
+  WsMailboxUpdateRpc,
   WsIssuesListRpc,
   WsIssuesDetailRpc,
   WsIssuesCommentRpc,

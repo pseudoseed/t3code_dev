@@ -857,6 +857,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       >
         {thread.title}
       </Text>
+      {thread.mailboxPendingCount ? (
+        <Text
+          className={cn(
+            "mt-1 text-xs",
+            selected ? "text-user-bubble-foreground" : "text-foreground-tertiary",
+          )}
+        >
+          Mailbox: {thread.mailboxPendingCount} pending
+        </Text>
+      ) : null}
       {props.searchMatch ? (
         <View className="mt-1">
           <ThreadSearchMatchExcerpt
@@ -1039,6 +1049,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             >
               {thread.title}
             </Text>
+            {thread.mailboxPendingCount ? (
+              <Text
+                className={cn(
+                  "text-xs",
+                  selected ? "text-user-bubble-foreground" : "text-foreground-tertiary",
+                )}
+              >
+                Mailbox: {thread.mailboxPendingCount} pending
+              </Text>
+            ) : null}
             {props.searchMatch ? (
               <ThreadSearchMatchExcerpt
                 match={props.searchMatch}
