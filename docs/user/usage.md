@@ -18,6 +18,14 @@ provider health-check interval and update live while a turn runs. API-key accoun
 subscription windows and say so; that includes a Claude Code that reaches Anthropic through a proxy
 via `ANTHROPIC_AUTH_TOKEN`, since the CLI then treats itself as an API-key client.
 
+When Claude cannot report limits for a token sign-in, the Limits view names that sign-in method.
+Try signing in through **Settings → Providers** to check whether account sign-in makes limits
+available. Unavailable limits from Amazon Bedrock or Vertex AI name the backend instead.
+
+Signed-out Codex accounts show their sign-in status in **Settings → Providers** without an extra
+usage warning on the Limits view. Signed-in accounts still show errors when their limits cannot
+be read.
+
 **Add source** on the Limits view brings in quota from outside this machine's own providers. Each
 added account is marked with the source it came from, so it is not mistaken for the provider signed
 in here, and emails are blurred until clicked as in provider settings.

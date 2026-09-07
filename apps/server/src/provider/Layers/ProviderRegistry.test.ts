@@ -427,6 +427,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.auth.status, "unauthenticated");
+          assert.strictEqual(status.usageLimits, undefined);
           assert.strictEqual(
             status.message,
             "Codex CLI is not authenticated. Run `codex login` and try again.",
@@ -451,6 +452,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
             assert.strictEqual(status.status, "ready");
             assert.strictEqual(status.auth.status, "unknown");
+            assert.strictEqual(status.usageLimits, undefined);
           }),
       );
 
@@ -471,6 +473,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.auth.status, "authenticated");
           assert.strictEqual(status.auth.type, "apiKey");
           assert.strictEqual(status.auth.label, "OpenAI API Key");
+          assert.deepStrictEqual(status.usageLimits?.unavailable, {
+            reason: "unsupported",
+            message: "An API key account has no subscription limits.",
+          });
+        }),
+      );
+
+      it.effect("keeps usage failures visible for signed-in Codex accounts", () =>
+        Effect.gen(function* () {
+          const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+            Effect.succeed(
+              makeCodexProbeSnapshot({
+                rateLimits: { failure: "Codex could not read usage (JSON-RPC -32600)." },
+              }),
+            ),
+          );
+
+          assert.strictEqual(status.auth.status, "authenticated");
+          assert.deepStrictEqual(status.usageLimits?.unavailable, {
+            reason: "probeFailed",
+            message: "Codex could not read usage (JSON-RPC -32600).",
+          });
         }),
       );
 
@@ -2364,6 +2388,45 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
     // ── checkClaudeProviderStatus tests ──────────────────────────
 
     describe("checkClaudeProviderStatus", () => {
+      it.effect("explains unavailable token limits on an authenticated Claude account", () =>
+        Effect.gen(function* () {
+          for (const rememberNames of [false, true]) {
+            const names = yield* Ref.make({ overageIncluded: undefined as string | undefined });
+            const status = yield* checkClaudeProviderStatus(
+              defaultClaudeSettings,
+              () =>
+                Effect.succeed({
+                  email: "user@example.com",
+                  subscriptionType: "maxplan",
+                  tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
+                  apiProvider: "firstParty",
+                  slashCommands: [],
+                  usage: { rate_limits_available: false, rate_limits: null },
+                }),
+              {},
+              undefined,
+              undefined,
+              rememberNames ? names : undefined,
+            );
+            assert.strictEqual(status.auth.status, "authenticated");
+            assert.deepStrictEqual(status.usageLimits?.unavailable, {
+              reason: "unsupported",
+              message:
+                "Claude did not report subscription limits for this token sign-in. Try signing in through Settings → Providers.",
+            });
+          }
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              if (args.join(" ") === "--version") {
+                return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              }
+              throw new Error(`Unexpected args: ${args.join(" ")}`);
+            }),
+          ),
+        ),
+      );
+
       it.effect("returns ready when claude is installed and authenticated", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(

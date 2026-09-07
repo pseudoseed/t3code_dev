@@ -649,9 +649,15 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 
   const snapshot = probeResult.success.value;
   const accountStatus = accountProbeStatus(snapshot.account);
-  const usageLimits =
-    snapshot.account.account?.type === "apiKey"
-      ? makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" })
+  // Signed-out accounts are already covered by auth status; no usage was requested.
+  const usageLimits = !snapshot.account.account
+    ? undefined
+    : snapshot.account.account.type === "apiKey"
+      ? makeUnavailableUsageLimits({
+          checkedAt,
+          reason: "unsupported",
+          message: "An API key account has no subscription limits.",
+        })
       : snapshot.rateLimits === undefined || "failure" in snapshot.rateLimits
         ? makeUnavailableUsageLimits({
             checkedAt,
@@ -684,7 +690,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       status: accountStatus.status,
       auth: accountStatus.auth,
       ...(accountStatus.message ? { message: accountStatus.message } : {}),
-      usageLimits,
+      ...(usageLimits ? { usageLimits } : {}),
     },
   });
 });
