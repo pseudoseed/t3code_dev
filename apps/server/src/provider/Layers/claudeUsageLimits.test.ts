@@ -86,7 +86,7 @@ describe("claudeUsageResponseToLimits", () => {
     ).toEqual({ overageIncluded: "Fable" });
   });
 
-  it("reports API key and Bedrock accounts as unsupported", () => {
+  it("keeps the generic notice when account metadata is unknown", () => {
     expect(
       claudeUsageResponseToLimits({
         checkedAt,
@@ -95,10 +95,45 @@ describe("claudeUsageResponseToLimits", () => {
     ).toEqual({ checkedAt, windows: [], unavailable: { reason: "unsupported" } });
   });
 
-  it("skips a window the endpoint reports without a utilization", () => {
+  it.each(["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"])(
+    "names the sign-in method when %s limits are unavailable",
+    (tokenSource) => {
+      expect(
+        claudeUsageResponseToLimits({
+          checkedAt,
+          response: { rate_limits_available: false, rate_limits: null },
+          tokenSource,
+        }).limits.unavailable,
+      ).toEqual({
+        reason: "unsupported",
+        message:
+          "Claude did not report subscription limits for this token sign-in. Try signing in through Settings → Providers.",
+      });
+    },
+  );
+
+  it.each([
+    ["bedrock", "Amazon Bedrock"],
+    ["vertex", "Vertex AI"],
+  ])("names the %s backend when limits are unavailable", (apiProvider, label) => {
     expect(
       claudeUsageResponseToLimits({
         checkedAt,
+        response: { rate_limits_available: false, rate_limits: null },
+        apiProvider,
+        tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
+      }).limits.unavailable,
+    ).toEqual({
+      reason: "unsupported",
+      message: `Claude did not report subscription limits through ${label}.`,
+    });
+  });
+
+  it("keeps reported windows for token sign-ins and skips windows without utilization", () => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
         response: {
           rate_limits_available: true,
           rate_limits: {

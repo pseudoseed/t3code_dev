@@ -614,14 +614,20 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       },
     });
   }
-  const usageLimits = !capabilities.usage
+  // Include account metadata so unavailable limits can name the sign-in method.
+  const usageInput = capabilities.usage
+    ? {
+        response: capabilities.usage,
+        checkedAt,
+        tokenSource: capabilities.tokenSource,
+        apiProvider: capabilities.apiProvider,
+      }
+    : undefined;
+  const usageLimits = !usageInput
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
-      ? yield* recordClaudeUsageResponse(scopedLimitNames, {
-          response: capabilities.usage,
-          checkedAt,
-        })
-      : claudeUsageResponseToLimits({ response: capabilities.usage, checkedAt }).limits;
+      ? yield* recordClaudeUsageResponse(scopedLimitNames, usageInput)
+      : claudeUsageResponseToLimits(usageInput).limits;
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,

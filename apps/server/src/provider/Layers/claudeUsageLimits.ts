@@ -56,6 +56,26 @@ export interface ClaudeScopedLimitNames {
   readonly overageIncluded: string | undefined;
 }
 
+/** Describe unavailable limits using account metadata from the same probe. */
+function unavailableReasonMessage(input: {
+  readonly tokenSource?: string | undefined;
+  readonly apiProvider?: string | undefined;
+}): string | undefined {
+  const apiProvider = input.apiProvider?.trim().toLowerCase();
+  if (apiProvider === "bedrock")
+    return "Claude did not report subscription limits through Amazon Bedrock.";
+  if (apiProvider === "vertex")
+    return "Claude did not report subscription limits through Vertex AI.";
+  const tokenSource = input.tokenSource?.trim().toUpperCase();
+  if (
+    tokenSource === "CLAUDE_CODE_OAUTH_TOKEN" ||
+    tokenSource === "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"
+  ) {
+    return "Claude did not report subscription limits for this token sign-in. Try signing in through Settings → Providers.";
+  }
+  return undefined;
+}
+
 export const makeClaudeScopedLimitNames = Ref.make<ClaudeScopedLimitNames>({
   overageIncluded: undefined,
 });
@@ -157,11 +177,20 @@ export function claudeRateLimitEventToUpdate(
 export function claudeUsageResponseToLimits(input: {
   readonly response: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
   readonly checkedAt: string;
+  /** `AccountInfo.tokenSource` from the same probe; names an env/FD token. */
+  readonly tokenSource?: string | undefined;
+  /** `AccountInfo.apiProvider` from the same probe; names a cloud backend. */
+  readonly apiProvider?: string | undefined;
 }): { readonly limits: ServerProviderUsageLimits; readonly names: ClaudeScopedLimitNames } {
   const { response, checkedAt } = input;
   if (!response.rate_limits_available || !response.rate_limits) {
+    const message = unavailableReasonMessage(input);
     return {
-      limits: makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" }),
+      limits: makeUnavailableUsageLimits({
+        checkedAt,
+        reason: "unsupported",
+        ...(message ? { message } : {}),
+      }),
       names: { overageIncluded: undefined },
     };
   }
