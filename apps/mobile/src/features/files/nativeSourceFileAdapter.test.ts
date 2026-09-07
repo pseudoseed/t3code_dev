@@ -63,4 +63,11 @@ describe("nativeSourceFileAdapter", () => {
   it("clears native tokens while highlighting is unavailable", () => {
     expect(buildNativeSourceTokens(null)).toEqual({});
   });
+
+  it("preserves tabs and Unicode offsets for selectable source text", () => {
+    const tokens = [{ content: "\t🧪 café", color: "#ff0000", fontStyle: null }];
+    expect(buildNativeSourceTokens([tokens], true)).toEqual({
+      [nativeSourceRowId(0)]: tokens,
+    });
+  });
 });

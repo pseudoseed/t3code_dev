@@ -61,6 +61,7 @@ export function buildNativeSourceRows(
 
 export function buildNativeSourceTokens(
   tokenLines: SourceHighlightTokens | null,
+  preserveTabs = false,
 ): Readonly<Record<string, ReadonlyArray<NativeReviewDiffToken>>> {
   if (tokenLines === null) {
     return {};
@@ -70,7 +71,7 @@ export function buildNativeSourceTokens(
     tokenLines.map((tokens, index) => [
       nativeSourceRowId(index),
       tokens.map((token) => ({
-        content: expandTabs(token.content),
+        content: preserveTabs ? token.content : expandTabs(token.content),
         color: token.color,
         fontStyle: token.fontStyle,
       })),

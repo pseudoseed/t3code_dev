@@ -169,7 +169,7 @@ function NativeSourceFileSurface(
       setIsPullRefreshing(false);
     }
   }, [onRefresh]);
-  const tokensJson = useMemo(() => JSON.stringify(buildNativeSourceTokens(tokens)), [tokens]);
+  const tokensJson = useMemo(() => JSON.stringify(buildNativeSourceTokens(tokens, true)), [tokens]);
   const selectedRowIdsJson = useMemo(
     () => JSON.stringify(targetIndex === null ? [] : [nativeSourceRowId(targetIndex)]),
     [targetIndex],
@@ -192,6 +192,7 @@ function NativeSourceFileSurface(
         style={{ flex: 1 }}
         appearanceScheme={themeAppearance}
         contentResetKey={props.path}
+        sourceText={props.contents.replace(/\r\n?/g, "\n")}
         contentWidth={contentWidth}
         initialRowIndex={targetIndex ?? -1}
         rowHeight={nativeSourceStyle.rowHeight ?? codeSurface.rowHeight}

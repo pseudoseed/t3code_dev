@@ -107,6 +107,8 @@ export interface NativeReviewDiffStyle {
 }
 
 export interface NativeReviewDiffViewProps extends ViewProps {
+  /** Use a continuous native text document for source files, preserving copyable whitespace. */
+  readonly sourceText?: string;
   readonly rowsJson: string;
   readonly tokensJson?: string;
   readonly tokensPatchJson?: string;
@@ -154,6 +156,7 @@ export function isNativeReviewDiffDrawEvent(payload: Readonly<Record<string, unk
 }
 
 interface NativeReviewDiffViewRef {
+  readonly setSourceText: (sourceText: string) => Promise<void>;
   readonly setRowsJson: (rowsJson: string) => Promise<void>;
   readonly setTokensJson: (tokensJson: string) => Promise<void>;
   readonly setTokensPatchJson: (tokensPatchJson: string) => Promise<void>;
@@ -163,7 +166,7 @@ interface NativeReviewDiffViewRef {
 
 type NativeReviewDiffRawViewProps = Omit<
   NativeReviewDiffViewProps,
-  "nativeViewRef" | "rowsJson" | "tokensJson" | "tokensPatchJson"
+  "nativeViewRef" | "rowsJson" | "tokensJson" | "tokensPatchJson" | "sourceText"
 > & {
   readonly ref?: Ref<NativeReviewDiffViewRef>;
 };
@@ -171,7 +174,11 @@ type NativeReviewDiffRawViewProps = Omit<
 let cachedNativeReviewDiffRawView: ComponentType<NativeReviewDiffRawViewProps> | undefined;
 let nativeReviewDiffViewResolutionFailed = false;
 
-type NativeReviewDiffPayloadMethod = "setRowsJson" | "setTokensJson" | "setTokensPatchJson";
+type NativeReviewDiffPayloadMethod =
+  | "setRowsJson"
+  | "setTokensJson"
+  | "setTokensPatchJson"
+  | "setSourceText";
 
 export function isPendingNativeViewRegistration(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -245,8 +252,10 @@ function getExpoViewConfig(moduleName: string) {
 }
 
 function NativeReviewDiffView(props: NativeReviewDiffViewProps) {
-  const { nativeViewRef, rowsJson, tokensJson, tokensPatchJson, ...nativeProps } = props;
+  const { nativeViewRef, rowsJson, tokensJson, tokensPatchJson, sourceText, ...nativeProps } =
+    props;
   const nativeRef = useRef<NativeReviewDiffViewRef>(null);
+  useNativeReviewDiffPayload(nativeRef, "setSourceText", sourceText);
   useNativeReviewDiffPayload(nativeRef, "setRowsJson", rowsJson);
   useNativeReviewDiffPayload(nativeRef, "setTokensJson", tokensJson);
   useNativeReviewDiffPayload(nativeRef, "setTokensPatchJson", tokensPatchJson);

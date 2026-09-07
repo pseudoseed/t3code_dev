@@ -608,6 +608,24 @@ describe("nativeMarkdownDocumentChunks", () => {
     ).toBe("\u20079.\tNinth\n10.\tTenth");
   });
 
+  it("groups a blockquote's paragraphs into one selectable text document", () => {
+    const quote: MarkdownNode = {
+      type: "blockquote",
+      children: [
+        { type: "paragraph", children: [{ type: "text", content: "First paragraph." }] },
+        { type: "paragraph", children: [{ type: "text", content: "Second paragraph." }] },
+      ],
+    };
+    const chunks = nativeMarkdownDocumentChunks(quote);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toMatchObject({ kind: "selectable" });
+    expect(
+      nativeMarkdownDocumentRuns(chunks[0]!.node)
+        .map((run) => run.text)
+        .join(""),
+    ).toMatch(/^First paragraph\.\s+Second paragraph\.$/);
+  });
+
   it("keeps prose selectable while exposing rich AST blocks", () => {
     const document: MarkdownNode = {
       type: "document",

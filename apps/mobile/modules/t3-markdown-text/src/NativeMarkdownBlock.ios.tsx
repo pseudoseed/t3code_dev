@@ -4,7 +4,11 @@ import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
 import { CopyTextButton } from "./CopyTextButton";
 import { MarkdownTextPrimitive } from "./MarkdownTextPrimitive";
-import { nativeMarkdownDocumentRuns, nativeMarkdownListItemBlocks } from "./nativeMarkdownText";
+import {
+  nativeMarkdownDocumentChunks,
+  nativeMarkdownDocumentRuns,
+  nativeMarkdownListItemBlocks,
+} from "./nativeMarkdownText";
 import { NativeMarkdownSelectableText } from "./NativeMarkdownSelectableText.ios";
 import type {
   MarkdownCodeHighlighter,
@@ -585,17 +589,27 @@ export function NativeMarkdownBlock(props: {
     case "document":
       return (
         <View style={{ gap: 8 }}>
-          {(props.node.children ?? []).map((child, index) => (
-            <NativeMarkdownBlock
-              key={nodeKey(child, index)}
-              node={child}
-              skills={props.skills}
-              textStyle={props.textStyle}
-              highlightCode={props.highlightCode}
-              onLinkPress={props.onLinkPress}
-              depth={depth}
-            />
-          ))}
+          {nativeMarkdownDocumentChunks(props.node).map((chunk) =>
+            chunk.kind === "selectable" ? (
+              <SelectableNode
+                key={chunk.key}
+                node={chunk.node}
+                skills={props.skills}
+                textStyle={props.textStyle}
+                onLinkPress={props.onLinkPress}
+              />
+            ) : (
+              <NativeMarkdownBlock
+                key={chunk.key}
+                node={chunk.node}
+                skills={props.skills}
+                textStyle={props.textStyle}
+                highlightCode={props.highlightCode}
+                onLinkPress={props.onLinkPress}
+                depth={depth}
+              />
+            ),
+          )}
         </View>
       );
     case "code_block":
@@ -646,18 +660,15 @@ export function NativeMarkdownBlock(props: {
             gap: 6,
           }}
         >
-          {(props.node.children ?? []).map((child, index) => (
-            <NativeMarkdownBlock
-              key={nodeKey(child, index)}
-              node={child}
-              skills={props.skills}
-              textStyle={props.textStyle}
-              highlightCode={props.highlightCode}
-              onLinkPress={props.onLinkPress}
-              depth={depth}
-              compact
-            />
-          ))}
+          <NativeMarkdownBlock
+            node={{ type: "document", children: props.node.children ?? [] }}
+            skills={props.skills}
+            textStyle={props.textStyle}
+            highlightCode={props.highlightCode}
+            onLinkPress={props.onLinkPress}
+            depth={depth}
+            compact
+          />
         </View>
       );
     case "list":

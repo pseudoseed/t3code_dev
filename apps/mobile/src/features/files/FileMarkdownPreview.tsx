@@ -6,6 +6,7 @@ import {
   type PartialMarkdownTheme,
 } from "react-native-nitro-markdown";
 import { RefreshControl, ScrollView, Text as NativeText, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useFontFamily } from "../../lib/useFontFamily";
@@ -177,6 +178,7 @@ export function FileMarkdownPreview(props: {
   readonly markdown: string;
   readonly onRefresh?: () => Promise<void> | void;
 }) {
+  const insets = useSafeAreaInsets();
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const handlePullToRefresh = useCallback(async () => {
     if (!props.onRefresh) {
@@ -197,7 +199,7 @@ export function FileMarkdownPreview(props: {
   return (
     <ScrollView
       className="flex-1 bg-sheet"
-      contentContainerStyle={{ padding: 18 }}
+      contentContainerStyle={{ padding: 18, paddingBottom: 96 + insets.bottom }}
       refreshControl={
         props.onRefresh ? (
           <RefreshControl

@@ -5,6 +5,10 @@ public class T3ReviewDiffModule: Module {
     Name("T3ReviewDiffSurface")
 
     View(T3ReviewDiffView.self) {
+      AsyncFunction("setSourceText") { (view: T3ReviewDiffView, text: String) in
+        view.setSourceText(text)
+      }
+
       Prop("tokensResetKey") { (view: T3ReviewDiffView, tokensResetKey: String) in
         view.setTokensResetKey(tokensResetKey)
       }

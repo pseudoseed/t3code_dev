@@ -318,6 +318,8 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
   )
   private let scrollView = UIScrollView()
   private let contentView = ReviewDiffContentView()
+  private var sourceView: SourceTextView?
+  private var sourceNeedsUpdate = false
   private var rows: [ReviewDiffNativeRow] = []
   private var appearanceScheme: String = "light"
   private var themePayload: ReviewDiffNativeThemePayload?
@@ -385,8 +387,34 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
 
   public override func layoutSubviews() {
     super.layoutSubviews()
+    if let sourceView {
+      sourceView.frame = bounds
+      if sourceNeedsUpdate {
+        sourceNeedsUpdate = false
+        sourceView.update(theme: contentView.theme, style: contentView.style,
+                          tokens: contentView.tokensByRowId)
+      }
+      sourceView.jumpToLineIfNeeded(initialRowIndex)
+      return
+    }
     scrollView.frame = bounds
     updateContentMetrics()
+  }
+
+  /// Source files use one UIKit text document so selection can cross every line.
+  /// Diffs keep their virtualized drawing surface and review gestures.
+  func setSourceText(_ text: String) {
+    if sourceView == nil {
+      let view = SourceTextView()
+      sourceView = view
+      scrollView.isHidden = true
+      scrollView.refreshControl = nil
+      view.refreshControl = pullRefreshControl
+      addSubview(view)
+    }
+    sourceView?.setSource(text)
+    sourceNeedsUpdate = true
+    setNeedsLayout()
   }
 
   public func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -482,6 +510,8 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
             return
           }
           self.contentView.tokensByRowId = decodedTokens
+          self.sourceNeedsUpdate = true
+          self.setNeedsLayout()
         }
       } catch {
         let message = error.localizedDescription
@@ -490,6 +520,8 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
             return
           }
           self.contentView.tokensByRowId = [:]
+          self.sourceNeedsUpdate = true
+          self.setNeedsLayout()
           self.emitDebug("tokens-decode-failed", ["error": message])
         }
       }
@@ -560,6 +592,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     }
 
     self.contentResetKey = contentResetKey
+    sourceView?.resetNavigation()
     rowsDecodeGeneration += 1
     tokensDecodeGeneration += 1
     contentView.tokensByRowId = [:]
@@ -651,6 +684,11 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
   }
 
   private func updateContentMetrics() {
+    if sourceView != nil {
+      sourceNeedsUpdate = true
+      setNeedsLayout()
+      return
+    }
     let style = contentView.style
     let height = max(bounds.height, contentView.contentHeight)
     let width = bounds.width
@@ -751,6 +789,8 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     scrollView.backgroundColor = contentView.theme.background
     contentView.backgroundColor = contentView.theme.background
     contentView.invalidateVisibleViewport()
+    sourceNeedsUpdate = true
+    setNeedsLayout()
   }
 
   func setStyleJson(_ styleJson: String) {
@@ -791,6 +831,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     }
 
     self.initialRowIndex = nextIndex
+    setNeedsLayout()
     hasAppliedInitialRowIndex = false
     applyInitialRowIndexIfNeeded()
   }
@@ -2531,6 +2572,147 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       .paragraphStyle: paragraphStyle,
     ]
     (text as NSString).draw(in: rect, withAttributes: attributes)
+  }
+}
+
+/// Draw line numbers outside the text storage: copied source contains only source.
+private final class SourceTextLayoutManager: NSLayoutManager {
+  var lineStarts = [0]
+  var gutterWidth: CGFloat = 48
+  var numberColor = UIColor.secondaryLabel
+  var numberFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+
+  override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+    super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+    enumerateLineFragments(forGlyphRange: glyphsToShow) { [self] rect, _, _, glyphRange, _ in
+      let character = characterIndexForGlyph(at: glyphRange.location)
+      var low = 0
+      var high = lineStarts.count
+      while low < high {
+        let middle = (low + high) / 2
+        if lineStarts[middle] < character { low = middle + 1 } else { high = middle }
+      }
+      guard low < lineStarts.count, lineStarts[low] == character else { return }
+      let label = "\(low + 1)" as NSString
+      let attributes: [NSAttributedString.Key: Any] = [.font: numberFont, .foregroundColor: numberColor]
+      let size = label.size(withAttributes: attributes)
+      label.draw(at: CGPoint(x: origin.x - 12 - size.width,
+                             y: origin.y + rect.minY + (rect.height - size.height) / 2),
+                 withAttributes: attributes)
+    }
+  }
+}
+
+private final class SourceTextView: UITextView {
+  private let sourceLayout = SourceTextLayoutManager()
+  private var source = ""
+  private var hasSource = false
+  private var appliedLine: Int?
+  private var wraps = true
+
+  init() {
+    let storage = NSTextStorage()
+    let container = NSTextContainer(size: .zero)
+    storage.addLayoutManager(sourceLayout)
+    sourceLayout.addTextContainer(container)
+    super.init(frame: .zero, textContainer: container)
+    isEditable = false
+    isSelectable = true
+    alwaysBounceVertical = true
+    contentInsetAdjustmentBehavior = .never
+    textContainer.lineFragmentPadding = 0
+    sourceLayout.usesFontLeading = false
+    accessibilityLabel = "File source"
+  }
+
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  func resetNavigation() {
+    appliedLine = nil
+    selectedRange = NSRange(location: 0, length: 0)
+    setContentOffset(.zero, animated: false)
+  }
+
+  func setSource(_ value: String) {
+    guard !hasSource || value != source else { return }
+    hasSource = true
+    source = value
+    // UTF-16 offsets match TextKit and retain tabs, blank lines, and Unicode on copy.
+    sourceLayout.lineStarts = [0]
+    for (index, unit) in value.utf16.enumerated() where unit == 10 {
+      sourceLayout.lineStarts.append(index + 1)
+    }
+  }
+
+  func update(theme: ReviewDiffNativeTheme, style: ReviewDiffNativeStyle,
+              tokens: [String: [ReviewDiffNativeToken]]) {
+    let savedRange = selectedRange
+    let savedOffset = contentOffset
+    let font = UIFont.monospacedSystemFont(ofSize: style.codeFontSize, weight: style.codeFontWeight)
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.minimumLineHeight = style.rowHeight
+    paragraph.maximumLineHeight = style.rowHeight
+    paragraph.tabStops = []
+    paragraph.defaultTabInterval = (" " as NSString).size(withAttributes: [.font: font]).width * 4
+    let attributed = NSMutableAttributedString(string: source, attributes: [
+      .font: font, .foregroundColor: theme.text, .paragraphStyle: paragraph,
+    ])
+    let lines = source.components(separatedBy: "\n")
+    for (index, line) in lines.enumerated() {
+      guard let lineTokens = tokens["source-line:\(index)"],
+            lineTokens.map(\.content).joined() == line else { continue }
+      var offset = sourceLayout.lineStarts[index]
+      for token in lineTokens {
+        let range = NSRange(location: offset, length: (token.content as NSString).length)
+        offset += range.length
+        var attributes: [NSAttributedString.Key: Any] = [
+          .foregroundColor: UIColor(reviewDiffHex: token.color) ?? theme.text,
+        ]
+        let flags = token.fontStyle ?? 0
+        var traits: UIFontDescriptor.SymbolicTraits = []
+        if flags & 1 != 0 { traits.insert(.traitItalic) }
+        if flags & 2 != 0 { traits.insert(.traitBold) }
+        if let descriptor = font.fontDescriptor.withSymbolicTraits(traits) {
+          attributes[.font] = UIFont(descriptor: descriptor, size: font.pointSize)
+        }
+        if flags & 4 != 0 { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        attributed.addAttributes(attributes, range: range)
+      }
+    }
+    backgroundColor = theme.background
+    tintColor = .systemBlue
+    sourceLayout.numberColor = theme.mutedText
+    sourceLayout.numberFont = .monospacedSystemFont(ofSize: style.lineNumberFontSize,
+                                                   weight: style.lineNumberFontWeight)
+    let digits = (String(lines.count) as NSString).size(withAttributes: [.font: sourceLayout.numberFont]).width
+    sourceLayout.gutterWidth = max(style.gutterWidth, digits + 24)
+    textContainerInset = UIEdgeInsets(top: 8, left: sourceLayout.gutterWidth,
+                                     bottom: 96 + safeAreaInsets.bottom, right: 16)
+    wraps = style.contentWidth < 32_000
+    textContainer.widthTracksTextView = wraps
+    textContainer.size = CGSize(width: wraps ? max(1, bounds.width - textContainerInset.left - 16) : 32_000,
+                                height: .greatestFiniteMagnitude)
+    // Updating highlighting must not dismiss an in-progress selection.
+    textStorage.setAttributedString(attributed)
+    if savedRange.location != NSNotFound, NSMaxRange(savedRange) <= attributed.length {
+      selectedRange = savedRange
+    }
+    setContentOffset(savedOffset, animated: false)
+  }
+
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    textContainerInset.bottom = 96 + safeAreaInsets.bottom
+  }
+
+  func jumpToLineIfNeeded(_ line: Int?) {
+    guard hasSource, bounds.height > 0, let line, appliedLine != line else { return }
+    let index = min(max(0, line), sourceLayout.lineStarts.count - 1)
+    let start = sourceLayout.lineStarts[index]
+    let end = index + 1 < sourceLayout.lineStarts.count ? sourceLayout.lineStarts[index + 1] - 1 : textStorage.length
+    selectedRange = NSRange(location: start, length: max(0, end - start))
+    scrollRangeToVisible(selectedRange)
+    appliedLine = line
   }
 }
 
