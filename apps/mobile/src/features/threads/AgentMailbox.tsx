@@ -1,3 +1,4 @@
+import { getMailboxThreadCandidates } from "@t3tools/client-runtime/state/mailbox-candidates";
 import {
   CommandId,
   type EnvironmentId,
@@ -44,6 +45,7 @@ function MailboxContents({
   close,
 }: MailboxProps & { close: () => void }) {
   const [search, setSearch] = useState("");
+  const [candidateLimit, setCandidateLimit] = useState(12);
   const [before, setBefore] = useState<MailboxGetInput["before"]>();
   const [beforeTurn, setBeforeTurn] = useState<MailboxGetInput["beforeTurn"]>();
   const [messageId, setMessageId] = useState<MailboxGetInput["messageId"]>();
@@ -120,21 +122,23 @@ function MailboxContents({
     close();
     navigation.dispatch(CommonActions.navigate("Thread", { environmentId, threadId: id }));
   };
-  const peers = (query.data?.peers ?? []).filter((id) =>
-    threads.some((entry) => entry.environmentId === environmentId && entry.id === id),
+  const linkedThreadIds = query.data?.peers;
+  const peers = linkedThreadIds ?? [];
+  const candidates = useMemo(
+    () =>
+      linkedThreadIds === undefined
+        ? []
+        : getMailboxThreadCandidates({
+            threads,
+            projects,
+            environmentId,
+            threadId,
+            linkedThreadIds,
+            search,
+          }),
+    [threads, projects, environmentId, threadId, linkedThreadIds, search],
   );
-  const candidates = !search.trim()
-    ? []
-    : threads
-        .filter(
-          (entry) =>
-            entry.environmentId === environmentId &&
-            entry.id !== threadId &&
-            !entry.archivedAt &&
-            !peers.includes(entry.id) &&
-            name(entry.id).toLowerCase().includes(search.toLowerCase()),
-        )
-        .slice(0, 12);
+  const visibleCandidates = candidates.slice(0, candidateLimit);
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-row items-center justify-between px-4 py-3">
@@ -212,26 +216,54 @@ function MailboxContents({
             accessibilityLabel="Find a collaborating thread"
             placeholder="Find a project or thread…"
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(value) => {
+              setSearch(value);
+              setCandidateLimit(12);
+            }}
             className="rounded-lg border border-border p-3 text-foreground"
           />
-          {search.trim()
-            ? candidates.map((thread) => (
-                <View key={thread.id} className="flex-row items-center justify-between gap-2">
-                  <Text className="flex-1">{name(thread.id)}</Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={busy}
-                    onPress={() =>
-                      void mutate({ kind: "link", peerThreadId: thread.id, linked: true })
-                    }
-                    className="p-3"
-                  >
-                    <Text className="text-primary">Link</Text>
-                  </Pressable>
-                </View>
-              ))
-            : null}
+          <Text className="text-sm text-muted-foreground">
+            Available threads ({candidates.length}). Search also includes settled threads in this
+            environment.
+          </Text>
+          {visibleCandidates.map((thread) => (
+            <View key={thread.id} className="flex-row items-center justify-between gap-2">
+              <View className="flex-1">
+                <Text>{thread.title}</Text>
+                <Text className="text-sm text-muted-foreground">
+                  {projectById.get(thread.projectId)?.title ?? "Project"}
+                  {thread.settledOverride === "settled" ? " · Settled" : ""}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Link ${thread.title}`}
+                disabled={busy}
+                onPress={() => void mutate({ kind: "link", peerThreadId: thread.id, linked: true })}
+                className="p-3"
+              >
+                <Text className="text-primary">Link</Text>
+              </Pressable>
+            </View>
+          ))}
+          {linkedThreadIds !== undefined && candidates.length === 0 ? (
+            <Text className="text-sm text-muted-foreground">
+              {search.trim()
+                ? "No matching threads in this environment."
+                : "No other active threads available to link."}
+            </Text>
+          ) : null}
+          {candidates.length > candidateLimit ? (
+            <Pressable
+              accessibilityRole="button"
+              className="py-2"
+              onPress={() => setCandidateLimit((limit) => limit + 12)}
+            >
+              <Text className="text-primary">
+                Show more threads ({candidates.length - candidateLimit} remaining)
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
         <View className="gap-3">
           <View className="flex-row justify-between">
