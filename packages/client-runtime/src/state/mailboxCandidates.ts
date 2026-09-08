@@ -46,7 +46,7 @@ export function getMailboxThreadCandidates<T extends MailboxThread>(input: {
       continue;
 
     const title = normalizeSearchQuery(thread.title).replace(/\s+/g, " ");
-    const searchable = `${projectTitles.get(thread.projectId) ?? ""} ${title}`.toLowerCase();
+    const searchable = `${projectTitles.get(thread.projectId) ?? ""} / ${title}`.toLowerCase();
     if (!words.every((word) => searchable.includes(word))) continue;
     candidates.push({
       thread,

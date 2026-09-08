@@ -84,6 +84,7 @@ describe("mailbox thread candidates", () => {
     expect(candidates([infrastructure, staging], "changes pseudoapps")).toEqual([infrastructure]);
     expect(candidates([staging], "remote")).toEqual([]);
     expect(candidates([staging], "Build out Staging Env for Placrd")).toEqual([staging]);
+    expect(candidates([staging], "Entriq / Build out Staging Env for Placrd")).toEqual([staging]);
   });
 
   it("includes settled threads when searching, after equally matching active threads", () => {
