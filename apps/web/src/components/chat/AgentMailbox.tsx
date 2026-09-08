@@ -1,3 +1,4 @@
+import { getMailboxThreadCandidates } from "@t3tools/client-runtime/state/mailbox-candidates";
 import { onOpenAgentMailbox } from "~/mailboxBus";
 import { randomUUID } from "~/lib/utils";
 import {
@@ -37,6 +38,7 @@ export function AgentMailbox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [candidateLimit, setCandidateLimit] = useState(12);
   const [before, setBefore] = useState<MailboxGetInput["before"]>();
   const [executionId, setExecutionId] = useState<MailboxGetInput["executionId"]>();
   const [beforeTurn, setBeforeTurn] = useState<MailboxGetInput["beforeTurn"]>();
@@ -119,21 +121,23 @@ export function AgentMailbox({
       setBusy(false);
     }
   };
-  const peers = (query.data?.peers ?? []).filter((id) =>
-    threads.some((entry) => entry.environmentId === environmentId && entry.id === id),
+  const linkedThreadIds = query.data?.peers;
+  const peers = linkedThreadIds ?? [];
+  const candidates = useMemo(
+    () =>
+      !open || linkedThreadIds === undefined
+        ? []
+        : getMailboxThreadCandidates({
+            threads,
+            projects,
+            environmentId,
+            threadId,
+            linkedThreadIds,
+            search,
+          }),
+    [open, threads, projects, environmentId, threadId, linkedThreadIds, search],
   );
-  const candidates = !search.trim()
-    ? []
-    : threads
-        .filter(
-          (entry) =>
-            entry.environmentId === environmentId &&
-            entry.id !== threadId &&
-            !entry.archivedAt &&
-            !peers.includes(entry.id) &&
-            name(entry.id).toLowerCase().includes(search.toLowerCase()),
-        )
-        .slice(0, 12);
+  const visibleCandidates = candidates.slice(0, candidateLimit);
   const threadLink = (id: ThreadId) =>
     !threads.some((entry) => entry.environmentId === environmentId && entry.id === id) ? (
       <span>{name(id)}</span>
@@ -225,28 +229,53 @@ export function AgentMailbox({
                 aria-label="Find a collaborating thread"
                 placeholder="Find a project or thread…"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setCandidateLimit(12);
+                }}
               />
-              {search.trim()
-                ? candidates.map((thread) => (
-                    <div
-                      key={thread.id}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <span className="truncate">{name(thread.id)}</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          void mutate({ kind: "link", peerThreadId: thread.id, linked: true })
-                        }
-                      >
-                        Link
-                      </Button>
+              <p className="text-sm text-muted-foreground">
+                Available threads ({candidates.length}). Search also includes settled threads in
+                this environment.
+              </p>
+              {visibleCandidates.map((thread) => (
+                <div key={thread.id} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="break-words">{thread.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {projectById.get(thread.projectId)?.title ?? "Project"}
+                      {thread.settledOverride === "settled" ? " · Settled" : ""}
                     </div>
-                  ))
-                : null}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Link ${thread.title}`}
+                    disabled={busy}
+                    onClick={() =>
+                      void mutate({ kind: "link", peerThreadId: thread.id, linked: true })
+                    }
+                  >
+                    Link
+                  </Button>
+                </div>
+              ))}
+              {linkedThreadIds !== undefined && candidates.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {search.trim()
+                    ? "No matching threads in this environment."
+                    : "No other active threads available to link."}
+                </p>
+              ) : null}
+              {candidates.length > candidateLimit ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setCandidateLimit((limit) => limit + 12)}
+                >
+                  Show more threads ({candidates.length - candidateLimit} remaining)
+                </Button>
+              ) : null}
             </section>
             <section className="space-y-3">
               <div className="flex justify-between">

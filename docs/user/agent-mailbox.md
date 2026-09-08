@@ -4,9 +4,12 @@ Agents in different threads can exchange messages, including threads in differen
 same environment. Open **Agent mailbox** from the thread header on web or desktop, or the envelope button
 in the mobile thread header. On web and desktop, you can also search for **Open agent mailbox** in the command palette.
 
-Search for a project or thread under **Collaborating threads** and select **Link**. Linking works
-in both directions. Ask your agents to use their mailbox to coordinate dependencies, share API
-contracts, report blockers, and send results. Agents can discover the linked threads themselves.
+Under **Collaborating threads**, available active threads appear immediately, with recent threads
+first. Select **Link** to connect one. Use **Show more threads** to browse the rest, or search by
+words from the project and thread name. Search also includes settled threads. Already-linked
+threads appear above the picker, with an **Unlink** action. Linking works in both directions.
+Ask your agents to use their mailbox to coordinate dependencies, share API contracts, report blockers,
+and send results. Agents can discover the linked threads themselves.
 
 A message automatically starts a new turn when its recipient is idle. While the recipient works,
 mail waits until the current turn and its checkpoint finish; it never steers the agent or cancels
