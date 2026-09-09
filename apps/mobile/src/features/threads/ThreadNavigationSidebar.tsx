@@ -297,29 +297,28 @@ function ThreadNavigationSidebarPane(
             ),
     [threadListV2Enabled, projects, selectedProjectRefs],
   );
+  // Not short-circuited on v2 the way `scopedProjects` is: the project
+  // sections below partition these same lists, so emptying them here leaves
+  // every section with no rows and the sidebar blank.
   const scopedThreads = useMemo(
     () =>
-      threadListV2Enabled
-        ? []
-        : selectedProjectRefs === null
-          ? threads
-          : threads.filter((thread) =>
-              selectedProjectRefs.has(scopedProjectKey(thread.environmentId, thread.projectId)),
-            ),
-    [threadListV2Enabled, selectedProjectRefs, threads],
+      selectedProjectRefs === null
+        ? threads
+        : threads.filter((thread) =>
+            selectedProjectRefs.has(scopedProjectKey(thread.environmentId, thread.projectId)),
+          ),
+    [selectedProjectRefs, threads],
   );
   const scopedPendingTasks = useMemo(
     () =>
-      threadListV2Enabled
-        ? []
-        : selectedProjectRefs === null
-          ? pendingTasks
-          : pendingTasks.filter((pendingTask) =>
-              selectedProjectRefs.has(
-                scopedProjectKey(pendingTask.environmentId, pendingTask.projectId),
-              ),
+      selectedProjectRefs === null
+        ? pendingTasks
+        : pendingTasks.filter((pendingTask) =>
+            selectedProjectRefs.has(
+              scopedProjectKey(pendingTask.environmentId, pendingTask.projectId),
             ),
-    [threadListV2Enabled, pendingTasks, selectedProjectRefs],
+          ),
+    [pendingTasks, selectedProjectRefs],
   );
   const groups = useMemo(
     () =>

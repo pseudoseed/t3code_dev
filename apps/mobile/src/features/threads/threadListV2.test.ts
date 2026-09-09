@@ -1069,6 +1069,20 @@ describe("buildThreadListV2ProjectSectionItems", () => {
     settledShelfExpanded: true,
   });
 
+  // A regression guard: the sidebar once fed these sections an empty thread
+  // list, which drops every header too and leaves the whole sidebar blank.
+  it("drops a project entirely when it is handed no threads", () => {
+    const populated = buildThreadListV2ProjectSectionItems({
+      sections: [section("alpha", ["a1"]), section("beta", ["b1"])],
+    });
+    expect(populated.filter((item) => item.type === "v2-project-header")).toHaveLength(2);
+
+    const starved = buildThreadListV2ProjectSectionItems({
+      sections: [section("alpha", []), section("beta", [])],
+    });
+    expect(starved).toEqual([]);
+  });
+
   it("puts every project's rows under its own header, in section order", () => {
     const items = buildThreadListV2ProjectSectionItems({
       sections: [section("alpha", ["a1"]), section("beta", ["b1", "b2"])],
