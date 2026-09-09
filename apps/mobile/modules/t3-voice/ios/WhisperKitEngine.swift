@@ -18,13 +18,14 @@ actor WhisperKitEngine {
   /// Set while a load is in flight so concurrent callers await the same work
   /// instead of loading a second copy of the same multi-hundred-megabyte model.
   private var loadTask: Task<WhisperKit, Error>?
+  private var loadingModelId: String?
 
   func prepare(modelId: String, modelFolder: URL) async throws -> WhisperKit {
     if let whisperKit, loadedModelId == modelId {
       return whisperKit
     }
 
-    if let loadTask, loadedModelId == modelId {
+    if let loadTask, loadingModelId == modelId {
       return try await loadTask.value
     }
 
@@ -50,31 +51,31 @@ actor WhisperKitEngine {
       return try await WhisperKit(config)
     }
 
-    loadedModelId = modelId
+    loadingModelId = modelId
     loadTask = task
 
     do {
       let loaded = try await task.value
       whisperKit = loaded
+      loadedModelId = modelId
       loadTask = nil
+      loadingModelId = nil
       return loaded
     } catch {
       loadTask = nil
-      if whisperKit == nil {
-        loadedModelId = nil
-      }
+      loadingModelId = nil
       throw error
     }
   }
 
-  func transcribe(audioPath: String, locale: String?) async throws -> String {
-    guard let whisperKit else {
-      throw VoiceEngineError.modelUnavailable("No speech model is loaded.")
-    }
+  func transcribe(audioPath: String, locale: String?, modelId: String, modelFolder: URL) async throws -> String {
+    // Memory pressure can evict the model while the microphone is running.
+    let whisperKit = try await prepare(modelId: modelId, modelFolder: modelFolder)
+    try Task.checkCancellation()
 
     let options = DecodingOptions(
       task: .transcribe,
-      language: locale,
+      language: locale.flatMap { Locale(identifier: $0).language.languageCode?.identifier },
       skipSpecialTokens: true
     )
 

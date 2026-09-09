@@ -243,10 +243,13 @@ Recording starts right away. The first dictation after opening the app may still
 speech model when you finish talking; if so the composer says so, and the wait is only ever once
 per model. With a hardware keyboard, hold `Option+D` to talk. **Settings, Voice Input** switches that to press once to start and again to finish, or turns it off.
 
-A recording can be up to five minutes long. Canceling voice input, leaving the screen, or an audio
-interruption discards the new recording and keeps your existing draft and attachments. PseudoCode
-deletes the local audio file when it is done with it. It sends only the normal message text when you
-submit the draft.
+A recording can be up to five minutes long. If the microphone is interrupted or the app moves to
+the background, PseudoCode finishes transcribing the audio captured so far and tells you that
+recording stopped. If transcription fails, tap the microphone to retry the saved recording.
+Dismissing that error discards the saved audio. Canceling voice input or leaving the screen during
+recording discards the new recording and keeps your existing draft and attachments. PseudoCode
+deletes the local audio file after successful transcription and cleanup. It sends only the normal
+message text when you submit the draft.
 
 ### Choosing a speech model
 
@@ -273,8 +276,10 @@ Losing your own words would be worse than leaving a stray voice in.
 ### Cleaning up transcripts
 
 Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
-written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed. It
-does not answer, summarize, or add anything.
+written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed.
+If cleanup times out, produces an incomplete rewrite, or changes the ending, PseudoCode keeps the
+original transcription and tells you. A correction to the last few words can also trigger this
+conservative fallback.
 
 Three cleanup models are available, trading speed for quality. You can edit the instructions they
 follow and reset them to the default at any time.

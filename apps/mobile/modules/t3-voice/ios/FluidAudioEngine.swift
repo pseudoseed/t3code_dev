@@ -142,8 +142,15 @@ actor FluidAudioEngine {
   func transcribe(
     audioPath: String,
     locale: String?,
-    speakerFiltering: Bool
+    speakerFiltering: Bool,
+    model: (id: String, folder: URL),
+    diarizerFolder: URL?
   ) async throws -> VoiceTranscriptionOutput {
+    // Preparation may have finished minutes ago, before a memory warning.
+    try await prepare(modelId: model.id, modelFolder: model.folder)
+    if speakerFiltering, let diarizerFolder {
+      try await prepareDiarizer(modelFolder: diarizerFolder)
+    }
     guard let asrManager else {
       throw VoiceEngineError.modelUnavailable("No speech model is loaded.")
     }

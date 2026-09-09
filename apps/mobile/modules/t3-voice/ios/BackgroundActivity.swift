@@ -9,17 +9,27 @@ import UIKit
 /// the promise never settles, and the composer is left in a phase it cannot
 /// leave. The assertion does not make the work unlimited; it makes the work
 /// finish or stop cleanly instead of vanishing.
-enum BackgroundActivity {
-  static func begin(_ name: String) async -> UIBackgroundTaskIdentifier {
-    await MainActor.run {
-      UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: nil)
+@MainActor
+final class BackgroundActivity {
+  private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+  static func begin(
+    _ name: String,
+    onExpiration: @escaping @Sendable () -> Void
+  ) -> BackgroundActivity {
+    let activity = BackgroundActivity()
+    activity.identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak activity] in
+      // iOS requires ending the assertion when time expires. Keeping it open
+      // until inference finishes can terminate the process and lose the draft.
+      onExpiration()
+      Task { @MainActor in activity?.end() }
     }
+    return activity
   }
 
-  static func end(_ identifier: UIBackgroundTaskIdentifier) async {
+  func end() {
     guard identifier != .invalid else { return }
-    await MainActor.run {
-      UIApplication.shared.endBackgroundTask(identifier)
-    }
+    UIApplication.shared.endBackgroundTask(identifier)
+    identifier = .invalid
   }
 }

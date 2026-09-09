@@ -101,6 +101,9 @@ export function useVoiceInputController(input: {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const persistPreferences = useAtomSet(updateMobilePreferencesAtom, { mode: "promise" });
+  const persistPreferencesRef = useRef(persistPreferences);
+  persistPreferencesRef.current = persistPreferences;
   const preferences = AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value : null;
   const cleanupSettings = useMemo(
     () => (preferences ? resolveVoiceCleanupSettings(preferences) : null),
@@ -180,10 +183,10 @@ export function useVoiceInputController(input: {
         const settings = cleanupSettingsRef.current;
         return settings ? getLocalVoiceCleanup(settings) : null;
       },
-      persistPendingTranscript: (pending) => {
+      persistPendingTranscript: async (pending) => {
         // Stamped here, not in the controller: the timestamp exists only so a
         // later launch can tell this record from one a dead session left behind.
-        savePreferencesRef.current({
+        await persistPreferencesRef.current({
           voicePendingTranscript: { ...pending, capturedAt: Date.now() },
         });
       },
@@ -256,7 +259,9 @@ export function useVoiceInputController(input: {
     const sampleRecording = () => {
       if (controller.currentState.phase !== "recording") return;
       const status = recorder.getStatus();
-      if (!status.isRecording) return;
+      const isRecording = recorder.isRecording;
+      void controller.handleRecordingProgress({ ...status, isRecording });
+      if (!isRecording) return;
 
       const level = normalizeVoiceInputDecibels(status.metering);
       const history = audioLevelsRef.current;
@@ -315,10 +320,14 @@ export function useVoiceInputController(input: {
     return true;
   }, [canStart, controller]);
 
-  // Releasing the keys ends the recording. Holding through a phase that is not
-  // recording is not an error; there is simply nothing to stop.
+  // Key release also queues a stop during microphone startup, so a quick hold
+  // cannot leave capture running after the keys are already up.
   const endHold = useCallback(() => {
-    if (controller.currentState.phase !== "recording") return false;
+    if (
+      controller.currentState.phase !== "recording" &&
+      controller.currentState.phase !== "preparing"
+    )
+      return false;
     void controller.stop();
     return true;
   }, [controller]);

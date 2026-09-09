@@ -96,10 +96,16 @@ export const CLEANUP_TIMEOUT_MS = 30_000;
 const CLEANUP_RATIO_MINIMUM_LENGTH = 24;
 
 /** A cleanup pass that lands outside this band rewrote more than it should. */
-const CLEANUP_MINIMUM_RATIO = 0.6;
+const CLEANUP_MINIMUM_RATIO = 0.85;
 const CLEANUP_MAXIMUM_RATIO = 1.6;
 
-export type CleanupDegradeReason = "failed" | "cancelled" | "empty" | "incomplete" | "length-ratio";
+export type CleanupDegradeReason =
+  | "failed"
+  | "cancelled"
+  | "empty"
+  | "incomplete"
+  | "length-ratio"
+  | "missing-ending";
 
 export type CleanupOutcome =
   | { readonly kind: "cleaned"; readonly text: string }
@@ -135,6 +141,16 @@ export function resolveCleanupOutcome(raw: string, cleaned: VoiceCleanupResult):
     const ratio = trimmedCleaned.length / trimmedRaw.length;
     if (ratio < CLEANUP_MINIMUM_RATIO || ratio > CLEANUP_MAXIMUM_RATIO) {
       return { kind: "raw", text: trimmedRaw, reason: "length-ratio" };
+    }
+
+    // End-of-generation only says the model stopped willingly. It can still
+    // omit the last instruction. Require the last three words to survive;
+    // punctuation and capitalization may change. A spelling correction here
+    // can conservatively fall back to raw text, which is preferable to loss.
+    const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    const ending = words(trimmedRaw).slice(-3).join(" ");
+    if (ending && words(trimmedCleaned).slice(-3).join(" ") !== ending) {
+      return { kind: "raw", text: trimmedRaw, reason: "missing-ending" };
     }
   }
 

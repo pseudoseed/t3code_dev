@@ -102,18 +102,25 @@ public class T3VoiceModule: Module {
 
     AsyncFunction("transcribe") { (operationId: String, modelId: String, audioPath: String, locale: String?, speakerFiltering: Bool, promise: Promise) in
       self.run(operationId: operationId, promise: promise) {
+        guard let folder = try Self.resolveModelFolder(modelId) else {
+          throw VoiceEngineError.modelUnavailable("Model \(modelId) is not installed.")
+        }
         let before = DeviceMemory.footprint()
         defer { Self.reportRunCost(stage: "transcribe", modelId: modelId, before: before) }
 
         guard FluidAudioEngine.asrVersion(forModelId: modelId) != nil else {
-          let text = try await self.engine.transcribe(audioPath: audioPath, locale: locale)
+          let text = try await self.engine.transcribe(
+            audioPath: audioPath, locale: locale, modelId: modelId, modelFolder: folder
+          )
           return Self.encode(VoiceTranscriptionOutput(text: text, speakerFiltering: .notRequested))
         }
 
         let output = try await self.fluidAudio.transcribe(
           audioPath: audioPath,
           locale: locale,
-          speakerFiltering: speakerFiltering
+          speakerFiltering: speakerFiltering,
+          model: (id: modelId, folder: folder),
+          diarizerFolder: speakerFiltering ? try Self.resolveModelFolder(FluidAudioEngine.diarizerModelId) : nil
         )
         return Self.encode(output)
       }
@@ -270,10 +277,13 @@ public class T3VoiceModule: Module {
       // Inference outlives a home-button press often enough that this matters:
       // without the assertion the promise never settles and the composer is
       // stuck in a phase it cannot leave.
-      let assertion = await BackgroundActivity.begin("T3Voice.\(operationId)")
-      defer { Task { await BackgroundActivity.end(assertion) } }
+      let assertion = await BackgroundActivity.begin("T3Voice.\(operationId)") {
+        Task { await self.operations.cancel(operationId) }
+      }
+      defer { Task { await assertion.end() } }
 
       do {
+        try Task.checkCancellation()
         let value = try await work()
         try Task.checkCancellation()
         promise.resolve(value)
