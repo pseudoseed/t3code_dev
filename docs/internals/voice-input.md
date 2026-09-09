@@ -126,18 +126,33 @@ transcript is committed.
 
 ## Durability
 
-**The recording audio is deleted after the cleanup stage, not after transcription.**
+**Failed transcription retains the recording for an explicit retry.** The microphone action retries
+that file without reopening capture. Dismissing the error or leaving the composer releases it;
+successful insertion deletes it. Audio is currently retained only for the mounted controller, not
+across process termination.
 
-**The raw transcript is written to disk before cleanup starts.** Cleanup loads a
+Expo can pause an `AVAudioRecorder` without a completion event. The metering loop checks the native
+`isRecording` property and asks the controller to finish the captured file when capture stops.
+Backgrounding and recorder errors also finish the captured audio, with an interruption notice.
+The captured URI takes precedence over the recorder's current URI because a media-services reset
+can replace the recorder with a new, empty file. Speech engines ensure their model is loaded again
+when transcription begins, since a memory warning can evict it during a long recording.
+
+**The raw transcript's disk write is awaited before cleanup starts.** Cleanup loads a
 multi-hundred-megabyte model, and an allocation that gets the app jetsam-killed raises no error to
 catch. On the next launch the record is offered back into the draft it belongs to, matched on owner,
-and discarded once the user accepts or dismisses it.
+and discarded once the user accepts or dismisses it. A failed recovery write skips cleanup and
+commits raw text. Normal resource release does not clear an uncommitted transcript, including when
+navigation or a changed draft prevented insertion.
 
 Cleanup degrades to the raw transcript on a throw, a cancel, a rewrite the model never finished,
-empty output, or an output-to-input length ratio outside a defined band. A local model given a
-transcript it does not understand will answer it, translate it, or apologize; all three miss the
-ratio. The timeout is enforced natively, between generated tokens, because nothing in JS can
-interrupt a running model.
+empty output, an output-to-input length ratio outside 0.85–1.6, or a changed final three words
+(ignoring punctuation and capitalization). The ending check is deliberately conservative and can
+reject a legitimate spelling correction. These checks are heuristics, not proof of semantic
+equivalence. A local model can answer, translate, or summarize a transcript; length and ending
+checks catch some of these failures. The timeout is enforced natively, between generated tokens,
+because nothing in JS can interrupt a running model. Native background assertions end on expiration
+and request cancellation of the associated operation.
 
 **A rewrite carries whether the model finished it, and an unfinished one is never committed.**
 Generation stops at the model's end of turn, at the output-token cap, or at the timeout. The last two
