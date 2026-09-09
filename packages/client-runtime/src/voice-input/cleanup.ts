@@ -139,12 +139,12 @@ export function resolveCleanupOutcome(raw: string, cleaned: VoiceCleanupResult):
   const trimmedRaw = raw.trim();
   const trimmedCleaned = cleaned.text.trim();
 
-  if (trimmedCleaned.length === 0) {
-    return { kind: "raw", text: trimmedRaw, reason: "empty" };
-  }
-
   if (!cleaned.complete) {
     return { kind: "raw", text: trimmedRaw, reason: "incomplete" };
+  }
+
+  if (trimmedCleaned.length === 0) {
+    return { kind: "raw", text: trimmedRaw, reason: "empty" };
   }
 
   if (trimmedRaw.length >= CLEANUP_RATIO_MINIMUM_LENGTH) {
