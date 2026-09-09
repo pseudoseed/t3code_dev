@@ -456,17 +456,11 @@ export function TerminalViewport({
     },
   );
   const terminalVersion = terminalSession.version;
-  const terminalCursor = terminalSession.cursor;
-  const terminalTrimmed = terminalSession.trimmed;
-  const terminalEpoch = terminalSession.epoch;
   const previousSessionRef = useRef({
     output: terminalOutput,
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
-    cursor: terminalCursor,
-    trimmed: terminalTrimmed,
-    epoch: terminalEpoch,
   });
   const latestSessionRef = useRef(previousSessionRef.current);
   latestSessionRef.current = {
@@ -474,9 +468,6 @@ export function TerminalViewport({
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
-    cursor: terminalCursor,
-    trimmed: terminalTrimmed,
-    epoch: terminalEpoch,
   };
 
   useEffect(() => {
@@ -959,9 +950,6 @@ export function TerminalViewport({
       error: terminalError,
       status: terminalStatus,
       version: terminalVersion,
-      cursor: terminalCursor,
-      trimmed: terminalTrimmed,
-      epoch: terminalEpoch,
     };
     if (!terminal) {
       previousSessionRef.current = current;

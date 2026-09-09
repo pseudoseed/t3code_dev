@@ -173,6 +173,19 @@ const recordStartupHeartbeat = Effect.gen(function* () {
   });
 });
 
+/**
+ * Fires the boot heartbeat without holding startup: the projection counts it
+ * reads can take a while on a large database, and nothing downstream waits on
+ * the analytics record.
+ */
+export const launchStartupHeartbeat = recordStartupHeartbeat.pipe(
+  Effect.annotateSpans({ "startup.phase": "heartbeat.record" }),
+  Effect.withSpan("server.startup.heartbeat.record"),
+  Effect.ignoreCause({ log: true }),
+  Effect.forkScoped,
+  Effect.asVoid,
+);
+
 const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
   instanceId: ProviderInstanceId.make("codex"),
   model: DEFAULT_MODEL,

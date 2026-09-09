@@ -931,6 +931,8 @@ it.layer(integrationLayer)("AgentSessionImporter integration", (it) => {
           Layer.provide(Layer.mock(VcsStatusBroadcaster)({})),
           Layer.provide(Layer.mock(TextGeneration)({})),
           Layer.provide(ServerSettingsService.layerTest()),
+          // The reactor's turn-start lookup reads the projection directly now.
+          Layer.provide(SqlitePersistenceMemory),
         );
 
         yield* engine.dispatch({

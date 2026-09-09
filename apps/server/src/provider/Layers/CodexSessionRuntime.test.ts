@@ -934,6 +934,17 @@ describe("openCodexThread", () => {
           calls.push({ method, payload });
           return Effect.succeed(started as CodexRpc.ClientRequestResponsesByMethod[M]);
         },
+        raw: {
+          request: (
+            method: "thread/resume",
+            payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+          ) => {
+            calls.push({ method, payload });
+            return Effect.succeed(
+              started as CodexRpc.ClientRequestResponsesByMethod["thread/resume"],
+            );
+          },
+        },
       };
 
       yield* openCodexThread({
@@ -964,6 +975,17 @@ describe("openCodexThread", () => {
         ) => {
           calls.push({ method, payload });
           return Effect.succeed(started as CodexRpc.ClientRequestResponsesByMethod[M]);
+        },
+        raw: {
+          request: (
+            method: "thread/resume",
+            payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+          ) => {
+            calls.push({ method, payload });
+            return Effect.succeed(
+              started as CodexRpc.ClientRequestResponsesByMethod["thread/resume"],
+            );
+          },
         },
       };
 

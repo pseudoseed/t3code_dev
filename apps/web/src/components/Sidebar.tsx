@@ -197,9 +197,15 @@ import { createSidebarListMotion } from "./Sidebar.motion";
 import {
   ThreadWorktreeIndicator,
   prStatusIndicator,
+  setThreadChangeRequestSnapshot,
+  nextThreadChangeRequestSnapshot,
+  resolveDisplayedThreadPr,
+  resolveDisplayedThreadPrProvider,
   settledPrHoverColorClass,
   terminalStatusFromRunningIds,
+  threadChangeRequestSnapshotsAtom,
   type TerminalStatusIndicator,
+  type ThreadChangeRequestSnapshot,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import { issueNumberFromBranch } from "./issues/issuesPanel.logic";
@@ -1040,6 +1046,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * project's favicon and name, so its rows drop both.
    */
   showsProjectTitle?: boolean;
+  /** Parent-held so a remount cannot lose a merged or closed change request. */
+  changeRequestSnapshot: ThreadChangeRequestSnapshot | null;
+  onChangeRequestSnapshot: (threadKey: string, snapshot: ThreadChangeRequestSnapshot | null) => void;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -1134,7 +1143,45 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     JSON.stringify([thread.environmentId, gitCwd]),
     gitStatus.data,
   );
-  const pr = linkedPullRequestStatus?.pr ?? null;
+  const retainTerminalOnBranchMismatch = thread.worktreePath === null;
+  const pr = resolveDisplayedThreadPr({
+    threadBranch: thread.branch,
+    gitStatus: visibleGitStatus,
+    snapshot: props.changeRequestSnapshot,
+    retainTerminalOnBranchMismatch,
+    linkedPullRequest: thread.linkedPullRequest,
+    linkedPullRequestStatus,
+  });
+  const prProvider = resolveDisplayedThreadPrProvider({
+    threadBranch: thread.branch,
+    gitStatus: visibleGitStatus,
+    snapshot: props.changeRequestSnapshot,
+    retainTerminalOnBranchMismatch,
+    linkedPullRequest: thread.linkedPullRequest,
+    linkedPullRequestStatus,
+  });
+  const { onChangeRequestSnapshot } = props;
+  useEffect(() => {
+    const nextSnapshot = nextThreadChangeRequestSnapshot({
+      threadBranch: thread.branch,
+      gitStatus: visibleGitStatus,
+      snapshot: props.changeRequestSnapshot,
+      retainTerminalOnBranchMismatch,
+      linkedPullRequest: thread.linkedPullRequest,
+      linkedPullRequestStatus,
+    });
+    if (nextSnapshot === undefined) return;
+    onChangeRequestSnapshot(threadKey, nextSnapshot);
+  }, [
+    props.changeRequestSnapshot,
+    visibleGitStatus,
+    linkedPullRequestStatus,
+    onChangeRequestSnapshot,
+    retainTerminalOnBranchMismatch,
+    thread.branch,
+    thread.linkedPullRequest,
+    threadKey,
+  ]);
 
   // Same semantics as the legacy sidebar (never-visited counts as read):
   // switching sidebars must not light up every historical thread as unread.
@@ -1224,7 +1271,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     activeThreadBranch: thread.branch,
     currentGitBranch: visibleGitStatus?.refName ?? null,
   });
-  const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
+  const prStatus = prStatusIndicator(pr, prProvider);
   const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state, pr.isDraft) : undefined;
 
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;

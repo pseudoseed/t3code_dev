@@ -1109,10 +1109,10 @@ function ThreadNavigationSidebarPane(
                 snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
                 pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
                 reorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
-                canMovePinnedUp={
-                  arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`) > 0
-                }
-                canMovePinnedDown={(() => {
+                providerInstance={resolveThreadProviderInstance(serverConfigs, thread)}
+                onNewThreadOnBranch={props.onNewThreadOnBranch}
+                canMoveUp={arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`) > 0}
+                canMoveDown={(() => {
                   const index = arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`);
                   return index !== -1 && index < arrangedPinnedKeys.length - 1;
                 })()}
@@ -1121,7 +1121,7 @@ function ThreadNavigationSidebarPane(
                 onUnsettleThread={unsettleThread}
                 onPinThread={pinThread}
                 onUnpinThread={unpinThread}
-                onMovePinnedThread={moveThread}
+                onMoveThread={moveThread}
                 onSwipeableClose={handleSwipeableClose}
                 onSwipeableWillOpen={handleSwipeableWillOpen}
                 simultaneousSwipeGesture={sidebarScrollGesture}
