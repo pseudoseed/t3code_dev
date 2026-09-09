@@ -9,7 +9,7 @@ import {
 import { executeEnvironmentHttpRequest, makeEnvironmentHttpApiClient } from "./http.ts";
 import { environmentEndpointUrl } from "../environment/endpoint.ts";
 
-class DirectPushDisconnected extends Schema.TaggedErrorClass<DirectPushDisconnected>()(
+class DirectPushDisconnected extends Schema.TaggedError<DirectPushDisconnected>()(
   "DirectPushDisconnected",
   {},
 ) {}

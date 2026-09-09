@@ -14,8 +14,6 @@ import {
   formatResetsIn,
   limitsNotice,
   paceOf,
-  providerLimitsLabel,
-  USAGE_LIMIT_SOURCE_KIND_LABEL,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { type ReactNode, useState } from "react";
@@ -273,55 +271,6 @@ export function ResetCredits(props: {
   );
 }
 
-function ProviderLimits(props: {
-  readonly provider: ServerProvider;
-  readonly environmentId: EnvironmentId;
-  readonly now: number;
-  readonly first: boolean;
-}) {
-  const { provider, environmentId, now } = props;
-  const credits = provider.usageLimits?.resetCredits;
-  return (
-    <AccountLimits
-      label={providerLimitsLabel(provider, () => undefined)}
-      detail={provider.auth.label}
-      limits={provider.usageLimits}
-      now={now}
-      first={props.first}
-      footer={
-        credits ? (
-          <ResetCredits
-            environmentId={environmentId}
-            instanceId={provider.instanceId}
-            credits={credits}
-            now={now}
-          />
-        ) : undefined
-      }
-    />
-  );
-}
-
-const DRIVER_LABEL: Partial<Record<string, string>> = { codex: "Codex", claudeAgent: "Claude" };
-
-/** Emails stay off the phone screen; the plan and driver identify the row. */
-function SourceAccountLimits(props: {
-  readonly account: UsageLimitSourceAccount;
-  readonly now: number;
-  readonly first: boolean;
-}) {
-  const { account } = props;
-  return (
-    <AccountLimits
-      label={account.label ?? DRIVER_LABEL[account.driver] ?? String(account.driver)}
-      detail={account.plan}
-      limits={account.usageLimits}
-      now={props.now}
-      first={props.first}
-    />
-  );
-}
-
 /**
  * Re-probes every provider (and usage-limit source) on each connected
  * environment; the fresh snapshots then arrive over the config stream.
@@ -332,55 +281,6 @@ function SourceAccountLimits(props: {
  */
 export function useRefreshLimits(selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null = null) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const groups = collectLimitsGroups(presentations);
-  const sources = collectLimitSources(presentations);
-  // Anchored once per mount on purpose: countdowns must not tick.
-  const [now] = useState(() => Date.now());
-  if (groups.length === 0 && sources.length === 0) return null;
-
-  return (
-    <>
-      {sources.map((source) => (
-        <SettingsSection
-          key={source.key}
-          title={`${source.label} · ${USAGE_LIMIT_SOURCE_KIND_LABEL[source.kind]}`}
-          card
-        >
-          {source.error ? (
-            <Text className="p-4 text-sm text-foreground-muted">{source.error}</Text>
-          ) : source.accounts.length === 0 ? (
-            <Text className="p-4 text-sm text-foreground-muted">No accounts reported.</Text>
-          ) : (
-            source.accounts.map((account, index) => (
-              <SourceAccountLimits
-                key={account.id}
-                account={account}
-                now={now}
-                first={index === 0}
-              />
-            ))
-          )}
-        </SettingsSection>
-      ))}
-      {groups.map((group) => (
-        <SettingsSection
-          key={group.environmentId}
-          title={group.environmentLabel ? `Limits · ${group.environmentLabel}` : "Limits"}
-          card
-        >
-          {group.providers.map((provider, index) => (
-            <ProviderLimits
-              key={provider.instanceId}
-              provider={provider}
-              environmentId={group.environmentId}
-              now={now}
-              first={index === 0}
-            />
-          ))}
-        </SettingsSection>
-      ))}
-    </>
-  );
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });

@@ -488,6 +488,14 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
   return pools.sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind]);
 }
 
+/** Heading for one provider's limits: its own name, else its driver's. */
+export function providerLimitsLabel(
+  provider: ServerProvider,
+  driverLabel: (driver: ServerProvider["driver"]) => string | undefined,
+): string {
+  return provider.displayName?.trim() || driverLabel(provider.driver) || String(provider.driver);
+}
+
 /** The one-line status under a provider heading when there are no bars to draw. */
 export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
   if (limits.unavailable?.reason === "unsupported") {

@@ -1116,6 +1116,9 @@ describe("buildThreadListV2ProjectSectionItems", () => {
     const pager = items.find((item) => item.type === "v2-section-show-more");
     expect(pager?.type === "v2-section-show-more" ? pager.projectKey : null).toBe("alpha");
     expect(pager?.type === "v2-section-show-more" ? pager.hiddenCount : 0).toBe(4);
+  });
+});
+
 describe("pending mobile thread moves", () => {
   function fixture(section: "active" | "pinned" = "active") {
     const rows = ["a", "b", "c"].map((id, index) =>

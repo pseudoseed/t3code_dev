@@ -244,6 +244,10 @@ export const viewThread: (input: ViewThreadInput) => CommandEffect = Effect.fn(
   return yield* dispatch({
     ...input,
     type: "thread.view",
+    commandId: yield* commandId(input),
+  });
+});
+
 export const reorderActiveThread: (input: ReorderActiveThreadInput) => CommandEffect = Effect.fn(
   "EnvironmentCommands.reorderActiveThread",
 )(function* (input) {

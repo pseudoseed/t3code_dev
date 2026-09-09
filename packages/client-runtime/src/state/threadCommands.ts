@@ -162,6 +162,9 @@ export function createThreadEnvironmentAtoms<R, E>(
     view: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:view",
       execute: (input: ViewThreadInput) => viewThread(input),
+      scheduler,
+      concurrency,
+    }),
     reorderActive: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:reorder-active",
       execute: (input: ReorderActiveThreadInput) => reorderActiveThread(input),

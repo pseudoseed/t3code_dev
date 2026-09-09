@@ -2592,6 +2592,9 @@ describe("buildSidebarProjectSections", () => {
     });
     expect(sections).toHaveLength(1);
     expect(sections[0]?.settled).toHaveLength(1);
+  });
+});
+
 describe("resolveSidebarDropVerb", () => {
   it("names the state change a cross-section drop performs", () => {
     expect(resolveSidebarDropVerb("active", "pinned")).toBe("pin");

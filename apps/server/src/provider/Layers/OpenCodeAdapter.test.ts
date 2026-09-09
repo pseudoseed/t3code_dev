@@ -16,15 +16,11 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { afterEach, beforeEach } from "vite-plus/test";
-import type {
-  McpRemoteConfig,
-  McpStatus,
-  PermissionRequest,
-  QuestionRequest,
-import { beforeEach, vi } from "vite-plus/test";
+import { afterEach, beforeEach, vi } from "vite-plus/test";
 import type {
   Event as OpenCodeEvent,
+  McpRemoteConfig,
+  McpStatus,
   PermissionRequest,
   QuestionRequest,
   ToolPart,

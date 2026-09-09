@@ -111,6 +111,11 @@ export type UsageLimitSourceSnapshot = typeof UsageLimitSourceSnapshot.Type;
 export const UsageLimitSourceSnapshots = ForwardCompatibleArray(UsageLimitSourceSnapshot);
 export type UsageLimitSourceSnapshots = typeof UsageLimitSourceSnapshots.Type;
 
+/**
+ * Redeem a reset credit on an account a usage-limit source pools rather than
+ * one this environment runs turns on. The source performs the redemption, so
+ * the server only has to name which of its accounts to spend it on.
+ */
 export const UsageLimitSourceConsumeResetCreditInput = Schema.Struct({
   sourceId: UsageLimitSourceId,
   accountId: TrimmedNonEmptyString,
@@ -124,18 +129,6 @@ export const ProviderConsumeResetCreditInput = Schema.Union([
   UsageLimitSourceConsumeResetCreditInput,
 ]);
 export type ProviderConsumeResetCreditInput = typeof ProviderConsumeResetCreditInput.Type;
-
-/**
- * Redeem a reset credit on an account a usage-limit source pools rather than
- * one this environment runs turns on. The source performs the redemption, so
- * the server only has to name which of its accounts to spend it on.
- */
-export const UsageLimitSourceConsumeResetCreditInput = Schema.Struct({
-  sourceId: UsageLimitSourceId,
-  accountId: TrimmedNonEmptyString,
-});
-export type UsageLimitSourceConsumeResetCreditInput =
-  typeof UsageLimitSourceConsumeResetCreditInput.Type;
 
 /**
  * Why a source could not spend a credit. `detail` is written for the user

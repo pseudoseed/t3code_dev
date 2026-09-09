@@ -3,7 +3,6 @@ import {
   appendCodexArtifactTemplateUsePrompt,
   type CodexArtifactTemplate,
 } from "@t3tools/client-runtime/codex-artifact-templates";
-import type { EnvironmentThreadStatus } from "@t3tools/client-runtime/state/threads";
 import type { ContextWindowSnapshot } from "@t3tools/client-runtime/context-window";
 import type {
   CodexFeedbackSubmission,

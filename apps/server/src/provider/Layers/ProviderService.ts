@@ -518,12 +518,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   });
   let turnAnalyticsRequestId = 0;
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  /** Browser access is a capability of the shared MCP credential. Mailbox and
-   * issue tools remain available when browser access is disabled. An unreadable
-   * setting withholds preview capability as well. */
-  const agentBrowserAccessEnabled = serverSettings.getSettings.pipe(
-    Effect.map((settings) => settings.enableAgentBrowserAccess),
-
   const finishTurnAnalytics = (
     state: TurnAnalyticsState,
     input: {
@@ -926,18 +920,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       if (agentMcp === false) {
         yield* clearMcpSession(threadId);
         return;
-      if (!(yield* agentBrowserAccessEnabled(threadId))) {
-        // Revoke as well as clear. Every other prepare path reaches
-        // `issueActiveMcpCredential`, which revokes the thread first, so
-        // skipping it here would leave a previously issued bearer token valid
-        // against `/mcp` for the rest of its liveness window — and later turns
-        // would keep refreshing it. A session restart (runtime mode, cwd,
-        // model) re-prepares without stopping, so it relies on this.
-        yield* revokeMcpCredential(threadId);
-        yield* Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId));
-        return undefined;
       }
-      const previewEnabled = yield* agentBrowserAccessEnabled;
+      // Browser access is a capability of the shared MCP credential, not a gate
+      // on issuing one: mailbox and issue tools stay available when browser
+      // access is off. An unreadable setting withholds preview capability only.
+      const previewEnabled = yield* agentBrowserAccessEnabled(threadId);
       const credential = yield* issueMcpCredential({
         threadId,
         providerInstanceId,

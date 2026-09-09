@@ -4795,11 +4795,6 @@ boundedListing.layer("ProviderServiceLive session listing", (it) => {
   );
 });
 
-describe("agent MCP capabilities", () => {
-  const startSessionWith = (
-    enableAgentBrowserAccess: boolean,
-    threadId: ThreadId,
-    agentMcp?: boolean,
 const decodeBrowserAccessThreadShell = Schema.decodeUnknownEffect(OrchestrationThreadShell);
 
 describe("agent browser access", () => {
@@ -4812,23 +4807,11 @@ describe("agent browser access", () => {
     projectOverride?: boolean,
   ) =>
     Effect.gen(function* () {
-      const issued: Array<{
-        threadId: ThreadId;
-        providerInstanceId: ProviderInstanceId;
-        previewEnabled?: boolean;
-      }> = [];
-      const revoked: ThreadId[] = [];
+      const issued: Array<{ threadId: ThreadId; previewEnabled: boolean }> = [];
       const codex = makeFakeCodexAdapter();
-      const adapter = {
-        ...codex.adapter,
-        capabilities: {
-          ...codex.adapter.capabilities,
-          ...(agentMcp !== undefined ? { agentMcp } : {}),
-        },
-      };
       const providerAdapterLayer = Layer.succeed(
         ProviderAdapterRegistry.ProviderAdapterRegistry,
-        makeAdapterRegistryMock({ [CODEX_DRIVER]: adapter }),
+        makeAdapterRegistryMock({ [CODEX_DRIVER]: codex.adapter }),
       );
       const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
         Layer.provide(SqlitePersistenceMemory),
@@ -4883,13 +4866,13 @@ describe("agent browser access", () => {
       const providerLayer = makeProviderServiceLive({
         issueMcpCredential: (request) =>
           Effect.sync(() => {
-            issued.push(request);
+            issued.push({
+              threadId: request.threadId,
+              previewEnabled: request.previewEnabled === true,
+            });
             return undefined;
           }),
-        revokeMcpCredential: (threadId) =>
-          Effect.sync(() => {
-            revoked.push(threadId);
-          }),
+        revokeMcpCredential: (revoked) => Effect.sync(() => void revokedThreads.push(revoked)),
       }).pipe(
         Layer.provide(providerAdapterLayer),
         Layer.provide(directoryLayer),
@@ -4901,6 +4884,130 @@ describe("agent browser access", () => {
               projectOverride === undefined ? {} : { [projectId]: projectOverride },
           }),
         ),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        return yield* provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(providerLayer));
+
+      return issued;
+    });
+
+  // The credential carries mailbox and issue tools as well as preview, so
+  // browser access decides its `previewEnabled` capability rather than whether
+  // one is minted at all. `/mcp` accepts nothing else, so a false capability is
+  // what denies every provider and external MCP client the preview tools.
+  it.effect("withholds preview capability when agent browser access is off", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-browser-off");
+
+      const issued = yield* startSessionWith(false, threadId);
+
+      assert.deepEqual(issued, [{ threadId, previewEnabled: false }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps the credential live when access is off", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-browser-revoke");
+      revokedThreads.length = 0;
+
+      yield* startSessionWith(false, threadId);
+
+      // Revoking here would take the mailbox and issue tools with it. The
+      // preview capability is withheld on the credential instead.
+      assert.deepEqual(revokedThreads, []);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("grants preview capability when agent browser access is on", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-browser-on");
+
+      const issued = yield* startSessionWith(true, threadId);
+
+      assert.deepEqual(issued, [{ threadId, previewEnabled: true }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("withholds preview capability when the project disables browser access", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-project-browser-off");
+      revokedThreads.length = 0;
+      const issued = yield* startSessionWith(true, threadId, false);
+      assert.deepEqual(issued, [{ threadId, previewEnabled: false }]);
+      assert.deepEqual(revokedThreads, []);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("grants preview capability when the project overrides browser access to on", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-project-browser-on");
+      const issued = yield* startSessionWith(false, threadId, true);
+      assert.deepEqual(issued, [{ threadId, previewEnabled: true }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
+
+describe("agent MCP capabilities", () => {
+  const startSessionWith = (
+    enableAgentBrowserAccess: boolean,
+    threadId: ThreadId,
+    agentMcp?: boolean,
+  ) =>
+    Effect.gen(function* () {
+      const issued: Array<{
+        threadId: ThreadId;
+        providerInstanceId: ProviderInstanceId;
+        previewEnabled?: boolean;
+      }> = [];
+      const revoked: ThreadId[] = [];
+      const codex = makeFakeCodexAdapter();
+      const adapter = {
+        ...codex.adapter,
+        capabilities: {
+          ...codex.adapter.capabilities,
+          ...(agentMcp !== undefined ? { agentMcp } : {}),
+        },
+      };
+      const providerAdapterLayer = Layer.succeed(
+        ProviderAdapterRegistry.ProviderAdapterRegistry,
+        makeAdapterRegistryMock({ [CODEX_DRIVER]: adapter }),
+      );
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(SqlitePersistenceMemory),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const providerLayer = makeProviderServiceLive({
+        issueMcpCredential: (request) =>
+          Effect.sync(() => {
+            issued.push(request);
+            return undefined;
+          }),
+        revokeMcpCredential: (threadId) =>
+          Effect.sync(() => {
+            revoked.push(threadId);
+          }),
+      }).pipe(
+        Layer.provide(providerAdapterLayer),
+        Layer.provide(directoryLayer),
+        Layer.provide(ServerSettings.ServerSettingsService.layerTest({ enableAgentBrowserAccess })),
         Layer.provide(serverConfigTestLayer),
         Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
@@ -4982,21 +5089,5 @@ describe("agent browser access", () => {
           assert.deepEqual(turns, [asTurnId(`turn-${threadId}`), asTurnId(`turn-${threadId}`)]);
         }
       }).pipe(Effect.provide(NodeServices.layer)),
-  it.effect("withholds and revokes MCP credentials when the project disables browser access", () =>
-    Effect.gen(function* () {
-      const threadId = asThreadId("thread-project-browser-off");
-      revokedThreads.length = 0;
-      const issued = yield* startSessionWith(true, threadId, false);
-      assert.deepEqual(issued, []);
-      assert.deepEqual(revokedThreads, [threadId]);
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-
-  it.effect("requests an MCP credential when the project overrides browser access to on", () =>
-    Effect.gen(function* () {
-      const threadId = asThreadId("thread-project-browser-on");
-      const issued = yield* startSessionWith(false, threadId, true);
-      assert.deepEqual(issued, [threadId]);
-    }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

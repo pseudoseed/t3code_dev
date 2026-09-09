@@ -369,9 +369,6 @@ describe("composerDraftStore subagent model", () => {
   const threadId = ThreadId.make("thread-subagent");
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
   const instanceId = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
-describe("composerDraftStore unsent draft marker", () => {
-  const threadId = ThreadId.make("thread-unsent-marker");
-  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
 
   beforeEach(() => {
     resetComposerDraftStore();
@@ -412,6 +409,17 @@ describe("composerDraftStore unsent draft marker", () => {
     expect(
       draftFor(threadId, TEST_ENVIRONMENT_ID)?.subagentModelByProvider[instanceId],
     ).toBeUndefined();
+  });
+});
+
+describe("composerDraftStore unsent draft marker", () => {
+  const threadId = ThreadId.make("thread-unsent-marker");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
   it("reports content for typed text and clears when the composer is emptied", () => {
     const hasDraft = () =>
       composerDraftHasUserContent(useComposerDraftStore.getState().getComposerDraft(threadRef));

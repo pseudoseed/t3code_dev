@@ -49,7 +49,7 @@ const MAX_FILE_BYTES = 1024 * 1024;
 /** How many conversation pages one read will walk before reporting the rest as unread. */
 const MAX_CONVERSATION_PAGES = 10;
 
-export class ForgejoPullRequestApiError extends Schema.TaggedErrorClass<ForgejoPullRequestApiError>()(
+export class ForgejoPullRequestApiError extends Schema.TaggedError<ForgejoPullRequestApiError>()(
   "ForgejoPullRequestApiError",
   {
     operation: Schema.String,

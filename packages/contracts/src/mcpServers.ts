@@ -136,7 +136,7 @@ export const McpMutationResult = Schema.Struct({
 });
 export type McpMutationResult = typeof McpMutationResult.Type;
 
-export class McpInstanceNotFoundError extends Schema.TaggedErrorClass<McpInstanceNotFoundError>()(
+export class McpInstanceNotFoundError extends Schema.TaggedError<McpInstanceNotFoundError>()(
   "McpInstanceNotFoundError",
   {
     instanceId: Schema.String,
@@ -147,7 +147,7 @@ export class McpInstanceNotFoundError extends Schema.TaggedErrorClass<McpInstanc
   }
 }
 
-export class McpCliUnavailableError extends Schema.TaggedErrorClass<McpCliUnavailableError>()(
+export class McpCliUnavailableError extends Schema.TaggedError<McpCliUnavailableError>()(
   "McpCliUnavailableError",
   {
     instanceId: Schema.String,
@@ -159,7 +159,7 @@ export class McpCliUnavailableError extends Schema.TaggedErrorClass<McpCliUnavai
   }
 }
 
-export class McpServerNotFoundError extends Schema.TaggedErrorClass<McpServerNotFoundError>()(
+export class McpServerNotFoundError extends Schema.TaggedError<McpServerNotFoundError>()(
   "McpServerNotFoundError",
   {
     instanceId: Schema.String,
