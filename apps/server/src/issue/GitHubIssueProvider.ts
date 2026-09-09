@@ -166,7 +166,7 @@ const LIST_STATE: Record<IssueListState, string> = {
   closed: "closed",
 };
 
-export class GitHubIssueProvider extends Context.Service<GitHubIssueProvider, IssueProviderApi>()(
+class GitHubIssueProvider extends Context.Service<GitHubIssueProvider, IssueProviderApi>()(
   "t3/issue/GitHubIssueProvider",
 ) {}
 
@@ -434,4 +434,4 @@ export const make = Effect.gen(function* () {
   } satisfies IssueProviderApi;
 });
 
-export const layer = Layer.effect(GitHubIssueProvider, make);
+const layer = Layer.effect(GitHubIssueProvider, make);

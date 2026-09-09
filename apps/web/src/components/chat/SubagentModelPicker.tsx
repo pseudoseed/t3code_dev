@@ -14,7 +14,7 @@ import { useComposerMenuState } from "./useComposerMenuState";
 import { ModelEsque, getTriggerDisplayModelName } from "./providerIconUtils";
 
 /** Menu value standing in for "no override": subagents run the thread's model. */
-export const SUBAGENT_MODEL_INHERIT = "inherit";
+const SUBAGENT_MODEL_INHERIT = "inherit";
 
 export interface SubagentModelControlProps {
   /**
@@ -29,7 +29,7 @@ export interface SubagentModelControlProps {
   onChange: (model: string | null) => void;
 }
 
-export function subagentModelTriggerLabel(input: {
+function subagentModelTriggerLabel(input: {
   value: string | null;
   instanceModels: ReadonlyArray<ModelEsque>;
 }): string {

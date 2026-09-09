@@ -1288,31 +1288,31 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
 });
 
 // PseudoCode fork addition.
-export const WsMcpListRpc = Rpc.make(WS_METHODS.mcpList, {
+const WsMcpListRpc = Rpc.make(WS_METHODS.mcpList, {
   payload: Schema.Struct({}),
   success: McpInventory,
   error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsMcpAddRpc = Rpc.make(WS_METHODS.mcpAdd, {
+const WsMcpAddRpc = Rpc.make(WS_METHODS.mcpAdd, {
   payload: McpAddInput,
   success: McpMutationResult,
   error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsMcpRemoveRpc = Rpc.make(WS_METHODS.mcpRemove, {
+const WsMcpRemoveRpc = Rpc.make(WS_METHODS.mcpRemove, {
   payload: McpRemoveInput,
   success: McpMutationResult,
   error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsMcpCopyRpc = Rpc.make(WS_METHODS.mcpCopy, {
+const WsMcpCopyRpc = Rpc.make(WS_METHODS.mcpCopy, {
   payload: McpCopyInput,
   success: McpMutationResult,
   error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsMcpRepairRpc = Rpc.make(WS_METHODS.mcpRepair, {
+const WsMcpRepairRpc = Rpc.make(WS_METHODS.mcpRepair, {
   payload: McpRepairInput,
   success: McpMutationResult,
   error: Schema.Union([
@@ -1323,7 +1323,7 @@ export const WsMcpRepairRpc = Rpc.make(WS_METHODS.mcpRepair, {
   ]),
 });
 
-export const WsMcpAuthStartRpc = Rpc.make(WS_METHODS.mcpAuthStart, {
+const WsMcpAuthStartRpc = Rpc.make(WS_METHODS.mcpAuthStart, {
   payload: McpAuthInput,
   success: ProviderAuthState,
   error: Schema.Union([
@@ -1334,7 +1334,7 @@ export const WsMcpAuthStartRpc = Rpc.make(WS_METHODS.mcpAuthStart, {
   ]),
 });
 
-export const WsMcpAuthCompleteRpc = Rpc.make(WS_METHODS.mcpAuthComplete, {
+const WsMcpAuthCompleteRpc = Rpc.make(WS_METHODS.mcpAuthComplete, {
   payload: McpAuthCompleteInput,
   success: ProviderAuthState,
   error: Schema.Union([
@@ -1345,7 +1345,7 @@ export const WsMcpAuthCompleteRpc = Rpc.make(WS_METHODS.mcpAuthComplete, {
   ]),
 });
 
-export const WsMcpAuthCancelRpc = Rpc.make(WS_METHODS.mcpAuthCancel, {
+const WsMcpAuthCancelRpc = Rpc.make(WS_METHODS.mcpAuthCancel, {
   payload: McpAuthCancelInput,
   success: ProviderAuthState,
   error: Schema.Union([
@@ -1356,7 +1356,7 @@ export const WsMcpAuthCancelRpc = Rpc.make(WS_METHODS.mcpAuthCancel, {
   ]),
 });
 
-export const WsMcpAuthLogoutRpc = Rpc.make(WS_METHODS.mcpAuthLogout, {
+const WsMcpAuthLogoutRpc = Rpc.make(WS_METHODS.mcpAuthLogout, {
   payload: McpAuthInput,
   success: ProviderAuthState,
   error: Schema.Union([
@@ -1367,7 +1367,7 @@ export const WsMcpAuthLogoutRpc = Rpc.make(WS_METHODS.mcpAuthLogout, {
   ]),
 });
 
-export const WsMcpAuthSubscribeRpc = Rpc.make(WS_METHODS.mcpAuthSubscribe, {
+const WsMcpAuthSubscribeRpc = Rpc.make(WS_METHODS.mcpAuthSubscribe, {
   payload: McpAuthInput,
   success: ProviderAuthState,
   error: Schema.Union([

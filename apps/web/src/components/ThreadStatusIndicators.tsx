@@ -432,7 +432,7 @@ function linkedPullRequestsEqual(
   );
 }
 
-export function threadChangeRequestSnapshotsEqual(
+function threadChangeRequestSnapshotsEqual(
   left: ThreadChangeRequestSnapshot,
   right: ThreadChangeRequestSnapshot,
 ): boolean {

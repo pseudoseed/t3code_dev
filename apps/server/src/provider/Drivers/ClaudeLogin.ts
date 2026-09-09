@@ -44,7 +44,7 @@ const decodeAuthStatus = Schema.decodeUnknownOption(Schema.fromJsonString(Claude
  * the credentials live in the macOS keychain on that platform and in a file on
  * the others.
  */
-export const probeClaudeSignedIn = Effect.fn("probeClaudeSignedIn")(function* (
+const probeClaudeSignedIn = Effect.fn("probeClaudeSignedIn")(function* (
   invocation: CliInvocation,
 ): Effect.fn.Return<boolean, never, ChildProcessSpawner.ChildProcessSpawner | Scope.Scope> {
   const result = yield* runCliInvocation({

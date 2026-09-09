@@ -76,7 +76,7 @@ export class IssueService extends Context.Service<
   }
 >()("t3/issue/IssueService") {}
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const registry = yield* IssueProviderRegistry;
   const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const sourceControlProviders = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;

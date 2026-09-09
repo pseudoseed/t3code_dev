@@ -10,7 +10,7 @@ export function compactWidgetUpdate(input: DirectWidgetUpdate): DirectWidgetUpda
   return update;
 }
 
-export function isActive(state: AgentAwarenessState) {
+function isActive(state: AgentAwarenessState) {
   return (
     state.phase === "starting" ||
     state.phase === "running" ||

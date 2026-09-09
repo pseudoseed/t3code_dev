@@ -17,7 +17,7 @@ export class IssueProviderRegistry extends Context.Service<
 >()("t3/issue/IssueProviderRegistry") {}
 
 /** Exported for tests, which stand a registry up from providers they supply themselves. */
-export function fromProviders(
+function fromProviders(
   providers: ReadonlyArray<IssueProviderApi>,
 ): IssueProviderRegistry["Service"] {
   const byKind = new Map(providers.map((provider) => [provider.kind, provider]));
@@ -31,7 +31,7 @@ export function fromProviders(
  * The hosts this build can read issues from. A host with no entry here is reported as
  * unsupported, so its projects are explained rather than silently empty.
  */
-export const make = Effect.map(
+const make = Effect.map(
   Effect.all([GitHubIssueProvider.make, ForgejoIssueProvider.make]),
   fromProviders,
 );

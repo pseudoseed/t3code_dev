@@ -211,7 +211,7 @@ export const IssueRpcError = Schema.Union([IssueUnavailableError, IssueOperation
 export type IssueRpcError = typeof IssueRpcError.Type;
 
 /** What a host needs before its issues can be read, as a sentence the panel can show. */
-export function issueProviderRequirement(
+function issueProviderRequirement(
   provider: SourceControlProviderKind,
   reason: IssueUnavailableReason,
 ): string | null {

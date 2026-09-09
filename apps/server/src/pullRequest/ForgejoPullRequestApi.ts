@@ -244,7 +244,7 @@ export class ForgejoPullRequestApi extends Context.Service<
   ForgejoPullRequestApiShape
 >()("t3/pullRequest/ForgejoPullRequestApi") {}
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const forgejo = yield* ForgejoApi.ForgejoApi;
 
   const send = (input: {

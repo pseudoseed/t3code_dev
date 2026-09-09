@@ -252,4 +252,4 @@ export const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(SourceControlProvider.SourceControlProvider, make);
+const layer = Layer.effect(SourceControlProvider.SourceControlProvider, make);

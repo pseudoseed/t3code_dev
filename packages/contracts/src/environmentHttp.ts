@@ -615,7 +615,7 @@ class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
     }),
   ) {}
 
-export class EnvironmentDirectPushHttpApi extends HttpApiGroup.make("directPush")
+class EnvironmentDirectPushHttpApi extends HttpApiGroup.make("directPush")
   .add(
     HttpApiEndpoint.get("status", "/api/push/status", {
       headers: OptionalBearerHeaders,

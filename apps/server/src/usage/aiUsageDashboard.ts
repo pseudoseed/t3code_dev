@@ -123,7 +123,7 @@ function isoFromDashboard(value: string | null | undefined): string | undefined 
  * `Weekly (all models)`), so the label is kept verbatim; the bars already
  * carry a duration of their own from `kind`.
  */
-export function aiUsageAccountToUsageLimits(
+function aiUsageAccountToUsageLimits(
   account: DashboardAccount,
   checkedAt: string,
 ): ServerProviderUsageLimits {

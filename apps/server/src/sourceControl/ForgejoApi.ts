@@ -160,7 +160,7 @@ function parseRepoPath(pathname: string): { owner: string; repo: string } | null
   return owner && repo ? { owner, repo } : null;
 }
 
-export function stripHostPort(host: string): string {
+function stripHostPort(host: string): string {
   return host.trim().toLowerCase().replace(/:\d+$/u, "");
 }
 
@@ -173,7 +173,7 @@ export function forgejoHostsMatch(a: string, b: string): boolean {
   return an === bn || stripHostPort(an) === stripHostPort(bn);
 }
 
-export function parseForgejoRemoteUrl(remoteUrl: string): ForgejoRepositoryLocator | null {
+function parseForgejoRemoteUrl(remoteUrl: string): ForgejoRepositoryLocator | null {
   const trimmed = remoteUrl.trim();
   if (trimmed.startsWith("git@")) {
     const hostStart = "git@".length;
@@ -275,7 +275,7 @@ function responseError(
   );
 }
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const fileSystem = yield* FileSystem.FileSystem;
   const keyStore = yield* ForgejoKeyStore.ForgejoKeyStore;

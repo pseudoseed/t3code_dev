@@ -233,7 +233,7 @@ function normalizeLabels(
   return result;
 }
 
-export function normalizeState(input: {
+function normalizeState(input: {
   readonly state?: string | null | undefined;
   readonly merged?: boolean | null | undefined;
 }): PullRequestState {
@@ -245,7 +245,7 @@ export function normalizeState(input: {
  * Forgejo reports `mergeable` only once it has worked the answer out, and says nothing while a
  * merge check is still running or on a change request that is already closed.
  */
-export function normalizeMergeability(
+function normalizeMergeability(
   pullRequest: Pick<ForgejoPullRequest, "mergeable" | "state" | "merged">,
 ): ProviderChangeRequest["mergeability"] {
   if (normalizeState(pullRequest) !== "open") return "unknown";
@@ -290,7 +290,7 @@ export function normalizeChangeRequest(
 }
 
 /** True when the head branch lives in a different repository, which needs its own remote. */
-export function isCrossRepository(pullRequest: ForgejoPullRequest): boolean {
+function isCrossRepository(pullRequest: ForgejoPullRequest): boolean {
   const head = branchRepository(pullRequest.head);
   const base = branchRepository(pullRequest.base);
   return head !== null && base !== null && head.toLowerCase() !== base.toLowerCase();
@@ -380,7 +380,7 @@ export function normalizeIssueComment(
 }
 
 /** Forgejo's review states, as the page spells a verdict. */
-export function normalizeReviewState(state: string | null | undefined): string | null {
+function normalizeReviewState(state: string | null | undefined): string | null {
   const normalized = text(state).trim().toUpperCase();
   switch (normalized) {
     case "APPROVED":
@@ -420,7 +420,7 @@ export function normalizeReview(
   };
 }
 
-export function normalizeThreadComment(
+function normalizeThreadComment(
   comment: typeof ForgejoReviewCommentSchema.Type,
   reactions?: ReadonlyArray<PullRequestReaction>,
 ): PullRequestThreadComment {
@@ -516,7 +516,7 @@ const CHECK_STATUS_BY_FORGEJO_STATE: Record<string, PullRequestCheckStatus> = {
   warning: "neutral",
 };
 
-export function normalizeCheck(
+function normalizeCheck(
   status: typeof ForgejoCommitStatusSchema.Type,
 ): PullRequestCheck | null {
   const name = text(status.context).trim();
@@ -581,7 +581,7 @@ export function canWrite(repository: typeof ForgejoRepositorySchema.Type): boole
   return permissions.push === true || permissions.admin === true;
 }
 
-export function normalizeOption(value: string | null | undefined): Option.Option<string> {
+function normalizeOption(value: string | null | undefined): Option.Option<string> {
   const trimmed = text(value).trim();
   return trimmed.length === 0 ? Option.none() : Option.some(trimmed);
 }
@@ -589,7 +589,7 @@ export function normalizeOption(value: string | null | undefined): Option.Option
 export const decodeForgejoPullRequest = decodeJsonResult(ForgejoPullRequestSchema);
 export const decodeForgejoPullRequestList = decodeJsonResult(ForgejoPullRequestListSchema);
 export const decodeForgejoCommentList = decodeJsonResult(ForgejoCommentListSchema);
-export const decodeForgejoComment = decodeJsonResult(ForgejoCommentSchema);
+const decodeForgejoComment = decodeJsonResult(ForgejoCommentSchema);
 export const decodeForgejoReviewList = decodeJsonResult(ForgejoReviewListSchema);
 export const decodeForgejoReviewCommentList = decodeJsonResult(ForgejoReviewCommentListSchema);
 export const decodeForgejoCommitList = decodeJsonResult(ForgejoCommitListSchema);

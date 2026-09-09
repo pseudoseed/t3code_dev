@@ -17,14 +17,11 @@ export {
 export {
   CLEANUP_TIMEOUT_MS,
   DEFAULT_CLEANUP_PROMPT,
-  EMPTY_VOICE_CORRECTIONS,
   MAX_CLEANUP_PROMPT_LENGTH,
   buildCleanupPrompt,
-  formatCorrectionPairs,
   mergeCorrectionPairs,
   parseCorrectionPairs,
   parsePreferredSpellings,
-  resolveCleanupOutcome,
   type CleanupDegradeReason,
   type CleanupOutcome,
   type CorrectionPair,
@@ -57,7 +54,6 @@ export {
 } from "./controller.ts";
 export {
   VoiceTranscriptionError,
-  resolveSpeakerFilteringNotice,
   throwIfVoiceTranscriptionAborted,
   type PreparedVoiceTranscription,
   type SpeakerFilterFallbackReason,

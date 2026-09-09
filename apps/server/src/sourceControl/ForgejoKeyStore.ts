@@ -55,7 +55,7 @@ export const candidateKeysPaths = Effect.fn("candidateKeysPaths")(function* () {
   return [join(base, "forgejo-cli", "keys.json")] as const;
 });
 
-export function parseKeysFile(content: string): Map<string, ForgejoCredential> {
+function parseKeysFile(content: string): Map<string, ForgejoCredential> {
   const store = new Map<string, ForgejoCredential>();
   let parsed: unknown;
   try {
@@ -83,7 +83,7 @@ export function parseKeysFile(content: string): Map<string, ForgejoCredential> {
   return store;
 }
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const overridePath = yield* Config.string("T3CODE_FORGEJO_KEYS_PATH").pipe(Config.option);
   const searchPaths = Option.isSome(overridePath)

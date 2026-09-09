@@ -445,7 +445,7 @@ const IssueToolkitRegistrationLive = McpServer.toolkit(IssueToolkit).pipe(
   Layer.provide(IssueToolkitHandlersLive),
 );
 
-export const ToolkitRegistrationLive = Layer.mergeAll(
+const ToolkitRegistrationLive = Layer.mergeAll(
   McpServer.toolkit(MailboxToolkit).pipe(Layer.provide(MailboxToolkitHandlersLive)),
   PreviewToolkitRegistrationLive,
   IssueToolkitRegistrationLive,
