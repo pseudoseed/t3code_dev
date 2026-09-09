@@ -5,17 +5,17 @@ Terms whose meaning matters across T3 Code. Architecture and lifecycle constrain
 
 ## Workspace and conversation
 
-| Term           | Meaning                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------- |
-| Environment    | One running server and the machine, credentials, workspace access, and state it owns.             |
-| Client         | A web, desktop, or mobile UI connected to an environment. The desktop app can also host a server. |
-| Project        | An environment-local workspace record rooted at a directory.                                      |
-| Workspace root | The project's base filesystem directory on the environment.                                       |
-| Worktree       | A separate Git checkout a thread can use instead of the project's main checkout.                  |
-| Thread         | The durable conversation and work history for a project. It survives provider process exits.      |
-| Turn           | One user-to-agent work cycle. Provider work can finish before checkpoint and diff work settles.   |
-| Activity       | A non-message timeline item, such as a tool action, approval, or failure.                         |
-| T3 home        | The base data directory. Runtime state normally lives under its `userdata` directory.             |
+| Term           | Meaning                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Environment    | One running server and the machine, credentials, workspace access, and state it owns.               |
+| Client         | A web, desktop, or mobile UI connected to an environment. The desktop app can also host a server.   |
+| Project        | An environment-local workspace record rooted at a directory.                                        |
+| Workspace root | The project's base filesystem directory on the environment.                                         |
+| Worktree       | A separate Git checkout a thread can use instead of the project's main checkout.                    |
+| Thread         | The durable conversation and work history for a project. It survives provider process exits.        |
+| Turn           | One user-to-agent work cycle. Provider work can finish before checkpoint and diff work settles.     |
+| Activity       | A non-message timeline item, such as a tool action, approval, or failure.                           |
+| T3 home        | The base data directory. Runtime state normally lives under its `userdata` directory.               |
 | Read state     | When a thread was last open on any client, held as `lastViewedAt`. Viewing never moves `updatedAt`. |
 
 ## Orchestration
@@ -34,41 +34,41 @@ Terms whose meaning matters across T3 Code. Architecture and lifecycle constrain
 
 ## Providers and checkpoints
 
-| Term                | Meaning                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Provider            | The agent runtime T3 Code controls, such as Codex or Claude Code.                                            |
-| Driver              | The integration for a provider kind.                                                                         |
-| Provider instance   | One configured provider, with its own settings and lifecycle. Multiple instances can use the same driver.    |
-| Adapter             | The boundary translating a provider's native protocol into T3 Code operations and events.                    |
-| Session             | The provider runtime attached to a thread. A session can be stopped and resumed without deleting the thread. |
-| Runtime mode        | The thread's permission policy. See [permission modes](../user/permission-modes.md).                         |
-| Interaction mode    | How the agent approaches the task, such as planning. Separate from permission policy.                        |
-| Checkpoint          | A saved workspace state used for diffs and restore, stored as a hidden Git ref.                              |
-| Checkpoint baseline | The workspace state captured before the work being compared.                                                 |
-| Turn diff           | The workspace changes attributed to one turn.                                                                |
+| Term                | Meaning                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Provider            | The agent runtime T3 Code controls, such as Codex or Claude Code.                                               |
+| Driver              | The integration for a provider kind.                                                                            |
+| Provider instance   | One configured provider, with its own settings and lifecycle. Multiple instances can use the same driver.       |
+| Adapter             | The boundary translating a provider's native protocol into T3 Code operations and events.                       |
+| Session             | The provider runtime attached to a thread. A session can be stopped and resumed without deleting the thread.    |
+| Runtime mode        | The thread's permission policy. See [permission modes](../user/permission-modes.md).                            |
+| Interaction mode    | How the agent approaches the task, such as planning. Separate from permission policy.                           |
+| Checkpoint          | A saved workspace state used for diffs and restore, stored as a hidden Git ref.                                 |
+| Checkpoint baseline | The workspace state captured before the work being compared.                                                    |
+| Turn diff           | The workspace changes attributed to one turn.                                                                   |
 | Subagent model      | The model a thread's subagents run on, held as `subagentModelSelection`. Null means inherit the thread's model. |
 
 ## Agent mailbox
 
-| Term              | Meaning                                                                                              |
-| ----------------- | ---------------------------------------------------------------------------------------------------- |
-| Mailbox           | A durable inbox and outbox shared by explicitly linked threads in one environment.                   |
-| Idle wake         | A queued message admits a new turn only once the recipient is idle. Active turns are never steered.  |
-| Execution receipt | The frozen incoming IDs, explicit reads, and sent messages recorded for one agent turn.              |
-| Included          | The message or its retrieval reference was supplied to the recipient.                                |
-| Acknowledged      | The recipient explicitly confirmed receipt.                                                          |
-| Resolved          | The recipient marked the requested work done.                                                        |
+| Term              | Meaning                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| Mailbox           | A durable inbox and outbox shared by explicitly linked threads in one environment.                  |
+| Idle wake         | A queued message admits a new turn only once the recipient is idle. Active turns are never steered. |
+| Execution receipt | The frozen incoming IDs, explicit reads, and sent messages recorded for one agent turn.             |
+| Included          | The message or its retrieval reference was supplied to the recipient.                               |
+| Acknowledged      | The recipient explicitly confirmed receipt.                                                         |
+| Resolved          | The recipient marked the requested work done.                                                       |
 
 See [agent mailbox](./agent-mailbox.md).
 
 ## Voice input
 
-| Term             | Meaning                                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------------- |
-| Speech model     | The on-device model that turns a recording into text. Selected per device and gated on available memory. |
-| Cleanup model    | A local language model that rewrites a raw transcript as written text. Separate contract, skippable.     |
-| Diarization      | Splitting a recording into stretches of speech attributed to different speakers.                         |
-| Speaker filtering| Using diarization to keep only the speaker a dictation belongs to. Keeps everything when unsure.         |
-| Correction hints | Preferred spellings and `wrong -> right` pairs sent to the cleanup model.                                |
+| Term              | Meaning                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| Speech model      | The on-device model that turns a recording into text. Selected per device and gated on available memory. |
+| Cleanup model     | A local language model that rewrites a raw transcript as written text. Separate contract, skippable.     |
+| Diarization       | Splitting a recording into stretches of speech attributed to different speakers.                         |
+| Speaker filtering | Using diarization to keep only the speaker a dictation belongs to. Keeps everything when unsure.         |
+| Correction hints  | Preferred spellings and `wrong -> right` pairs sent to the cleanup model.                                |
 
 See [voice input](./voice-input.md).

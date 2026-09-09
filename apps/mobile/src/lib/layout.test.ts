@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   constrainAuxiliaryPaneWidth,
   constrainDockPaneHeight,
-  constrainPrimarySidebarWidth,
   deriveCenteredContentHorizontalPadding,
   deriveFileInspectorPaneLayout,
   deriveLayout,

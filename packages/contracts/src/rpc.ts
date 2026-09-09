@@ -875,7 +875,6 @@ const WsIssuesSetStateRpc = Rpc.make(WS_METHODS.issuesSetState, {
 });
 
 const WsSourceControlCloneRepositoryRpc = Rpc.make(WS_METHODS.sourceControlCloneRepository, {
-
   payload: SourceControlCloneRepositoryInput,
   success: SourceControlCloneRepositoryResult,
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),

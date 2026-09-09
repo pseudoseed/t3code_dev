@@ -1039,13 +1039,11 @@ function ThreadNavigationSidebarPane(
                 projectTitle={projectTitleByProjectKey.get(pendingScopeKey)}
                 environmentLabel={
                   Object.keys(savedConnectionsById).length > 1
-                    ? (savedConnectionsById[item.pendingTask.environmentId]
-                        ?.environmentLabel ?? null)
+                    ? (savedConnectionsById[item.pendingTask.environmentId]?.environmentLabel ??
+                      null)
                     : null
                 }
-                environmentMachine={machineByEnvironmentId.get(
-                  item.pendingTask.environmentId,
-                )}
+                environmentMachine={machineByEnvironmentId.get(item.pendingTask.environmentId)}
                 pane="sidebar"
                 // The header above already names the project.
                 showsProjectTitle={!inSection}
@@ -1220,12 +1218,9 @@ function ThreadNavigationSidebarPane(
                 variant="sidebar"
                 pendingTask={item.pendingTask}
                 environmentLabel={
-                  savedConnectionsById[item.pendingTask.environmentId]?.environmentLabel ??
-                  null
+                  savedConnectionsById[item.pendingTask.environmentId]?.environmentLabel ?? null
                 }
-                environmentMachine={machineByEnvironmentId.get(
-                  item.pendingTask.environmentId,
-                )}
+                environmentMachine={machineByEnvironmentId.get(item.pendingTask.environmentId)}
                 isLast={item.isLast}
                 onSelectPendingTask={openPendingTask}
                 onDeletePendingTask={confirmDeletePendingTask}

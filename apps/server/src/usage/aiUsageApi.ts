@@ -77,34 +77,32 @@ export const makeAiUsageApi = Effect.gen(function* () {
     _creditId: string,
   ): Effect.fn.Return<ProviderConsumeResetCreditResult, UsageLimitSourceError> {
     const url = yield* dashboardUrl(config, RESET_PATH);
-    return yield* client
-      .post(url, { body: HttpBody.jsonUnsafe({ account_id: accountId }) })
-      .pipe(
-        // The dashboard answers 4xx with a reason written for the user (its
-        // own cooldown, no credits left), so read the body before failing.
-        Effect.flatMap((response) =>
-          response.json.pipe(
-            Effect.flatMap(decodeAiUsageResetResult),
-            Effect.flatMap((result) =>
-              response.status >= 200 && response.status < 300
-                ? Effect.succeed({ outcome: result.outcome } as ProviderConsumeResetCreditResult)
-                : Effect.fail(
-                    new UsageLimitSourceError({
-                      detail:
-                        result.error ??
-                        `The dashboard refused the request (HTTP ${response.status}).`,
-                    }),
-                  ),
-            ),
+    return yield* client.post(url, { body: HttpBody.jsonUnsafe({ account_id: accountId }) }).pipe(
+      // The dashboard answers 4xx with a reason written for the user (its
+      // own cooldown, no credits left), so read the body before failing.
+      Effect.flatMap((response) =>
+        response.json.pipe(
+          Effect.flatMap(decodeAiUsageResetResult),
+          Effect.flatMap((result) =>
+            response.status >= 200 && response.status < 300
+              ? Effect.succeed({ outcome: result.outcome } as ProviderConsumeResetCreditResult)
+              : Effect.fail(
+                  new UsageLimitSourceError({
+                    detail:
+                      result.error ??
+                      `The dashboard refused the request (HTTP ${response.status}).`,
+                  }),
+                ),
           ),
         ),
-        Effect.timeout(RESET_TIMEOUT),
-        Effect.mapError((error) =>
-          isUsageLimitSourceError(error)
-            ? error
-            : new UsageLimitSourceError({ detail: failureDetail(error) }),
-        ),
-      );
+      ),
+      Effect.timeout(RESET_TIMEOUT),
+      Effect.mapError((error) =>
+        isUsageLimitSourceError(error)
+          ? error
+          : new UsageLimitSourceError({ detail: failureDetail(error) }),
+      ),
+    );
   });
 
   return { readAccounts, consume };

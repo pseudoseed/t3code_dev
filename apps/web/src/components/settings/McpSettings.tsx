@@ -361,10 +361,7 @@ function EnvironmentMcpSettings({
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        id={`mcp-add-${formId}`}
-        title="Add a server"
-      >
+      <SettingsSection id={`mcp-add-${formId}`} title="Add a server">
         <div className="space-y-3 px-3 py-3 sm:px-4">
           <p className="text-xs text-muted-foreground">
             Enter a server URL and choose its accounts. Use JSON for a local command or custom

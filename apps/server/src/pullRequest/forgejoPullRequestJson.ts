@@ -516,9 +516,7 @@ const CHECK_STATUS_BY_FORGEJO_STATE: Record<string, PullRequestCheckStatus> = {
   warning: "neutral",
 };
 
-function normalizeCheck(
-  status: typeof ForgejoCommitStatusSchema.Type,
-): PullRequestCheck | null {
+function normalizeCheck(status: typeof ForgejoCommitStatusSchema.Type): PullRequestCheck | null {
   const name = text(status.context).trim();
   if (name.length === 0) return null;
   const state = text(status.status).trim().toLowerCase();

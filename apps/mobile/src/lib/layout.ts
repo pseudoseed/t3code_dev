@@ -167,22 +167,6 @@ export function deriveLayout(input: { readonly width: number; readonly height: n
   };
 }
 
-/** Clamps a user-dragged sidebar width so the detail pane keeps usable room. */
-export function constrainPrimarySidebarWidth(
-  preferredWidth: number,
-  viewportWidth = Number.POSITIVE_INFINITY,
-): number {
-  const safeWidth = Number.isFinite(preferredWidth) ? preferredWidth : SPLIT_SIDEBAR_MIN_WIDTH;
-  const viewportMax = Number.isFinite(viewportWidth)
-    ? Math.max(SPLIT_SIDEBAR_MIN_WIDTH, viewportWidth - 360)
-    : SPLIT_SIDEBAR_DEFAULT_MAX_WIDTH;
-  return clamp(
-    Math.round(safeWidth),
-    SPLIT_SIDEBAR_MIN_WIDTH,
-    Math.min(SPLIT_SIDEBAR_DEFAULT_MAX_WIDTH, viewportMax),
-  );
-}
-
 export function deriveWorkspacePaneLayout(input: {
   readonly layout: Layout;
   readonly viewportWidth: number;

@@ -1048,7 +1048,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   showsProjectTitle?: boolean;
   /** Parent-held so a remount cannot lose a merged or closed change request. */
   changeRequestSnapshot: ThreadChangeRequestSnapshot | null;
-  onChangeRequestSnapshot: (threadKey: string, snapshot: ThreadChangeRequestSnapshot | null) => void;
+  onChangeRequestSnapshot: (
+    threadKey: string,
+    snapshot: ThreadChangeRequestSnapshot | null,
+  ) => void;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -2163,10 +2166,7 @@ const SidebarProjectSection = memo(function SidebarProjectSection(props: {
             className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-0.5 text-left"
           >
             {section.project ? (
-              <ProjectFavicon
-                project={section.project}
-                className="size-4 shrink-0"
-              />
+              <ProjectFavicon project={section.project} className="size-4 shrink-0" />
             ) : (
               <FolderIcon className="size-4 shrink-0 text-(--project-accent-text)" />
             )}
@@ -5277,7 +5277,9 @@ export default function Sidebar() {
                             onFileDropThreads={handleThreadFileDrop}
                             // The section header above already names the project.
                             showsProjectTitle={options?.inProjectSection !== true}
-                            changeRequestSnapshot={changeRequestSnapshotByKey.get(threadKey) ?? null}
+                            changeRequestSnapshot={
+                              changeRequestSnapshotByKey.get(threadKey) ?? null
+                            }
                             onChangeRequestSnapshot={setThreadChangeRequestSnapshot}
                           />
                         );
