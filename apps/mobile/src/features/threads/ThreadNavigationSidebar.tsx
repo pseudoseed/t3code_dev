@@ -542,6 +542,20 @@ function ThreadNavigationSidebarPane(
     nowMinute,
     snoozeWakeTick,
   ]);
+  // Pinned rows share one order across environments that support reordering,
+  // so the move-up and move-down affordances read their position from it.
+  const arrangedPinnedKeys = useMemo(() => {
+    const pinned = sortPinnedThreadsByOrderKey(
+      threads.filter(
+        (thread) =>
+          thread.pinnedAt != null &&
+          thread.archivedAt === null &&
+          pinReorderEnvironmentIds.has(thread.environmentId),
+      ),
+    );
+    return pinned.map((thread) => `${thread.environmentId}:${thread.id}`);
+  }, [pinReorderEnvironmentIds, threads]);
+
   const threadListV2Layout = useMemo(() => {
     if (!threadListV2Enabled)
       return {
@@ -633,7 +647,7 @@ function ThreadNavigationSidebarPane(
     for (const pendingTask of scopedPendingTasks) {
       if (
         options.selectedEnvironmentId !== null &&
-        pendingTask.message.environmentId !== options.selectedEnvironmentId
+        pendingTask.environmentId !== options.selectedEnvironmentId
       ) {
         continue;
       }
@@ -644,7 +658,7 @@ function ThreadNavigationSidebarPane(
         continue;
       }
       const scopeKey = scopeKeyByProjectRef.get(
-        scopedProjectKey(pendingTask.message.environmentId, pendingTask.creation.projectId),
+        scopedProjectKey(pendingTask.environmentId, pendingTask.projectId),
       );
       if (scopeKey === undefined) continue;
       const bucket = pendingByScope.get(scopeKey);
@@ -1015,8 +1029,8 @@ function ThreadNavigationSidebarPane(
         switch (item.type) {
           case "v2-pending": {
             const pendingScopeKey = scopedProjectKey(
-              item.pendingTask.message.environmentId,
-              item.pendingTask.creation.projectId,
+              item.pendingTask.environmentId,
+              item.pendingTask.projectId,
             );
             return (
               <ThreadListV2PendingRow
@@ -1025,12 +1039,12 @@ function ThreadNavigationSidebarPane(
                 projectTitle={projectTitleByProjectKey.get(pendingScopeKey)}
                 environmentLabel={
                   Object.keys(savedConnectionsById).length > 1
-                    ? (savedConnectionsById[item.pendingTask.message.environmentId]
+                    ? (savedConnectionsById[item.pendingTask.environmentId]
                         ?.environmentLabel ?? null)
                     : null
                 }
                 environmentMachine={machineByEnvironmentId.get(
-                  item.pendingTask.message.environmentId,
+                  item.pendingTask.environmentId,
                 )}
                 pane="sidebar"
                 // The header above already names the project.
@@ -1094,7 +1108,7 @@ function ThreadNavigationSidebarPane(
                 onSettleThread={settleThread}
                 snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
                 pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
-                pinReorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
+                reorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
                 canMovePinnedUp={
                   arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`) > 0
                 }
@@ -1107,8 +1121,7 @@ function ThreadNavigationSidebarPane(
                 onUnsettleThread={unsettleThread}
                 onPinThread={pinThread}
                 onUnpinThread={unpinThread}
-                onMovePinnedThread={movePinnedThread}
-                projectCwd={projectCwdByKey.get(scopeKey) ?? null}
+                onMovePinnedThread={moveThread}
                 onSwipeableClose={handleSwipeableClose}
                 onSwipeableWillOpen={handleSwipeableWillOpen}
                 simultaneousSwipeGesture={sidebarScrollGesture}
@@ -1207,11 +1220,11 @@ function ThreadNavigationSidebarPane(
                 variant="sidebar"
                 pendingTask={item.pendingTask}
                 environmentLabel={
-                  savedConnectionsById[item.pendingTask.message.environmentId]?.environmentLabel ??
+                  savedConnectionsById[item.pendingTask.environmentId]?.environmentLabel ??
                   null
                 }
                 environmentMachine={machineByEnvironmentId.get(
-                  item.pendingTask.message.environmentId,
+                  item.pendingTask.environmentId,
                 )}
                 isLast={item.isLast}
                 onSelectPendingTask={openPendingTask}
@@ -1224,14 +1237,11 @@ function ThreadNavigationSidebarPane(
               <ThreadListRow
                 variant="sidebar"
                 thread={thread}
+                onNewThreadOnBranch={props.onNewThreadOnBranch}
                 environmentLabel={
                   savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
                 }
                 environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
-                projectCwd={
-                  projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ??
-                  null
-                }
                 isLast={item.isLast}
                 searchMatch={threadSearchMatchByKey.get(
                   threadSearchMatchKey({
@@ -1271,208 +1281,6 @@ function ThreadNavigationSidebarPane(
       })();
 
       return withSectionCard(content);
-      switch (item.type) {
-        case "v2-pending": {
-          const pendingScopeKey = scopedProjectKey(
-            item.pendingTask.environmentId,
-            item.pendingTask.projectId,
-          );
-          return (
-            <ThreadListV2PendingRow
-              pendingTask={item.pendingTask}
-              project={projectByKey.get(pendingScopeKey) ?? null}
-              projectTitle={projectTitleByProjectKey.get(pendingScopeKey)}
-              environmentLabel={
-                Object.keys(savedConnectionsById).length > 1
-                  ? (savedConnectionsById[item.pendingTask.environmentId]?.environmentLabel ?? null)
-                  : null
-              }
-              environmentMachine={machineByEnvironmentId.get(item.pendingTask.environmentId)}
-              pane="sidebar"
-              showPendingDivider={item.showPendingDivider}
-              onSelectPendingTask={openPendingTask}
-              onDeletePendingTask={confirmDeletePendingTask}
-            />
-          );
-        }
-        case "v2-thread": {
-          const thread = item.item.thread;
-          const movePlanner = item.item.pinned
-            ? threadMovePlanners.pinned
-            : threadMovePlanners.active;
-          const movedId = `${thread.environmentId}:${thread.id}`;
-          const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
-          return (
-            <ThreadListV2Row
-              onNewThreadOnBranch={props.onNewThreadOnBranch}
-              thread={thread}
-              variant={item.item.variant}
-              hasQueuedMessages={queuedThreadKeys.has(`${thread.environmentId}:${thread.id}`)}
-              snoozed={item.item.snoozed}
-              pinned={item.item.pinned}
-              snoozePresetMinute={nowMinute}
-              snoozeWakeLabelText={item.snoozeWakeLabelText}
-              project={projectByKey.get(scopeKey) ?? null}
-              projectTitle={projectTitleByProjectKey.get(scopeKey)}
-              providerInstance={resolveThreadProviderInstance(serverConfigs, thread)}
-              environmentLabel={
-                Object.keys(savedConnectionsById).length > 1
-                  ? (savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
-                  : null
-              }
-              environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
-              searchMatch={threadSearchMatchByKey.get(
-                threadSearchMatchKey({
-                  environmentId: thread.environmentId,
-                  threadId: thread.id,
-                }),
-              )}
-              searchQuery={props.searchQuery}
-              pane={materialYouStyleLayoutActive ? "screen" : "sidebar"}
-              selected={
-                scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
-              }
-              fullSwipeWidth={props.width - 20}
-              onSelectThread={handleSelectThread}
-              onDeleteThread={confirmDeleteThread}
-              onArchiveThread={archiveThread}
-              onRegenerateThreadTitle={regenerateThreadTitle}
-              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
-              settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
-              onSettleThread={settleThread}
-              snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
-              pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
-              reorderSupported={
-                item.item.pinned
-                  ? pinReorderEnvironmentIds.has(thread.environmentId)
-                  : activeReorderEnvironmentIds.has(thread.environmentId)
-              }
-              canMoveUp={pendingOrder === null && movePlanner(movedId, "up") !== null}
-              canMoveDown={pendingOrder === null && movePlanner(movedId, "down") !== null}
-              onSnoozeThread={snoozeThread}
-              onUnsnoozeThread={unsnoozeThread}
-              onUnsettleThread={unsettleThread}
-              onPinThread={pinThread}
-              onUnpinThread={unpinThread}
-              onMoveThread={moveThread}
-              onSwipeableClose={handleSwipeableClose}
-              onSwipeableWillOpen={handleSwipeableWillOpen}
-              simultaneousSwipeGesture={sidebarScrollGesture}
-            />
-          );
-        }
-        case "v2-snoozed-shelf":
-          return (
-            <ThreadListV2SnoozedShelfHeader
-              count={item.count}
-              disabled={!shelfPreferencesLoaded}
-              expanded={item.expanded}
-              onToggle={toggleSnoozedShelf}
-              pane={materialYouStyleLayoutActive ? "screen" : "sidebar"}
-            />
-          );
-        case "v2-settled-shelf":
-          return (
-            <ThreadListV2SettledShelfHeader
-              count={item.count}
-              disabled={!shelfPreferencesLoaded}
-              expanded={item.expanded}
-              onToggle={toggleSettledShelf}
-              pane={materialYouStyleLayoutActive ? "screen" : "sidebar"}
-            />
-          );
-        case "v2-show-more":
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Show ${Math.min(item.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
-              onPress={showMoreSettled}
-              className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <Text className="text-xs font-t3-medium text-foreground-muted">
-                Show more ({item.hiddenCount} settled hidden)
-              </Text>
-            </Pressable>
-          );
-        case "header":
-          return (
-            <ThreadListGroupHeader
-              variant={materialYouStyleLayoutActive ? "compact" : "sidebar"}
-              collapsed={item.collapsed}
-              isFirst={item.isFirst}
-              groupKey={item.group.key}
-              onGroupAction={updateGroupDisplay}
-              // Same gating as the compact Home list: aggregated groups have no
-              // single target project, and pending-project groups hold a
-              // placeholder shell rather than a real project.
-              newThreadTarget={item.group.newThreadTarget}
-              onNewThread={props.onNewThreadInProject}
-              project={item.group.representative}
-              threadCount={item.group.threads.length + item.group.pendingTasks.length}
-              title={item.group.title}
-            />
-          );
-        case "pending-task":
-          return (
-            <PendingTaskListRow
-              variant={materialYouStyleLayoutActive ? "compact" : "sidebar"}
-              pendingTask={item.pendingTask}
-              environmentLabel={
-                savedConnectionsById[item.pendingTask.environmentId]?.environmentLabel ?? null
-              }
-              environmentMachine={machineByEnvironmentId.get(item.pendingTask.environmentId)}
-              isLast={item.isLast}
-              onSelectPendingTask={openPendingTask}
-              onDeletePendingTask={confirmDeletePendingTask}
-            />
-          );
-        case "thread": {
-          const thread = item.thread;
-          return (
-            <ThreadListRow
-              onNewThreadOnBranch={props.onNewThreadOnBranch}
-              variant="sidebar"
-              thread={thread}
-              hasQueuedMessages={queuedThreadKeys.has(`${thread.environmentId}:${thread.id}`)}
-              environmentLabel={
-                savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
-              }
-              environmentMachine={machineByEnvironmentId.get(thread.environmentId)}
-              isLast={item.isLast}
-              searchMatch={threadSearchMatchByKey.get(
-                threadSearchMatchKey({
-                  environmentId: thread.environmentId,
-                  threadId: thread.id,
-                }),
-              )}
-              searchQuery={props.searchQuery}
-              selected={
-                scopedThreadKey(thread.environmentId, thread.id) === props.selectedThreadKey
-              }
-              fullSwipeWidth={props.width - 20}
-              onArchiveThread={archiveThread}
-              onDeleteThread={confirmDeleteThread}
-              onRegenerateThreadTitle={regenerateThreadTitle}
-              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
-              onSelectThread={handleSelectThread}
-              onSwipeableClose={handleSwipeableClose}
-              onSwipeableWillOpen={handleSwipeableWillOpen}
-              simultaneousSwipeGesture={sidebarScrollGesture}
-            />
-          );
-        }
-        case "show-more":
-          return (
-            <ThreadListShowMoreRow
-              variant={materialYouStyleLayoutActive ? "compact" : "sidebar"}
-              hiddenCount={item.hiddenCount}
-              canShowLess={item.canShowLess}
-              groupKey={item.groupKey}
-              onGroupAction={updateGroupDisplay}
-            />
-          );
-      }
     },
     [
       materialYouStyleLayoutActive,

@@ -344,13 +344,10 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 }) {
   const { pendingTask, onSelectPendingTask, onDeletePendingTask } = props;
   const sidebarPane = props.pane === "sidebar";
-  const projectTitle =
-    props.projectTitle ?? props.project?.title ?? pendingTask.creation.projectTitle ?? "";
-  const showsProjectTitle = props.showsProjectTitle !== false;
-  const branch = pendingTask.creation.branch;
-  const isDraft = pendingTask.kind === "draft";
   const projectTitle = props.projectTitle ?? props.project?.title ?? pendingTask.projectTitle ?? "";
+  const showsProjectTitle = props.showsProjectTitle !== false;
   const branch = pendingTask.branch;
+  const isDraft = pendingTask.kind === "draft";
 
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {

@@ -615,7 +615,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadDelete,
       settings.confirmThreadUnpin,
       settings.copyOnSelect,
-      settings.composerCollapseOnBlur,
       settings.composerCollapseOnScroll,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,

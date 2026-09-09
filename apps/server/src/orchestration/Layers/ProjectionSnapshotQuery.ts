@@ -133,6 +133,9 @@ const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession;
 const ProjectionThreadRuntimeContextDbRowSchema = Schema.Struct({
   id: ThreadId,
   title: Schema.String,
+  // Token pricing charges against the thread's current model, so the narrow
+  // runtime read carries it rather than paying for a second query per event.
+  modelSelection: Schema.fromJsonString(ModelSelection),
   session: Schema.NullOr(ProjectionThreadSessionDbRowSchema),
 });
 const ProjectionCheckpointDbRowSchema = ProjectionCheckpoint.mapFields(
@@ -1133,6 +1136,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           threads.thread_id AS id,
           threads.title,
+          threads.model_selection_json AS "modelSelection",
           sessions.thread_id AS "threadId",
           sessions.status,
           sessions.provider_name AS "providerName",
@@ -1153,6 +1157,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           rows.map((row) => ({
             id: row.id,
             title: row.title,
+            modelSelection: row.modelSelection,
             session: row.threadId === null ? null : row,
           })),
         ),
@@ -3030,6 +3035,7 @@ pending_approval_requests AS (
       return Option.map(context, (row) => ({
         id: row.id,
         title: row.title,
+        modelSelection: row.modelSelection,
         session: row.session === null ? null : mapSessionRow(row.session),
       }));
     });

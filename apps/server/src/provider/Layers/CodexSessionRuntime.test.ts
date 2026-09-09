@@ -816,6 +816,7 @@ describe("openCodexThread", () => {
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
         serviceTier: "fast",
+        requestedSubagentModel: undefined,
         resumeThreadId: "saved-thread",
       });
 
@@ -863,6 +864,7 @@ describe("openCodexThread", () => {
           cwd: "/tmp/project",
           requestedModel: "gpt-5.3-codex",
           serviceTier: undefined,
+          requestedSubagentModel: undefined,
           resumeThreadId: "saved-thread",
         }).pipe(Effect.flip);
 

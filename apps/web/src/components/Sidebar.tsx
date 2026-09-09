@@ -2117,11 +2117,7 @@ const SidebarProjectSection = memo(function SidebarProjectSection(props: {
           >
             {section.project ? (
               <ProjectFavicon
-                environmentId={section.project.environmentId}
-                cwd={section.project.workspaceRoot}
-                projectName={section.project.title}
-                faviconPath={section.project.faviconPath}
-                projectIcon={section.project.projectIcon}
+                project={section.project}
                 className="size-4 shrink-0"
               />
             ) : (

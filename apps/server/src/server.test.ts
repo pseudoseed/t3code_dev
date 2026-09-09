@@ -184,7 +184,6 @@ import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers
 import * as ThreadBackgroundLiveness from "./orchestration/ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "./orchestration/ThreadPlanProgress.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "./persistence/Layers/OrchestrationCommandReceipts.ts";
-import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
 import {

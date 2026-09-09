@@ -1549,7 +1549,7 @@ const make = Effect.gen(function* () {
 
     const cancelMailboxStart = Effect.fn("cancelMailboxStart")(function* () {
       yield* mailbox.finish(thread.id, event.payload.messageId, null, "failed");
-      const latest = yield* resolveThread(thread.id);
+      const latest = yield* resolveThreadShell(thread.id);
       const session =
         latest?.session ??
         (latest === undefined
@@ -1571,7 +1571,7 @@ const make = Effect.gen(function* () {
     if (event.payload.mailboxWake) {
       const request = (yield* mailbox.repository.turns(thread.id, event.payload.messageId))[0];
       if (request?.state !== "pending") return;
-      const latest = yield* resolveThread(thread.id);
+      const latest = yield* resolveThreadShell(thread.id);
       if (
         !latest ||
         latest.archivedAt !== null ||

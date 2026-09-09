@@ -15,6 +15,7 @@
 import {
   DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL,
   UsageLimitSourceError,
+  type ProviderConsumeResetCreditOutcome,
   type UsageLimitSourceConsumeResetCreditInput,
   type ProviderConsumeResetCreditResult,
   type ServerSettings,
@@ -38,6 +39,26 @@ import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { makeAiUsageApi } from "./aiUsageApi.ts";
 import { makeCliproxyApi } from "./cliproxyApi.ts";
+
+const RESET_OUTCOMES: ReadonlyArray<ProviderConsumeResetCreditOutcome> = [
+  "reset",
+  "alreadyRedeemed",
+  "noCredit",
+  "nothingToReset",
+];
+
+/** Reset outcome names vary by source; normalize onto Codex's own set. */
+export function resetOutcomeOf(value: unknown): ProviderConsumeResetCreditOutcome {
+  const raw =
+    typeof value === "string"
+      ? value
+      : typeof value === "object" && value !== null && "outcome" in value
+        ? (value as { outcome: unknown }).outcome
+        : undefined;
+  if (typeof raw !== "string") return "reset";
+  const normalized = raw.replaceAll(/[_-]/g, "").toLowerCase();
+  return RESET_OUTCOMES.find((outcome) => outcome.toLowerCase() === normalized) ?? "reset";
+}
 
 export class UsageLimitSources extends Context.Service<
   UsageLimitSources,

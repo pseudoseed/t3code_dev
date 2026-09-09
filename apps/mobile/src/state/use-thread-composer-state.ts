@@ -207,7 +207,6 @@ export function useThreadComposerState() {
 
   // The composer prints the share of the window in use and the thread's
   // running cost; both come off the newest `context-window.updated` activity.
-  const selectedThreadActivities = selectedThreadDetail?.activities;
   const selectedThreadContextWindow = useMemo(
     () =>
       selectedThreadActivities ? deriveLatestContextWindowSnapshot(selectedThreadActivities) : null,

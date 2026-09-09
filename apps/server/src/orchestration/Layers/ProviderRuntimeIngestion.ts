@@ -1207,7 +1207,7 @@ const make = Effect.gen(function* () {
    * stays uncosted rather than being reported as free.
    */
   const stampThreadCost = Effect.fn("stampThreadCost")(function* (
-    thread: OrchestrationThreadShell,
+    thread: Pick<OrchestrationThreadShell, "id" | "modelSelection">,
     usage: ThreadTokenUsageSnapshot,
   ) {
     const state = yield* resolveThreadCostState(thread.id);

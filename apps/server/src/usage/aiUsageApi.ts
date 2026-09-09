@@ -17,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import {
@@ -30,6 +31,8 @@ const RESET_PATH = "/api/codex/reset";
 const FETCH_TIMEOUT = "10 seconds";
 /** Redeeming spends something real; give the dashboard room to reach the vendor. */
 const RESET_TIMEOUT = "30 seconds";
+
+const isUsageLimitSourceError = Schema.is(UsageLimitSourceError);
 
 const dashboardUrl = (config: UsageLimitSourceConfig, path: string) =>
   Effect.try({
@@ -97,7 +100,7 @@ export const makeAiUsageApi = Effect.gen(function* () {
         ),
         Effect.timeout(RESET_TIMEOUT),
         Effect.mapError((error) =>
-          error instanceof UsageLimitSourceError
+          isUsageLimitSourceError(error)
             ? error
             : new UsageLimitSourceError({ detail: failureDetail(error) }),
         ),

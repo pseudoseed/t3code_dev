@@ -443,7 +443,7 @@ function parseEnvironmentRpcKey<Input>(key: string): {
   };
 }
 
-function runInEnvironment<A, E, R>(
+export function runInEnvironment<A, E, R>(
   environmentId: EnvironmentIdType,
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<

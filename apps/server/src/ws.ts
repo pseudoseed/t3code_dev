@@ -1894,9 +1894,7 @@ const makeWsRpcLayer = (
         [WS_METHODS.usageLimitSourceConsumeResetCredit]: (input) =>
           observeRpcEffect(
             WS_METHODS.usageLimitSourceConsumeResetCredit,
-            usageLimitSources
-              .consumeResetCredit(input)
-              .pipe(Effect.map((outcome) => ({ outcome }))),
+            usageLimitSources.consumeResetCredit(input),
             { "rpc.aggregate": "usage" },
           ),
         [WS_METHODS.providerAuthStart]: (input) =>

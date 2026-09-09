@@ -82,6 +82,7 @@ describe("new thread on an existing branch", () => {
         text: "Start fresh",
         uploadedAttachments: [],
         modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.6-sol" },
+        subagentModelSelection: null,
         runtimeMode: "full-access",
         interactionMode: "default",
         workspaceMode: "local",

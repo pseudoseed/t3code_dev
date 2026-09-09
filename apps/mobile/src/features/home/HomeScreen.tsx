@@ -834,6 +834,15 @@ export function HomeScreen(props: HomeScreenProps) {
         <ThreadListV2Row
           onNewThreadOnBranch={props.onNewThreadOnBranch}
           thread={thread}
+          providerDriver={
+            serverConfigs
+              .get(thread.environmentId)
+              ?.providers.find(
+                (provider) =>
+                  provider.instanceId ===
+                  (thread.session?.providerInstanceId ?? thread.modelSelection.instanceId),
+              )?.driver ?? null
+          }
           variant={item.item.variant}
           hasQueuedMessages={queuedThreadKeys.has(movedId)}
           snoozed={item.item.snoozed}

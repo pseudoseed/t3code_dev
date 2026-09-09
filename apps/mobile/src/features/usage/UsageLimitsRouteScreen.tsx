@@ -49,6 +49,7 @@ function SourceResetCredit(props: {
   readonly environmentId: EnvironmentId;
   readonly sourceId: UsageLimitSourceId;
   readonly accountId: string;
+  readonly creditId: string;
   readonly availableCount: number;
 }) {
   const consume = useAtomCommand(serverEnvironment.consumeSourceResetCredit, {
@@ -62,7 +63,11 @@ function SourceResetCredit(props: {
     setStatus(null);
     const result = await consume({
       environmentId: props.environmentId,
-      input: { sourceId: props.sourceId, accountId: props.accountId },
+      input: {
+        sourceId: props.sourceId,
+        accountId: props.accountId,
+        creditId: props.creditId,
+      },
     });
     setBusy(false);
     setStatus(
@@ -150,6 +155,7 @@ export function UsageLimitsRouteScreen() {
                     environmentId={source.environmentId}
                     sourceId={source.id}
                     accountId={account.id}
+                    creditId={account.usageLimits.resetCredits.nextCreditId ?? ""}
                     availableCount={account.usageLimits.resetCredits.availableCount}
                   />
                 ) : undefined
