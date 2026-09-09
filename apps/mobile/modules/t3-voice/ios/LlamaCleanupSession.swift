@@ -118,7 +118,10 @@ final class LlamaCleanupSession {
   ) throws -> Rewrite {
     llama_memory_clear(llama_get_memory(context), true)
 
-    let prompt = applyChatTemplate(systemPrompt: systemPrompt, transcript: transcript)
+    let prompt = ReasoningText.nonThinkingPrompt(
+      applyChatTemplate(systemPrompt: systemPrompt, transcript: transcript),
+      template: chatTemplate
+    )
     var tokens = try tokenize(prompt, addSpecial: chatTemplate == nil)
 
     // Leave room for the answer. A prompt that fills the window produces a
@@ -138,15 +141,24 @@ final class LlamaCleanupSession {
     var output: [UInt8] = []
     var generated = 0
     var isComplete = false
+    var stopReason = "token-limit"
 
     while generated < maximumOutputTokens {
-      if shouldStop() || Date() >= deadline { break }
+      if shouldStop() {
+        stopReason = "cancelled"
+        break
+      }
+      if Date() >= deadline {
+        stopReason = "timeout"
+        break
+      }
 
       var token = llama_sampler_sample(sampler, context, -1)
       // The model's own end of turn is the only ending that means the rewrite
       // covers the whole transcript.
       if llama_vocab_is_eog(vocab, token) {
         isComplete = true
+        stopReason = "end-of-turn"
         break
       }
 
@@ -158,7 +170,12 @@ final class LlamaCleanupSession {
       }
     }
 
-    return Rewrite(text: ReasoningText.strip(Self.decodeUTF8(output)), isComplete: isComplete)
+    let text = ReasoningText.strip(Self.decodeUTF8(output))
+    VoiceDiagnostics.report(
+      "cleanup",
+      "generation stop=\(stopReason) tokens=\(generated) bytes=\(output.count) characters=\(text.count)"
+    )
+    return Rewrite(text: text, isComplete: isComplete)
   }
 
   private func applyChatTemplate(systemPrompt: String, transcript: String) -> String {
@@ -176,7 +193,8 @@ final class LlamaCleanupSession {
           for message in messages { free(UnsafeMutablePointer(mutating: message.role)) }
         }
 
-        var buffer = [CChar](repeating: 0, count: (systemPrompt.utf8.count + transcript.utf8.count) * 2 + 1024)
+        var buffer = [CChar](
+          repeating: 0, count: (systemPrompt.utf8.count + transcript.utf8.count) * 2 + 1024)
         let written = llama_chat_apply_template(
           chatTemplate,
           &messages,

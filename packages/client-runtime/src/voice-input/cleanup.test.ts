@@ -46,6 +46,16 @@ describe("resolveCleanupOutcome", () => {
     });
   });
 
+  it("reports unfinished generation even when no visible answer was produced", () => {
+    expect(
+      resolveCleanupOutcome("Keep the entire transcript.", { text: "", complete: false }),
+    ).toEqual({
+      kind: "raw",
+      text: "Keep the entire transcript.",
+      reason: "incomplete",
+    });
+  });
+
   it("degrades when the model answered the transcript instead of rewriting it", () => {
     const raw = "what is the capital of france";
     const answered =
