@@ -1,237 +1,93 @@
-# Source Control Integrations
+# Source control
 
-PseudoCode connects to your Git hosting provider so you can create pull requests, review code, and manage repositories without leaving the app.
+PseudoCode integrates with GitHub, GitLab, Bitbucket, and Azure DevOps to clone and publish
+repositories, create pull requests, and review changes.
 
-## Supported Providers
+## Connect an account
 
-PseudoCode works with the platforms your team already uses:
+Install Git and configure authentication on the machine running your PseudoCode server. For a remote
+environment, do this on the remote machine. After signing in, open **Settings → Source Control**
+and choose **Rescan**.
 
-- **GitHub** – Pull requests, repository creation, and clone integration
-- **GitLab** – Merge requests, repository publishing, and hosted clones
-- **Bitbucket** – Pull request workflows (via API token authentication)
-- **Azure DevOps** – Pull request support for Microsoft-hosted repositories
-- **Forgejo and Gitea** – Pull requests, reviews, repository creation, and clone integration on
-  your own self-hosted instance
+### GitHub
 
-## What You Can Do
+Install [GitHub CLI](https://cli.github.com/) 2.81.0 or newer, then sign in:
 
-### Start Projects from Anywhere
+```bash
+gh auth login
+```
 
-**Clone repositories directly**
+### GitLab
 
-- Open the Command Palette (`Cmd/Ctrl + K`) → **Add Project**
-- Choose **GitHub repository**, **GitLab repository**, **Bitbucket repository**, **Azure DevOps repository**, **Forgejo repository**, or paste any **Git URL**
-- Enter the repository path (`owner/repo`, `group/project`, `workspace/repository`, `project/repository`, or `host/owner/repository` for Forgejo) or a full Git URL, pick a destination, and start coding
+Install [GitLab CLI](https://gitlab.com/gitlab-org/cli), then sign in:
 
-**Publish local projects to the cloud**
+```bash
+glab auth login
+```
 
-- Have a local Git repository without a remote?
-- Use the **Publish Repository** action to create a new hosted repository (GitHub, GitLab, Bitbucket, or Azure DevOps), add it as your origin remote, and push, in one flow
-- If the local repository has no commits yet, publishing creates the remote and wires it up but does not push. Make a commit, then push normally.
+### Bitbucket
 
-### Manage Code Reviews Without Context Switching
-
-**Create pull requests while you work**
-
-- Push a branch and create a pull request from the Git actions controls in the toolbar
-- PseudoCode can suggest titles and descriptions based on your commits
-- With **Repository conventions** selected, generated source control text follows the project's
-  `AGENTS.md` along with recent commit subjects. Claude writers also follow `CLAUDE.md`
-- Supports GitHub Pull Requests, GitLab Merge Requests, Bitbucket Pull Requests, Azure DevOps Pull Requests, and Forgejo or Gitea Pull Requests
-
-**Stay on top of open reviews**
-
-- See if your current branch already has an open PR/MR
-- When an agent finishes a turn on your thread's branch, PseudoCode checks for a newly opened
-  PR/MR if background activity is enabled for that repository. Known reviews keep their normal
-  refresh schedule.
-- Open several reviews from the **Pull requests** page as tabs in the right panel
-- Your authored reviews stay at the top and use the selected sort within their group. By default,
-  see passing and approved reviews first, passing reviews awaiting approval next, and conflicting
-  reviews last. Smaller changes come first within each readiness group, and finished reviews follow
-  open work when all states are visible.
-- Filter the list by author or labels, rank authors by merges in the loaded results, see label and
-  change-size context on each row, and sort the results currently shown by readiness, update time,
-  creation time, or change size. Your filters, search, scope, and sort are restored when you return.
-- Merge now, or on GitHub, GitLab, and Azure DevOps, leave an auto-merge instruction with a chosen
-  strategy while checks are outstanding; see the completed state in the same control after the
-  pull request merges
-- On GitHub, approve fork workflows that are waiting to run and open a revert pull request for a
-  merged change
-- Timeline line counts stay hidden on merge commits, where GitHub's totals include upstream changes
-  brought in from the base branch
-- While working in a thread, open linked reviews in the same compact right-panel tabs without
-  leaving the conversation
-- Show a file tree next to a review's **Code** tab, or a thread's **Diff** panel, to browse the
-  changed files as folders and jump straight to any of them. The toolbar toggle remembers your
-  choice.
-- Enable **Settings → General → Proactive panels** to open a newly linked review automatically and
-  switch to the completed turn's diff when agent work finishes
-- Open the review directly in your browser with one click
-- If PseudoCode cannot load a GitHub pull request, including when GitHub rate limits requests, use
-  **Open on GitHub** in the error view
-- Command-click (Control-click on Windows and Linux) a pull request number in the sidebar to open it in your browser instead of in PseudoCode
-- Check out a teammate's branch to review code locally
-
-**Fix what you wrote, in place**
-
-- Comment while closing an open pull request or reopening a closed one when the host offers that
-  action
-- Rewrite a pull request's title and description from the review itself, in Markdown, with a
-  preview before you save
-- Rewrite your own comments the same way, wherever they are shown
-- Works on GitHub, GitLab, Bitbucket, and Forgejo. Azure DevOps takes a new title and description;
-  its comments stay read-only here, as they already were
-- On GitHub, put a label on a pull request or take one off from the **Labels** row of the review.
-  Changing labels needs triage access or better on the repository
-
-### Track Issues Beside Your Work
-
-Open the **Issues** tab in the right panel, next to Terminal, Files and Agents.
-
-- The list follows whichever project you are in, so there is nothing to pick
-- Filter by **Open**, **Closed**, or **All**
-- Search by title, label, or issue number. On GitHub and Forgejo the search runs on the host, so
-  it matches descriptions too
-- Open an issue to read it with its full conversation
-- Leave a comment, open a new issue, and close or reopen one, wherever your account has write
-  access. Where it does not, the controls stay hidden rather than failing when pressed
-
-From an open issue you can also:
-
-- **Start work**, which opens a thread on a branch named for the issue with the issue already in
-  the composer. Nothing sends until you send it
-- **Add to thread**, which appends the issue and its comments to the composer you are already in
-
-A thread started that way shows "Working on #12" in the sidebar, read from its branch name.
-
-Coding agents can read and write issues too, through `issue_list`, `issue_read`, `issue_comment`,
-`issue_create` and `issue_set_state`. They act on the project their thread belongs to, so there is
-no repository for an agent to get wrong.
-
-Works on GitHub and on Forgejo or Gitea. Other providers show the tab as unsupported.
-
-### Know Your Setup at a Glance
-
-The **Source Control settings** page shows you exactly what's connected:
-
-- ✅ Which providers are authenticated and ready
-- ⚠️ What's missing and how to fix it
-- 👤 Which account is signed in (when available)
-
-Run a quick **Rescan** after setting up a new machine or changing credentials.
-
-## Getting Started
-
-### For GitHub (Recommended for most users)
-
-1. Install the GitHub CLI (version 2.81.0 or newer) on the machine running PseudoCode:
-   ```bash
-   brew install gh
-   ```
-2. Sign in:
-   ```bash
-   gh auth login
-   ```
-3. Open **Settings → Source Control** in PseudoCode and verify GitHub shows as authenticated
-
-You can now clone, publish, and create pull requests.
-
-### For GitLab
-
-1. Install the GitLab CLI:
-   ```bash
-   brew install glab
-   ```
-2. Authenticate:
-   ```bash
-   glab auth login
-   ```
-3. Check **Settings → Source Control** to confirm the connection
-
-### For Bitbucket
-
-Bitbucket uses tokens instead of a CLI tool. Two options, both set as environment variables on the
-machine running PseudoCode.
-
-Recommended, a Bitbucket access token:
+Set an access token in the server's environment:
 
 ```bash
 export T3CODE_BITBUCKET_ACCESS_TOKEN="your-access-token"
 ```
 
-Or an Atlassian account email plus API token, with read/write access to pull requests and
-repositories, plus read access to your user account (`read:user:bitbucket`, used to verify the
-connection):
+Or use an Atlassian account email and API token with read/write access to repositories and pull
+requests, plus user read access (`read:user:bitbucket`):
 
 ```bash
 export T3CODE_BITBUCKET_EMAIL="you@example.com"
 export T3CODE_BITBUCKET_API_TOKEN="your-token"
 ```
 
-If both are set, the access token wins. Restart PseudoCode and verify the connection in **Source
-Control settings**.
+The access token takes precedence if both are configured. Restart the server after changing these
+variables.
 
-### For Forgejo and Gitea
+### Azure DevOps
 
-Forgejo has no single address: every instance is somebody's own, so PseudoCode signs in to each one
-separately through the Forgejo CLI.
+Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/), add the DevOps extension, and sign in:
 
-1. Install the Forgejo CLI:
-   ```bash
-   brew install forgejo-cli
-   ```
-2. Sign in to your instance:
-   ```bash
-   fj auth login --host git.example.com
-   ```
-   This opens your browser. The token it creates has full access to your account, because Forgejo
-   does not yet limit what an app may do.
-3. Prefer a token you can limit? Create one in Forgejo under **Settings → Applications**, tick
-   **repository** read and write plus **user** read, then hand it over instead:
-   ```bash
-   fj auth add-token --host git.example.com
-   ```
-4. Open **Settings → Source Control** to confirm the connection
+```bash
+az extension add --name azure-devops
+az login
+```
 
-Sign in to as many instances as you like; PseudoCode reads each repository against the one its remote
-points at. Gitea instances work the same way.
+## Clone or publish a project
 
-Reviews behave as they do everywhere else, with one exception: Forgejo has no way to mark a review
-conversation resolved, so that control is not shown.
+Use **Add Project** in the command palette (`Cmd/Ctrl+K`) to clone a repository. Choose a hosting
+provider or paste a Git URL, then choose where to save it.
 
-### For Azure DevOps
+For a local Git repository without a remote, **Publish Repository** creates a hosted repository,
+adds it as `origin`, and pushes your commits. If there are no commits yet, it creates the remote;
+make your first commit before pushing.
 
-1. Install Azure CLI:
-   ```bash
-   brew install azure-cli
-   ```
-2. Add the DevOps extension:
-   ```bash
-   az extension add --name azure-devops
-   ```
-3. Sign in:
-   ```bash
-   az login
-   ```
+## Create a pull request
 
----
+Use a thread's Git actions to commit, push, and create a pull request. PseudoCode can generate commit
+messages, review titles, and descriptions from your changes.
 
-## Requirements & Troubleshooting
+Choose the writing style and model in **Settings → Source Control**. **Repository conventions**
+uses the project's instructions and recent commit subjects.
 
-**Git is required** – PseudoCode uses Git for all local operations. Ensure `git` is installed on your server.
+## Review and merge
 
-**Server-side setup** – Authentication happens on the machine running PseudoCode (the server), not your local browser. If you're using a hosted or team instance, your administrator may have already configured providers.
+Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
+or merge. You can edit review titles and descriptions and your own comments where the host allows it.
+GitLab calls these merge requests.
 
-**Common issues:**
+GitHub, GitLab, and Azure DevOps support auto-merge while checks are outstanding. GitHub also
+supports approving waiting fork workflows and opening a revert pull request for a merged change.
 
-- **Provider shows "Not authenticated"** – Run the login command for that provider (e.g., `gh auth login`) in a terminal on the server, then rescan in Settings
-- **GitHub says it could not verify sign-in status** – PseudoCode needs GitHub CLI 2.81.0 or newer to check sign-in status. Update `gh` (e.g., `brew upgrade gh`), then rescan
-- **Bitbucket not connecting** – Double-check your environment variables are set in the correct shell profile and the server was restarted
-- **Can't push to a remote** – Verify your Git remote URL matches the provider you've authenticated with (SSH vs HTTPS remotes may need different credentials)
+For Azure DevOps, use the host website to view diffs or change comments. Bitbucket does not support
+reopening a declined pull request.
 
-**Need more help?** Check your provider's CLI documentation:
+## Troubleshooting
 
-- [GitHub CLI](https://cli.github.com/)
-- [GitLab CLI](https://gitlab.com/gitlab-org/cli)
-- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/)
+- **Not authenticated:** run the provider's login command on the server, then rescan. For Bitbucket,
+  confirm the running server received the environment variables.
+- **GitHub sign-in cannot be verified:** update GitHub CLI to at least 2.81.0.
+- **Push fails despite a connected account:** check the Git remote's credentials. SSH and HTTPS
+  remotes can require separate setup from the hosting provider's API access.
+- **A review cannot load:** open it on the host website while resolving connectivity, permissions,
+  or rate limits.

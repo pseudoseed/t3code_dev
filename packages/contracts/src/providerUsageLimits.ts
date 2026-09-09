@@ -35,6 +35,8 @@ export type ServerProviderUsageWindow = typeof ServerProviderUsageWindow.Type;
 export const ServerProviderResetCredits = Schema.Struct({
   availableCount: NonNegativeInt,
   nextExpiresAt: Schema.optional(IsoDateTime),
+  /** Pins hub redemption to the displayed credit, including retries from another client. */
+  nextCreditId: Schema.optional(TrimmedNonEmptyString),
 });
 export type ServerProviderResetCredits = typeof ServerProviderResetCredits.Type;
 
@@ -109,9 +111,18 @@ export type UsageLimitSourceSnapshot = typeof UsageLimitSourceSnapshot.Type;
 export const UsageLimitSourceSnapshots = ForwardCompatibleArray(UsageLimitSourceSnapshot);
 export type UsageLimitSourceSnapshots = typeof UsageLimitSourceSnapshots.Type;
 
-export const ProviderConsumeResetCreditInput = Schema.Struct({
-  instanceId: ProviderInstanceId,
+export const UsageLimitSourceConsumeResetCreditInput = Schema.Struct({
+  sourceId: UsageLimitSourceId,
+  accountId: TrimmedNonEmptyString,
+  creditId: TrimmedNonEmptyString,
 });
+export type UsageLimitSourceConsumeResetCreditInput =
+  typeof UsageLimitSourceConsumeResetCreditInput.Type;
+
+export const ProviderConsumeResetCreditInput = Schema.Union([
+  Schema.Struct({ instanceId: ProviderInstanceId }),
+  UsageLimitSourceConsumeResetCreditInput,
+]);
 export type ProviderConsumeResetCreditInput = typeof ProviderConsumeResetCreditInput.Type;
 
 /**
@@ -127,19 +138,16 @@ export type UsageLimitSourceConsumeResetCreditInput =
   typeof UsageLimitSourceConsumeResetCreditInput.Type;
 
 /**
- * Why a source could not spend a credit. `reason` is written for the user
+ * Why a source could not spend a credit. `detail` is written for the user
  * because the source is the authority here: its own cooldown, its own credit
  * balance, its own reachability.
  */
-export class UsageLimitSourceError extends Schema.TaggedErrorClass<UsageLimitSourceError>()(
+export class UsageLimitSourceError extends Schema.TaggedError<UsageLimitSourceError>()(
   "UsageLimitSourceError",
-  {
-    sourceId: UsageLimitSourceId,
-    reason: TrimmedNonEmptyString,
-  },
+  { detail: Schema.String },
 ) {
   override get message(): string {
-    return `Usage source ${this.sourceId}: ${this.reason}`;
+    return this.detail;
   }
 }
 
@@ -154,5 +162,29 @@ export type ProviderConsumeResetCreditOutcome = typeof ProviderConsumeResetCredi
 
 export const ProviderConsumeResetCreditResult = Schema.Struct({
   outcome: ProviderConsumeResetCreditOutcome,
+  /** Redemption succeeded, but a follow-up such as clearing the hub cooldown failed. */
+  warning: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderConsumeResetCreditResult = typeof ProviderConsumeResetCreditResult.Type;
+
+/** A point-in-time view of one provider's limits, built for the /usage-limits panel. */
+export const UsageLimitsReport = Schema.Struct({
+  createdAt: IsoDateTime,
+  accounts: Schema.Array(
+    Schema.Struct({
+      id: TrimmedNonEmptyString,
+      driver: ProviderDriverKind,
+      label: TrimmedNonEmptyString,
+      plan: Schema.optional(TrimmedNonEmptyString),
+      email: Schema.optional(TrimmedNonEmptyString),
+      sourceLabel: Schema.optional(TrimmedNonEmptyString),
+      instanceId: Schema.optional(ProviderInstanceId),
+      resetCreditInput: Schema.optional(ProviderConsumeResetCreditInput),
+      displayName: Schema.optional(Schema.String),
+      accentColor: Schema.optional(Schema.String),
+      limits: ServerProviderUsageLimits,
+    }),
+  ),
+  notices: Schema.Array(Schema.String),
+});
+export type UsageLimitsReport = typeof UsageLimitsReport.Type;

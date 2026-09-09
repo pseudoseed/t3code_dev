@@ -1,4 +1,7 @@
-import { type KnownTerminalSession } from "@t3tools/client-runtime/state/terminal";
+import {
+  terminalOutputText,
+  type KnownTerminalSession,
+} from "@t3tools/client-runtime/state/terminal";
 import { DEFAULT_TERMINAL_ID, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -308,11 +311,11 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
       status: terminal.status,
       error: terminal.error,
       summary: terminal.summary?.cwd ?? null,
-      bufferLen: terminal.buffer.length,
+      retainedBytes: terminal.output.retainedBytes,
       version: terminal.version,
     });
   }, [
-    terminal.buffer.length,
+    terminal.output.retainedBytes,
     terminal.error,
     terminal.status,
     terminal.summary?.cwd,
@@ -321,16 +324,17 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   ]);
 
   useEffect(() => {
-    if (terminal.buffer.length === 0 || firstNonEmptyBufferLoggedRef.current) {
+    if (terminal.output.retainedBytes === 0 || firstNonEmptyBufferLoggedRef.current) {
       return;
     }
     firstNonEmptyBufferLoggedRef.current = true;
+    const text = terminalOutputText(terminal.output);
     terminalDebugLog("session:first-nonempty-buffer", {
       terminalKey,
-      length: terminal.buffer.length,
-      preview: terminal.buffer.slice(0, 160),
+      length: text.length,
+      preview: text.slice(0, 160),
     });
-  }, [terminal.buffer, terminal.buffer.length, terminalKey]);
+  }, [terminal.output, terminalKey]);
 
   useEffect(() => {
     if (pendingLaunchEntry.key === launchTargetKey) {

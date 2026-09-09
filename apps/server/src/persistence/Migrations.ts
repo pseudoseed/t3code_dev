@@ -63,6 +63,8 @@ import Migration0048 from "./Migrations/048_ProjectionThreadSubagentModelSelecti
 import Migration0049 from "./Migrations/049_ProjectionThreadsLastViewedAt.ts";
 import Migration0050 from "./Migrations/050_AgentMailbox.ts";
 import Migration0051 from "./Migrations/051_MailboxWake.ts";
+import Migration0052 from "./Migrations/052_ProjectionThreadBranchPullRequest.ts";
+import Migration0053 from "./Migrations/053_ProjectionThreadsActiveOrderKey.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -74,7 +76,7 @@ import Migration0051 from "./Migrations/051_MailboxWake.ts";
  * Uses Migrator.fromRecord which parses the key format and
  * returns migrations sorted by ID.
  */
-export const migrationEntries = [
+const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
   [3, "CheckpointDiffBlobs", Migration0003],
@@ -126,11 +128,17 @@ export const migrationEntries = [
   [49, "ProjectionThreadsLastViewedAt", Migration0049],
   [50, "AgentMailbox", Migration0050],
   [51, "MailboxWake", Migration0051],
+  // Upstream shipped these as 48 and 49. Existing installs already recorded the
+  // fork's 48 through 51, and the migrator skips any id at or below the highest
+  // applied one without checking its name, so reusing 48 would silently drop
+  // these two. They keep upstream's names and move to the end of the list.
+  [52, "ProjectionThreadBranchPullRequest", Migration0052],
+  [53, "ProjectionThreadsActiveOrderKey", Migration0053],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
 
-export const makeMigrationLoader = (throughId?: number) =>
+const makeMigrationLoader = (throughId?: number) =>
   Migrator.fromRecord(
     Object.fromEntries(
       migrationEntries

@@ -2,4 +2,4 @@ export * from "./client.ts";
 export * from "./http.ts";
 export { requestDirectPush } from "./directPush.ts";
 export * from "./protocol.ts";
-export { type RpcSession, RpcSessionFactory } from "./session.ts";
+export { type RpcSession } from "./session.ts";

@@ -43,6 +43,7 @@ export type PinThreadInput = CommandInput<"thread.pin">;
 export type UnpinThreadInput = CommandInput<"thread.unpin">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
 export type ViewThreadInput = CommandInput<"thread.view">;
+export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
 export type SetThreadInteractionModeInput = CommandInput<"thread.interaction-mode.set">;
@@ -50,6 +51,7 @@ export type StartThreadTurnInput = CommandInput<"thread.turn.start">;
 export type InterruptThreadTurnInput = CommandInput<"thread.turn.interrupt">;
 export type RespondToThreadApprovalInput = CommandInput<"thread.approval.respond">;
 export type RespondToThreadUserInputInput = CommandInput<"thread.user-input.respond">;
+export type DismissThreadUserInputInput = CommandInput<"thread.user-input.dismiss">;
 export type RevertThreadCheckpointInput = CommandInput<"thread.checkpoint.revert">;
 export type StopThreadSessionInput = CommandInput<"thread.session.stop">;
 
@@ -242,6 +244,12 @@ export const viewThread: (input: ViewThreadInput) => CommandEffect = Effect.fn(
   return yield* dispatch({
     ...input,
     type: "thread.view",
+export const reorderActiveThread: (input: ReorderActiveThreadInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.reorderActiveThread",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.active.reorder",
     commandId: yield* commandId(input),
   });
 });
@@ -320,6 +328,17 @@ export const respondToThreadUserInput: (input: RespondToThreadUserInputInput) =>
     return yield* dispatch({
       ...input,
       type: "thread.user-input.respond",
+      commandId: metadata.commandId,
+      createdAt: metadata.createdAt,
+    });
+  });
+
+export const dismissThreadUserInput: (input: DismissThreadUserInputInput) => CommandEffect =
+  Effect.fn("EnvironmentCommands.dismissThreadUserInput")(function* (input) {
+    const metadata = yield* timestampedCommandMetadata(input);
+    return yield* dispatch({
+      ...input,
+      type: "thread.user-input.dismiss",
       commandId: metadata.commandId,
       createdAt: metadata.createdAt,
     });

@@ -68,6 +68,7 @@ import {
 } from "../src/orchestration/Services/OrchestrationEngine.ts";
 import { ThreadDeletionReactor } from "../src/orchestration/Services/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "../src/orchestration/ThreadSettlementReactor.ts";
+import * as ThreadPullRequestReactor from "../src/orchestration/ThreadPullRequestReactor.ts";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -88,6 +89,7 @@ import { GitWorkflowService } from "../src/git/GitWorkflowService.ts";
 import * as VcsProcess from "../src/vcs/VcsProcess.ts";
 import * as AgentAwarenessRelay from "../src/relay/AgentAwarenessRelay.ts";
 import { DirectPush } from "../src/push/DirectPush.ts";
+import * as PullRequestService from "../src/pullRequest/PullRequestService.ts";
 
 const decodeCodexSettings = Schema.decodeEffect(CodexSettings);
 
@@ -123,12 +125,9 @@ export function gitShowFileAtRef(cwd: string, ref: string, filePath: string): st
   return runGit(cwd, ["show", `${ref}:${filePath}`]);
 }
 
-class WaitForTimeoutError extends Schema.TaggedErrorClass<WaitForTimeoutError>()(
-  "WaitForTimeoutError",
-  {
-    description: Schema.String,
-  },
-) {}
+class WaitForTimeoutError extends Schema.TaggedError<WaitForTimeoutError>()("WaitForTimeoutError", {
+  description: Schema.String,
+}) {}
 
 function waitFor<A, E>(
   read: Effect.Effect<A, E>,
@@ -167,7 +166,7 @@ function waitFor<A, E>(
   );
 }
 
-class OrchestrationHarnessRuntimeError extends Schema.TaggedErrorClass<OrchestrationHarnessRuntimeError>()(
+class OrchestrationHarnessRuntimeError extends Schema.TaggedError<OrchestrationHarnessRuntimeError>()(
   "OrchestrationHarnessRuntimeError",
   {
     operation: Schema.String,
@@ -353,6 +352,11 @@ export const makeOrchestrationIntegrationHarness = (
     const checkpointReactorLayer = CheckpointReactorLive.pipe(
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(
+        Layer.mock(PullRequestService.PullRequestService)({
+          refreshAfterTurn: Effect.void,
+        }),
+      ),
+      Layer.provideMerge(
         Layer.succeed(VcsStatusBroadcaster, {
           getStatus: () => Effect.die("getStatus should not be called in this test"),
           refreshLocalStatus: () =>
@@ -389,6 +393,12 @@ export const makeOrchestrationIntegrationHarness = (
         Layer.succeed(ThreadDeletionReactor, {
           start: () => Effect.void,
           drainThrough: () => Effect.void,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ThreadPullRequestReactor.ThreadPullRequestReactor, {
+          start: () => Effect.void,
+          drain: Effect.void,
         }),
       ),
       Layer.provideMerge(

@@ -1,32 +1,28 @@
-import type { TerminalSessionState } from "@t3tools/client-runtime/state/terminal";
+import type { TerminalOutputState } from "@t3tools/client-runtime/state/terminal";
+import { EMPTY_TERMINAL_OUTPUT_STATE } from "@t3tools/client-runtime/state/terminal";
 
 import { terminalDebugLog } from "./terminalDebugLog";
 
 export const TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS = 180;
 
 /**
- * What the native surface should be showing. Renderers write the slice between
- * their own cursor and this one, so the cursor fields have to travel with the
- * buffer they describe.
+ * What the native surface should be showing. Renderers read the slice between
+ * their own cursor and this output, so the output state has to travel with the
+ * text it describes.
  */
 export interface TerminalSurfaceContent {
-  readonly buffer: string;
-  readonly cursor: number;
-  readonly trimmed: number;
-  readonly epoch: number;
+  readonly output: TerminalOutputState;
 }
 
 /**
- * Epoch no live session can hold. A surface parked here is guaranteed a full
- * replay once the real epoch returns, however far the session moved meanwhile.
+ * Generation no live session can hold. A surface parked here is guaranteed a
+ * full replay once a real generation returns, however far the session moved
+ * meanwhile.
  */
-const HIDDEN_EPOCH = -1;
+const HIDDEN_GENERATION = -1;
 
 const HIDDEN_CONTENT: TerminalSurfaceContent = {
-  buffer: "",
-  cursor: 0,
-  trimmed: 0,
-  epoch: HIDDEN_EPOCH,
+  output: { ...EMPTY_TERMINAL_OUTPUT_STATE, generation: HIDDEN_GENERATION },
 };
 
 export function getTerminalBufferReplayKey(input: {
@@ -37,7 +33,7 @@ export function getTerminalBufferReplayKey(input: {
 }
 
 export function getTerminalSurfaceReplayContent(input: {
-  readonly terminal: Pick<TerminalSessionState, "buffer" | "cursor" | "trimmed" | "epoch">;
+  readonly terminal: { readonly output: TerminalOutputState };
   readonly replayKey: string;
   readonly readyReplayKey: string | null;
 }): TerminalSurfaceContent {
@@ -47,15 +43,10 @@ export function getTerminalSurfaceReplayContent(input: {
     terminalDebugLog("replay:stale-key-hiding-buffer", {
       replayKey: input.replayKey,
       readyReplayKey: input.readyReplayKey,
-      bufferLen: input.terminal.buffer.length,
+      retainedBytes: input.terminal.output.retainedBytes,
     });
     return HIDDEN_CONTENT;
   }
 
-  return {
-    buffer: input.terminal.buffer,
-    cursor: input.terminal.cursor,
-    trimmed: input.terminal.trimmed,
-    epoch: input.terminal.epoch,
-  };
+  return { output: input.terminal.output };
 }

@@ -45,7 +45,6 @@ export {
 export {
   VoiceInputController,
   VOICE_RECORDING_LIMIT_SECONDS,
-  resolveTranscriptCommit,
   voiceInputBlocksSubmission,
   voiceInputFreezesEditor,
   type VoiceDraftSnapshot,
