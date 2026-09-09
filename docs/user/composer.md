@@ -91,8 +91,69 @@ Later transcription works offline for that language. Recordings can be up to fiv
 minutes long. Canceling, leaving the screen, or an audio interruption discards the
 recording and preserves your existing draft.
 
-Transcription runs on your device. PseudoCode deletes the temporary audio after
-transcription or cancellation; only the message text is sent when you submit.
+A recording can be up to five minutes long. If the microphone is interrupted or the app moves to
+the background, PseudoCode finishes transcribing the audio captured so far and tells you that
+recording stopped. If transcription fails, tap the microphone to retry the saved recording.
+Dismissing that error discards the saved audio. Canceling voice input or leaving the screen during
+recording discards the new recording and keeps your existing draft and attachments. PseudoCode
+deletes the local audio file after successful transcription and cleanup. It sends only the normal
+message text when you submit the draft.
+
+### Choosing a speech model
+
+**Settings → Voice → Voice Input** lists the speech models your device can run. A small English
+model is built into the app and needs no download. Larger and multilingual models download when you
+pick them, and you can delete any of them later to free the space. A model your device does not have
+the memory for is shown greyed out with the reason.
+
+Downloads wait for Wi-Fi unless you turn on **Download over cellular**. Models are large, so this is
+off to begin with.
+
+Clearing the app cache never deletes voice models. The only way to remove one is to delete it in
+voice settings.
+
+### Ignoring other voices
+
+Some speech models can tell voices apart. With one of those selected, turn on **Ignore other voices**
+and PseudoCode keeps only the voice that did most of the talking, so a conversation nearby does not end
+up in your message. This needs one extra small download.
+
+When it cannot tell which voice is yours, it transcribes the whole recording and tells you it did.
+Losing your own words would be worse than leaving a stray voice in.
+
+### Cleaning up transcripts
+
+Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
+written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed.
+If cleanup times out, produces an incomplete rewrite, or changes the ending, PseudoCode keeps the
+original transcription and tells you. A correction to the last few words can also trigger this
+conservative fallback.
+
+Three cleanup models are available, trading speed for quality. You can edit the instructions they
+follow and reset them to the default at any time.
+
+Two lists help with words that get misheard. **Preferred spellings** are kept exactly as you write
+them, which is useful for project and tool names. **Corrections** are `wrong -> right` pairs, one
+per line.
+
+PseudoCode also learns from you. When you fix a word that voice input got wrong and then send the
+message, that fix is remembered and applied to later transcripts. Everything it has learned is listed
+under **Learned from your edits**, and you can delete any entry.
+
+If cleanup fails or takes too long, you get the original transcript instead. You never lose what you
+said.
+
+## Context and cost
+
+The composer shows a small ring beside the send button once the provider reports token usage,
+which today means Claude and Codex threads. Next to the ring is the share of the context window in
+use, and the running cost of the thread once one is known. Open it for the exact token counts and
+the full window size; on mobile, tap it.
+
+The cost is API-equivalent, the same figure the Usage page reports. It is what these tokens would
+cost at list prices, not what you were charged: a subscription plan bills separately. Claude
+reports its own per-turn cost, so those threads show the provider's own number. Codex threads are
+priced from token counts, and a model with no published rate shows no cost rather than a guess.
 
 ## Commands and skills
 

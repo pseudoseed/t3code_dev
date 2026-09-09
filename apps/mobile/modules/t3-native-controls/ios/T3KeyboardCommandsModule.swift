@@ -17,6 +17,7 @@ public final class T3KeyboardCommandsModule: Module {
 public final class T3KeyboardCommandsView: ExpoView {
   let onCommand = EventDispatcher()
   private var enabledCommands = Set<String>()
+  private var dictationHeld = false
 
   public override var canBecomeFirstResponder: Bool { true }
 
@@ -50,7 +51,10 @@ public final class T3KeyboardCommandsView: ExpoView {
 
   public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
     if holdsToTalk, Self.isDictationChord(presses) {
-      onCommand(["command": "dictationHoldStart"])
+      if !dictationHeld {
+        dictationHeld = true
+        onCommand(["command": "dictationHoldStart"])
+      }
       return
     }
 
@@ -58,8 +62,14 @@ public final class T3KeyboardCommandsView: ExpoView {
   }
 
   public override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    if holdsToTalk, Self.isDictationChord(presses) {
-      onCommand(["command": "dictationHoldEnd"])
+    // The modifier can be released before D. Matching the original chord at
+    // key-up misses that order and leaves capture running indefinitely.
+    if dictationHeld, presses.contains(where: { press in
+      guard let key = press.key else { return false }
+      return key.charactersIgnoringModifiers.lowercased() == "d"
+        || !key.modifierFlags.contains(.alternate)
+    }) {
+      endDictationHold()
       return
     }
 
@@ -69,12 +79,18 @@ public final class T3KeyboardCommandsView: ExpoView {
   public override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
     // A cancelled press still has to stop the recording, or releasing the key
     // outside the app leaves the microphone running.
-    if holdsToTalk, Self.isDictationChord(presses) {
-      onCommand(["command": "dictationHoldEnd"])
+    if dictationHeld {
+      endDictationHold()
       return
     }
 
     super.pressesCancelled(presses, with: event)
+  }
+
+  private func endDictationHold() {
+    guard dictationHeld else { return }
+    dictationHeld = false
+    onCommand(["command": "dictationHoldEnd"])
   }
 
   /// Option plus D, matched on the unmodified character so a layout that puts
@@ -91,6 +107,7 @@ public final class T3KeyboardCommandsView: ExpoView {
 
   func setEnabledCommands(_ commands: [String]) {
     enabledCommands = Set(commands)
+    if !holdsToTalk { endDictationHold() }
     if isFirstResponder {
       resignFirstResponder()
     }
@@ -136,6 +153,7 @@ public final class T3KeyboardCommandsView: ExpoView {
 
   public override func didMoveToWindow() {
     super.didMoveToWindow()
+    if window == nil { endDictationHold() }
     reclaimFirstResponderIfAvailable()
   }
 

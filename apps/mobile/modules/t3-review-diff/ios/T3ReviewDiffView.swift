@@ -2689,12 +2689,16 @@ private final class SourceTextView: UITextView {
     backgroundColor = theme.background
     tintColor = .systemBlue
     sourceLayout.numberColor = theme.mutedText
-    sourceLayout.numberFont = .monospacedSystemFont(ofSize: style.lineNumberFontSize,
-                                                   weight: style.lineNumberFontWeight)
+    sourceLayout.numberFont = .monospacedSystemFont(
+      ofSize: style.lineNumberFontSize,
+      weight: style.lineNumberFontWeight
+    )
     let digits = (String(lines.count) as NSString).size(withAttributes: [.font: sourceLayout.numberFont]).width
     sourceLayout.gutterWidth = max(style.gutterWidth, digits + 24)
-    textContainerInset = UIEdgeInsets(top: 8, left: sourceLayout.gutterWidth,
-                                     bottom: 96 + safeAreaInsets.bottom, right: 16)
+    textContainerInset = UIEdgeInsets(
+      top: 8, left: sourceLayout.gutterWidth,
+      bottom: 96 + safeAreaInsets.bottom, right: 16
+    )
     wraps = style.contentWidth < 32_000
     textContainer.widthTracksTextView = wraps
     textContainer.size = CGSize(width: wraps ? max(1, bounds.width - textContainerInset.left - 16) : 32_000,

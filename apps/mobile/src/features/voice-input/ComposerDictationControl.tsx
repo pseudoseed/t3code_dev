@@ -415,7 +415,13 @@ export function ComposerDictationStartAction(props: {
   const openSettings = props.state.phase === "error" && props.state.errorAction === "settings";
   return (
     <VoiceActionButton
-      accessibilityLabel={openSettings ? "Open microphone settings" : "Start dictation"}
+      accessibilityLabel={
+        openSettings
+          ? "Open microphone settings"
+          : props.state.phase === "error"
+            ? "Retry dictation"
+            : "Start dictation"
+      }
       disabled={props.disabled}
       icon="mic"
       onPress={

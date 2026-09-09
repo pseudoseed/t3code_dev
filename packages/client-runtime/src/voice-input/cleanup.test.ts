@@ -67,6 +67,25 @@ describe("resolveCleanupOutcome", () => {
     });
   });
 
+  it("keeps the ending of a long dictation even when the rewrite reports completion", () => {
+    const body = "Review the implementation and preserve each instruction. ".repeat(30);
+    const raw = `${body}Then run the regression tests before shipping.`;
+    expect(resolveCleanupOutcome(raw, finished(body))).toMatchObject({
+      kind: "raw",
+      text: raw,
+      reason: "missing-ending",
+    });
+  });
+
+  it("accepts punctuation and capitalization changes at the end", () => {
+    expect(
+      resolveCleanupOutcome(
+        "please fix the recording and run the tests",
+        finished("Please fix the recording, and run the tests!"),
+      ).kind,
+    ).toBe("cleaned");
+  });
+
   it("does not apply the ratio to short transcripts that legitimately change length", () => {
     expect(resolveCleanupOutcome("um yeah ok", finished("Yeah, OK."))).toEqual({
       kind: "cleaned",
