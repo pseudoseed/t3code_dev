@@ -313,15 +313,19 @@ it.effect.each(
           },
         ],
       );
+      // Activation also runs the mailbox recovery scan, which dispatches its
+      // own commands; this assertion is about session continuation only.
       assert.deepStrictEqual(
-        dispatched.map((command) =>
+        dispatched.flatMap((command) =>
           command.type === "thread.session.set"
-            ? {
-                threadId: command.threadId,
-                status: command.session.status,
-                activeTurnId: command.session.activeTurnId,
-              }
-            : null,
+            ? [
+                {
+                  threadId: command.threadId,
+                  status: command.session.status,
+                  activeTurnId: command.session.activeTurnId,
+                },
+              ]
+            : [],
         ),
         [
           {
@@ -979,13 +983,13 @@ it.effect("settles failed opt-in recovery without retrying the provider turn", (
         continueAfterServerUpdatePrepared: true,
       },
     ]);
+    // The mailbox recovery scan dispatches alongside this; assert only the
+    // session transitions the recovery path is responsible for.
     assert.deepStrictEqual(
-      dispatched.map(
-        (command) =>
-          command.type === "thread.session.set" && {
-            status: command.session.status,
-            activeTurnId: command.session.activeTurnId,
-          },
+      dispatched.flatMap((command) =>
+        command.type === "thread.session.set"
+          ? [{ status: command.session.status, activeTurnId: command.session.activeTurnId }]
+          : [],
       ),
       [
         { status: "starting", activeTurnId: null },
