@@ -146,11 +146,10 @@ commits raw text. Normal resource release does not clear an uncommitted transcri
 navigation or a changed draft prevented insertion.
 
 Cleanup degrades to the raw transcript on a throw, a cancel, a rewrite the model never finished,
-empty output, an output-to-input length ratio outside 0.85–1.6, or a changed final three words
-(ignoring punctuation and capitalization). The ending check is deliberately conservative and can
-reject a legitimate spelling correction. These checks are heuristics, not proof of semantic
-equivalence. A local model can answer, translate, or summarize a transcript; length and ending
-checks catch some of these failures. The timeout is enforced natively, between generated tokens,
+empty output, or an output-to-input length ratio outside 0.6–1.6. Length is only a coarse check,
+not proof of semantic equivalence; exact ending comparisons reject legitimate filler removal and
+spelling corrections. A local model can answer, translate, or summarize a transcript; length checks
+catch some of these failures. The timeout is enforced natively, between generated tokens,
 because nothing in JS can interrupt a running model. Native background assertions end on expiration
 and request cancellation of the associated operation.
 

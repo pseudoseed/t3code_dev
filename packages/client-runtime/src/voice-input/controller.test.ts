@@ -674,6 +674,49 @@ describe("VoiceInputController", () => {
 describe("VoiceInputController cleanup stage", () => {
   beforeEach(() => resetVoiceInputGlobalsForTests());
 
+  it("commits a native rewrite that corrects spelling and removes trailing fillers", async () => {
+    const raw = "Please update the read me and then check the pull request uh yeah";
+    const cleaned = "Please update the README and then check the pull request.";
+    const harness = createHarness({
+      getTranscriber: () => ({
+        prepare: async () => preparedTranscription(async () => ({ text: raw })),
+      }),
+      getCleanup: () => ({
+        prepare: async () => ({ clean: async () => ({ text: cleaned, complete: true }) }),
+      }),
+    });
+    await harness.controller.start();
+    await harness.controller.stop();
+    expect(harness.commits[0]?.text).toBe(`hello ${cleaned}`);
+    expect(harness.controller.currentState.notice).toBeNull();
+  });
+
+  it.each(["loading", "generation"] as const)(
+    "identifies a failure during cleanup %s",
+    async (stage) => {
+      const harness = createHarness({
+        getCleanup: () => ({
+          prepare: async () => {
+            if (stage === "loading") throw new Error("load failed");
+            return {
+              clean: async () => {
+                throw new Error("decode failed");
+              },
+            };
+          },
+        }),
+      });
+      await harness.controller.start();
+      await harness.controller.stop();
+      expect(harness.commits[0]?.text).toBe("hello new text");
+      expect(harness.controller.currentState.notice).toBe(
+        stage === "loading"
+          ? "The cleanup model could not be loaded. Kept the original transcription."
+          : "Cleanup failed. Kept the original transcription.",
+      );
+    },
+  );
+
   const RAW = "um so add a retry button to the connection settings screen";
   const rewrote = async (text: string) => ({ text, complete: true });
 

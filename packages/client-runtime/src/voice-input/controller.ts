@@ -1,6 +1,11 @@
 import { replaceTextRange } from "@t3tools/shared/composerTrigger";
 
-import { resolveCleanupOutcome, type CleanupOutcome, type VoiceCleanup } from "./cleanup.ts";
+import {
+  CLEANUP_FALLBACK_NOTICES,
+  resolveCleanupOutcome,
+  type CleanupOutcome,
+  type VoiceCleanup,
+} from "./cleanup.ts";
 import type { DictationAnchor } from "./learning.ts";
 import {
   resolveSpeakerFilteringNotice,
@@ -577,12 +582,7 @@ export class VoiceInputController {
         const outcome = await this.runCleanup(cleanup, transcript);
         committedTranscript = outcome.text;
         if (outcome.kind === "raw") {
-          notice = [
-            notice,
-            "Kept the original transcription because cleanup was skipped or could not preserve it.",
-          ]
-            .filter(Boolean)
-            .join(" ");
+          notice = [notice, CLEANUP_FALLBACK_NOTICES[outcome.reason]].filter(Boolean).join(" ");
         }
         if (!this.isCurrent(operationToken)) return;
       }
@@ -679,10 +679,12 @@ export class VoiceInputController {
   private async runCleanup(cleanup: VoiceCleanup, transcript: string): Promise<CleanupOutcome> {
     const abortController = new AbortController();
     this.cleanupAbortController = abortController;
+    let modelPrepared = false;
 
     try {
       const cleaned = await runTranscriptionOperation(async () => {
         const prepared = await cleanup.prepare({ signal: abortController.signal });
+        modelPrepared = true;
         return prepared.clean(transcript, { signal: abortController.signal });
       });
       return resolveCleanupOutcome(transcript, cleaned);
@@ -690,7 +692,11 @@ export class VoiceInputController {
       return {
         kind: "raw",
         text: transcript,
-        reason: abortController.signal.aborted ? "cancelled" : "failed",
+        reason: abortController.signal.aborted
+          ? "cancelled"
+          : modelPrepared
+            ? "failed"
+            : "load-failed",
       };
     } finally {
       if (this.cleanupAbortController === abortController) this.cleanupAbortController = null;
