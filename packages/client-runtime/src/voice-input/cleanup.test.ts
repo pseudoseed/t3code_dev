@@ -67,13 +67,27 @@ describe("resolveCleanupOutcome", () => {
     });
   });
 
-  it("keeps the ending of a long dictation even when the rewrite reports completion", () => {
+  it("keeps the ending of a long dictation when generation stops early", () => {
     const body = "Review the implementation and preserve each instruction. ".repeat(30);
     const raw = `${body}Then run the regression tests before shipping.`;
-    expect(resolveCleanupOutcome(raw, finished(body))).toMatchObject({
+    expect(resolveCleanupOutcome(raw, { text: body, complete: false })).toMatchObject({
       kind: "raw",
       text: raw,
-      reason: "missing-ending",
+      reason: "incomplete",
+    });
+  });
+
+  it.each([
+    [
+      "Please update the read me and then check the pull request uh yeah",
+      "Please update the README and then check the pull request.",
+    ],
+    ["um so um could you please fix the login bug you know", "Could you please fix the login bug?"],
+    ["please open the project in ghost tea", "Please open the project in Ghostty."],
+  ])("accepts cleanup of fillers and corrected endings: %s", (raw, cleaned) => {
+    expect(resolveCleanupOutcome(raw, finished(cleaned))).toEqual({
+      kind: "cleaned",
+      text: cleaned,
     });
   });
 

@@ -125,9 +125,8 @@ Losing your own words would be worse than leaving a stray voice in.
 
 Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
 written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed.
-If cleanup times out, produces an incomplete rewrite, or changes the ending, PseudoCode keeps the
-original transcription and tells you. A correction to the last few words can also trigger this
-conservative fallback.
+If cleanup fails or stops before finishing, PseudoCode keeps the original transcription and tells
+you why.
 
 Three cleanup models are available, trading speed for quality. You can edit the instructions they
 follow and reset them to the default at any time.
