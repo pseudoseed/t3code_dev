@@ -392,7 +392,12 @@ describe("composerDraftStore subagent model", () => {
       };
     };
     const options = persistApi.getOptions();
-    const persisted = options.partialize(useComposerDraftStore.getState());
+    // `partialize` now defers the projection to the storage serializer, so the
+    // round trip has to run it the same way storage does.
+    const captured = options.partialize(useComposerDraftStore.getState()) as {
+      capturedState: ReturnType<typeof useComposerDraftStore.getState>;
+    };
+    const persisted = partializeComposerDraftStoreState(captured.capturedState);
     const hydrated = options.merge(persisted, useComposerDraftStore.getState());
 
     expect(
