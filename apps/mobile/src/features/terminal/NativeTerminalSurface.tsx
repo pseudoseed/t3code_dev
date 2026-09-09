@@ -9,7 +9,12 @@ import {
   type ViewProps,
 } from "react-native";
 
-import { terminalBufferDelta } from "@t3tools/client-runtime/state/terminal";
+import {
+  INITIAL_TERMINAL_OUTPUT_CURSOR,
+  readTerminalOutputUpdate,
+  terminalOutputText,
+  type TerminalOutputCursor,
+} from "@t3tools/client-runtime/state/terminal";
 
 import { AppText as Text } from "../../components/AppText";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
@@ -120,7 +125,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: Ter
               lineHeight: Math.round(fontSize * 1.35),
             }}
           >
-            {props.content.buffer || "$ "}
+            {terminalOutputText(props.content.output) || "$ "}
           </Text>
         </ScrollView>
       </View>
@@ -185,21 +190,46 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
 
   // What the native surface has already been handed. A native surface is
   // recreated on font, theme and identity changes, and announces each new one
-  // through onSurfaceReady; parking the cursor at null replays into it.
-  const deliveredRef = useRef<{ readonly cursor: number; readonly epoch: number } | null>(null);
+  // through onSurfaceReady; parking the cursor at the initial one replays into it.
+  const deliveredRef = useRef<TerminalOutputCursor>(INITIAL_TERMINAL_OUTPUT_CURSOR);
+  // The native surface keys replays off a single monotonic epoch, so track one
+  // here that ticks whenever the output's generation or reset version moves.
+  const epochRef = useRef(0);
+  const epochSourceRef = useRef<{ generation: number; resetVersion: number } | null>(null);
   const [replayRequest, setReplayRequest] = useState(0);
   const handleSurfaceReady = useCallback(() => {
-    deliveredRef.current = null;
+    deliveredRef.current = INITIAL_TERMINAL_OUTPUT_CURSOR;
     setReplayRequest((request) => request + 1);
   }, []);
-  const append = useMemo(
-    () => terminalBufferDelta(content, deliveredRef.current),
+  const append = useMemo(() => {
+    const update = readTerminalOutputUpdate(content.output, deliveredRef.current);
+    const source = epochSourceRef.current;
+    if (
+      source === null ||
+      source.generation !== update.cursor.generation ||
+      source.resetVersion !== update.cursor.resetVersion
+    ) {
+      epochSourceRef.current = {
+        generation: update.cursor.generation,
+        resetVersion: update.cursor.resetVersion,
+      };
+      epochRef.current += 1;
+    }
+    return {
+      reset: update.type === "reset",
+      chunk: update.type === "none" ? "" : update.data,
+      cursor: update.cursor.offset,
+      epoch: epochRef.current,
+    };
     // deliveredRef advances after commit, so replayRequest is what re-runs this
     // when the surface asked for a replay but the content itself did not change.
-    [content, replayRequest],
-  );
+  }, [content, replayRequest]);
   useEffect(() => {
-    deliveredRef.current = { cursor: append.cursor, epoch: append.epoch };
+    deliveredRef.current = {
+      generation: epochSourceRef.current?.generation ?? 0,
+      resetVersion: epochSourceRef.current?.resetVersion ?? 0,
+      offset: append.cursor,
+    };
   });
 
   useEffect(() => {
@@ -208,10 +238,10 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
       native: hasNativeSurface,
       // null = installed binary predates native hardware-key handling (rebuild needed).
       hardwareKeyRevision: getNativeTerminalHardwareKeyRevision(),
-      bufferLen: content.buffer.length,
+      retainedBytes: content.output.retainedBytes,
       isRunning: props.isRunning,
     });
-  }, [content.buffer.length, hasNativeSurface, props.isRunning, props.terminalKey]);
+  }, [content.output.retainedBytes, hasNativeSurface, props.isRunning, props.terminalKey]);
   const handleNativeInput = useCallback(
     (event: NativeSyntheticEvent<TerminalInputEvent>) => {
       if (!props.isRunning) {

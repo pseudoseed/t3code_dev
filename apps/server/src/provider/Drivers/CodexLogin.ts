@@ -40,7 +40,7 @@ const AUTHORIZATION_URL_HOSTS = ["openai.com", "chatgpt.com"] as const;
  * `codex login status` exits 0 when signed in and 1 when not, so the exit code
  * carries the answer and no output parsing is needed.
  */
-export const probeCodexSignedIn = Effect.fn("probeCodexSignedIn")(function* (
+const probeCodexSignedIn = Effect.fn("probeCodexSignedIn")(function* (
   invocation: CliInvocation,
 ): Effect.fn.Return<boolean, never, ChildProcessSpawner.ChildProcessSpawner | Scope.Scope> {
   const result = yield* runCliInvocation({ ...invocation, args: ["login", "status"] });

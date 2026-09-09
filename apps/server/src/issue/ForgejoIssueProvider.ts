@@ -184,7 +184,7 @@ function repositoryPath(
     : Effect.succeed(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
 }
 
-export class ForgejoIssueProvider extends Context.Service<ForgejoIssueProvider, IssueProviderApi>()(
+class ForgejoIssueProvider extends Context.Service<ForgejoIssueProvider, IssueProviderApi>()(
   "t3/issue/ForgejoIssueProvider",
 ) {}
 
@@ -482,4 +482,4 @@ function stringifyBody(body: unknown): string {
   return JSON.stringify(body);
 }
 
-export const layer = Layer.effect(ForgejoIssueProvider, make);
+const layer = Layer.effect(ForgejoIssueProvider, make);

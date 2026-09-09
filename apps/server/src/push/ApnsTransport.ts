@@ -24,7 +24,7 @@ const decodeApnsError = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ reason: Schema.String })),
 );
 
-export class ApnsTransportError extends Schema.TaggedErrorClass<ApnsTransportError>()(
+export class ApnsTransportError extends Schema.TaggedError<ApnsTransportError>()(
   "ApnsTransportError",
   { message: Schema.String },
 ) {}

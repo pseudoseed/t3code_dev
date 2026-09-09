@@ -16,7 +16,7 @@ const decodeObject = Schema.decodeUnknownEffect(Schema.fromJsonString(JsonObject
 const encodeObject = Schema.encodeEffect(Schema.fromJsonString(JsonObject));
 const readObject = Schema.decodeUnknownOption(JsonObject);
 
-export class ClaudeMcpCredentialError extends Schema.TaggedErrorClass<ClaudeMcpCredentialError>()(
+export class ClaudeMcpCredentialError extends Schema.TaggedError<ClaudeMcpCredentialError>()(
   "ClaudeMcpCredentialError",
   { message: Schema.String },
 ) {}

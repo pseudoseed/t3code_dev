@@ -23,7 +23,7 @@ const elementFor = (node: Node | null): Element | null => {
   return node.nodeType === ELEMENT_NODE ? (node as Element) : node.parentElement;
 };
 
-export const isEditableSelectionEndpoint = (node: Node | null): boolean =>
+const isEditableSelectionEndpoint = (node: Node | null): boolean =>
   elementFor(node)?.closest(EDITABLE_SELECTOR) != null;
 
 export interface CopyOnSelectCandidate {

@@ -44,7 +44,7 @@ const RecordsJson = Schema.fromJsonString(Schema.Array(RecordSchema));
 const decodeRecords = Schema.decodeUnknownEffect(RecordsJson);
 const encodeRecords = Schema.encodeEffect(RecordsJson);
 const STORAGE_KEY = "direct-apns-devices";
-export class DirectPushError extends Schema.TaggedErrorClass<DirectPushError>()("DirectPushError", {
+export class DirectPushError extends Schema.TaggedError<DirectPushError>()("DirectPushError", {
   message: Schema.String,
 }) {}
 const operationError = () =>

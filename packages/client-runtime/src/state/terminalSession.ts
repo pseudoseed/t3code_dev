@@ -6,41 +6,43 @@ import type {
   TerminalSummary,
   ThreadId,
 } from "@t3tools/contracts";
+import {
+  appendOutput,
+  DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
+  EMPTY_TERMINAL_OUTPUT_STATE,
+  resetOutput,
+  type TerminalOutputState,
+} from "./terminalOutput.ts";
 
-/**
- * Position of a renderer within the output stream. Renderers keep their own
- * scrollback, so they only ever need the slice they have not consumed yet;
- * comparing whole buffers to find that slice is what made large sessions crawl.
- *
- * `cursor` counts UTF-16 units appended since the last `epoch` bump and `trimmed`
- * counts the units dropped off the front, so `buffer.length === cursor - trimmed`
- * always holds and the undelivered slice is `buffer.slice(delivered - trimmed)`.
- */
-export interface TerminalBufferCursor {
-  readonly cursor: number;
-  readonly epoch: number;
-}
+export {
+  DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
+  EMPTY_TERMINAL_OUTPUT_STATE,
+  INITIAL_TERMINAL_OUTPUT_CURSOR,
+  readTerminalOutputUpdate,
+  terminalOutputText,
+  type TerminalOutputCursor,
+  type TerminalOutputState,
+  type TerminalOutputUpdate,
+} from "./terminalOutput.ts";
 
-export interface TerminalSessionState extends TerminalBufferCursor {
+export interface TerminalSessionState {
   readonly summary: TerminalSummary | null;
-  readonly buffer: string;
+  readonly output: TerminalOutputState;
   readonly status: TerminalSessionSnapshot["status"] | "closed";
   readonly error: string | null;
   readonly hasRunningSubprocess: boolean;
   readonly updatedAt: string | null;
   readonly version: number;
-  readonly trimmed: number;
+  readonly lifecycleVersion: number;
 }
 
-export interface TerminalBufferState extends TerminalBufferCursor {
-  readonly buffer: string;
+export interface TerminalBufferState {
+  readonly output: TerminalOutputState;
   readonly status: TerminalSessionSnapshot["status"] | "closed";
   readonly error: string | null;
   readonly updatedAt: string | null;
   readonly version: number;
-  readonly trimmed: number;
-  /** UTF-8 size of `buffer`, carried forward so trimming only encodes when it must. */
-  readonly bytes: number;
+  readonly lifecycleVersion: number;
 }
 
 export interface KnownTerminalSessionTarget {
@@ -63,108 +65,50 @@ export function selectRunningSubprocessTerminalIds(
 }
 
 export const EMPTY_TERMINAL_BUFFER_STATE = Object.freeze<TerminalBufferState>({
-  buffer: "",
+  output: EMPTY_TERMINAL_OUTPUT_STATE,
   status: "closed",
   error: null,
   updatedAt: null,
   version: 0,
-  cursor: 0,
-  trimmed: 0,
-  epoch: 0,
-  bytes: 0,
+  lifecycleVersion: 0,
 });
 
 export const EMPTY_TERMINAL_SESSION_STATE = Object.freeze<TerminalSessionState>({
   summary: null,
-  buffer: "",
+  output: EMPTY_TERMINAL_OUTPUT_STATE,
   status: "closed",
   error: null,
   hasRunningSubprocess: false,
   updatedAt: null,
   version: 0,
-  cursor: 0,
-  trimmed: 0,
-  epoch: 0,
+  lifecycleVersion: 0,
 });
 
-export const DEFAULT_MAX_TERMINAL_BUFFER_BYTES = 512 * 1024;
-/**
- * Trimming rewrites the whole buffer, so it drops well under the cap instead of
- * shaving each new chunk off the front. Output then runs cap-to-target bytes
- * between rewrites rather than paying for one on every chunk.
- */
-const TERMINAL_BUFFER_TRIM_TARGET_RATIO = 0.75;
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
+let terminalAttachGeneration = 0;
 
-interface TrimmedBuffer {
-  readonly buffer: string;
-  readonly bytes: number;
-  /** UTF-16 units removed from the front. */
-  readonly dropped: number;
-}
-
-function trimBufferToBytes(buffer: string, bytes: number, maxBufferBytes: number): TrimmedBuffer {
-  if (maxBufferBytes <= 0) {
-    return { buffer: "", bytes: 0, dropped: buffer.length };
-  }
-  if (bytes <= maxBufferBytes) {
-    return { buffer, bytes, dropped: 0 };
-  }
-
-  const encoded = textEncoder.encode(buffer);
-  const target = Math.max(1, Math.floor(maxBufferBytes * TERMINAL_BUFFER_TRIM_TARGET_RATIO));
-  const aligned = encoded.byteLength - target;
-  const isContinuation = (offset: number) => {
-    const byte = encoded[offset];
-    return byte !== undefined && (byte & 0b1100_0000) === 0b1000_0000;
-  };
-
-  let start = aligned;
-  while (start < encoded.length && isContinuation(start)) {
-    start += 1;
-  }
-  if (start >= encoded.length) {
-    // The target landed inside the final codepoint, so aligning forward threw it
-    // away. Keep it instead whenever the whole codepoint still fits under the cap.
-    let back = aligned;
-    while (back > 0 && isContinuation(back)) {
-      back -= 1;
-    }
-    if (encoded.byteLength - back <= maxBufferBytes) {
-      start = back;
-    }
-  }
-
-  const trimmed = textDecoder.decode(encoded.subarray(start));
+/** A reinstalled attach stream must not reuse an old renderer's output cursor. */
+export function nextTerminalAttachSeedState(): TerminalBufferState {
   return {
-    buffer: trimmed,
-    bytes: encoded.byteLength - start,
-    dropped: buffer.length - trimmed.length,
+    ...EMPTY_TERMINAL_BUFFER_STATE,
+    output: {
+      ...EMPTY_TERMINAL_OUTPUT_STATE,
+      generation: ++terminalAttachGeneration,
+    },
   };
 }
 
-function utf8Length(value: string): number {
-  return textEncoder.encode(value).byteLength;
-}
-
-export function terminalBufferStateFromSnapshot(
+function terminalBufferStateFromSnapshot(
   snapshot: TerminalSessionSnapshot,
   maxBufferBytes: number,
-  epoch: number,
+  current: TerminalBufferState = EMPTY_TERMINAL_BUFFER_STATE,
 ): TerminalBufferState {
-  const history = snapshot.history;
-  const trimmed = trimBufferToBytes(history, utf8Length(history), maxBufferBytes);
   return {
-    buffer: trimmed.buffer,
+    output: resetOutput(current.output, snapshot.history, maxBufferBytes),
     status: snapshot.status,
     error: null,
     updatedAt: snapshot.updatedAt,
-    version: 1,
-    cursor: trimmed.buffer.length,
-    trimmed: 0,
-    epoch,
-    bytes: trimmed.bytes,
+    version: current.version + 1,
+    lifecycleVersion: current.lifecycleVersion,
   };
 }
 
@@ -180,54 +124,14 @@ export function combineTerminalSessionState(
 ): TerminalSessionState {
   return {
     summary,
-    buffer: buffer.buffer,
+    output: buffer.output,
     status: buffer.version > 0 ? buffer.status : (summary?.status ?? buffer.status),
     error: buffer.error,
     hasRunningSubprocess: summary?.hasRunningSubprocess ?? false,
     updatedAt: latestTimestamp(summary?.updatedAt ?? null, buffer.updatedAt),
     version: buffer.version,
-    cursor: buffer.cursor,
-    trimmed: buffer.trimmed,
-    epoch: buffer.epoch,
+    lifecycleVersion: buffer.lifecycleVersion,
   };
-}
-
-export interface TerminalBufferDelta {
-  /** The renderer must clear its screen and scrollback before writing `chunk`. */
-  readonly reset: boolean;
-  readonly chunk: string;
-  /** Cursor the renderer has consumed once it writes `chunk`. */
-  readonly cursor: number;
-  readonly epoch: number;
-}
-
-/**
- * Slice a renderer has not written yet, given where it left off. A renderer that
- * fell behind past the trim point cannot be caught up incrementally, so it is
- * told to reset and replay what survives.
- */
-export function terminalBufferDelta(
-  state: {
-    readonly buffer: string;
-    readonly cursor: number;
-    readonly trimmed: number;
-    readonly epoch: number;
-  },
-  delivered: TerminalBufferCursor | null,
-): TerminalBufferDelta {
-  const consumed = { reset: false, cursor: state.cursor, epoch: state.epoch };
-  if (
-    delivered === null ||
-    delivered.epoch !== state.epoch ||
-    delivered.cursor < state.trimmed ||
-    delivered.cursor > state.cursor
-  ) {
-    return { ...consumed, reset: true, chunk: state.buffer };
-  }
-  if (delivered.cursor === state.cursor) {
-    return { ...consumed, chunk: "" };
-  }
-  return { ...consumed, chunk: state.buffer.slice(delivered.cursor - state.trimmed) };
 }
 
 export function applyTerminalAttachStreamEvent(
@@ -237,33 +141,28 @@ export function applyTerminalAttachStreamEvent(
 ): TerminalBufferState {
   switch (event.type) {
     case "snapshot":
+      return {
+        ...terminalBufferStateFromSnapshot(event.snapshot, maxBufferBytes, current),
+        lifecycleVersion:
+          current.version === 0 ? current.lifecycleVersion : current.lifecycleVersion + 1,
+      };
     case "restarted":
-      return terminalBufferStateFromSnapshot(event.snapshot, maxBufferBytes, current.epoch + 1);
-    case "output": {
-      const trimmed = trimBufferToBytes(
-        `${current.buffer}${event.data}`,
-        current.bytes + utf8Length(event.data),
-        maxBufferBytes,
-      );
+      return {
+        ...terminalBufferStateFromSnapshot(event.snapshot, maxBufferBytes, current),
+        lifecycleVersion: current.lifecycleVersion + 1,
+      };
+    case "output":
       return {
         ...current,
-        buffer: trimmed.buffer,
-        bytes: trimmed.bytes,
-        cursor: current.cursor + event.data.length,
-        trimmed: current.trimmed + trimmed.dropped,
+        output: appendOutput(current.output, event.data, maxBufferBytes),
         status: current.status === "closed" ? "running" : current.status,
         error: null,
         version: current.version + 1,
       };
-    }
     case "cleared":
       return {
         ...current,
-        buffer: "",
-        bytes: 0,
-        cursor: 0,
-        trimmed: 0,
-        epoch: current.epoch + 1,
+        output: resetOutput(current.output, "", maxBufferBytes),
         error: null,
         version: current.version + 1,
       };

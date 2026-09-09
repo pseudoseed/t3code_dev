@@ -67,11 +67,13 @@ function SourceResetCredit({
   environmentId,
   sourceId,
   accountId,
+  creditId,
   availableCount,
 }: {
   readonly environmentId: EnvironmentId;
   readonly sourceId: UsageLimitSourceId;
   readonly accountId: string;
+  readonly creditId: string;
   readonly availableCount: number;
 }) {
   const consume = useAtomCommand(serverEnvironment.consumeSourceResetCredit, {
@@ -87,7 +89,7 @@ function SourceResetCredit({
     setStatus(null);
     const result = await consume({
       environmentId,
-      input: { sourceId, accountId },
+      input: { sourceId, accountId, creditId },
     });
     setBusy(false);
     setStatus(
@@ -189,6 +191,7 @@ function UsageOverlayBody({ onRefreshed }: { readonly onRefreshed: () => void })
                             environmentId={source.environmentId}
                             sourceId={source.id}
                             accountId={account.id}
+                            creditId={account.usageLimits.resetCredits.nextCreditId ?? ""}
                             availableCount={account.usageLimits.resetCredits.availableCount}
                           />
                         ) : null

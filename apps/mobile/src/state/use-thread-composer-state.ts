@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
-import * as Cause from "effect/Cause";
 
 import {
   CommandId,
@@ -16,7 +15,6 @@ import {
 } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import {
-  codexFeedbackMessage,
   parseCodexFeedbackCommand,
   submitCodexFeedback,
   type CodexFeedbackSubmission,
@@ -36,9 +34,11 @@ import {
 } from "../lib/composerImages";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
-import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { buildThreadFeed } from "../lib/threadActivity";
+import { acknowledgedThreadMessagesAtom } from "./acknowledged-thread-messages";
+import { appendPendingThreadMessages } from "../features/threads/pending-thread-feed";
 import { appAtomRegistry } from "../state/atom-registry";
+import { pendingThreadCreationMessage } from "./pending-thread-creation";
 import {
   appendComposerDraftAttachments,
   appendComposerDraftText,
@@ -104,9 +104,14 @@ export function useThreadDraftForThread(input: {
 }
 
 export function useThreadComposerState() {
-  const { selectedThread: selectedThreadShell, selectedEnvironmentRuntime } = useThreadSelection();
+  const {
+    selectedThread: selectedThreadShell,
+    selectedThreadCreation,
+    selectedEnvironmentRuntime,
+  } = useThreadSelection();
   const selectedThreadDetail = useSelectedThreadDetail();
   const composerDrafts = useAtomValue(composerDraftsAtom);
+  const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
   const dispatchingQueuedMessageId = useAtomValue(dispatchingQueuedMessageIdAtom);
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
@@ -126,29 +131,82 @@ export function useThreadComposerState() {
   const selectedThreadKey = selectedThreadShell
     ? scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id)
     : null;
+  // The creation entry is the thread itself (rendered as the first message),
+  // not a follow-up waiting behind it.
   const selectedThreadQueuedMessages = useMemo(
-    () => (selectedThreadKey ? (queuedMessagesByThreadKey[selectedThreadKey] ?? []) : []),
+    () =>
+      selectedThreadKey
+        ? (queuedMessagesByThreadKey[selectedThreadKey] ?? []).filter(
+            (message) => message.creation === undefined,
+          )
+        : [],
     [queuedMessagesByThreadKey, selectedThreadKey],
   );
+  const feedbackSubmissions = useMemo(
+    () => (selectedThreadKey ? (feedbackSubmissionsByThreadKey[selectedThreadKey] ?? []) : []),
+    [feedbackSubmissionsByThreadKey, selectedThreadKey],
+  );
+  const dismissFeedback = useCallback(
+    (id: MessageId) => {
+      if (!selectedThreadKey) return;
+      setFeedbackSubmissionsByThreadKey((current) => ({
+        ...current,
+        [selectedThreadKey]: (current[selectedThreadKey] ?? []).filter((entry) => entry.id !== id),
+      }));
+    },
+    [selectedThreadKey],
+  );
+  const selectedThreadMessages = selectedThreadDetail?.messages;
+  const selectedThreadActivities = selectedThreadDetail?.activities;
+  // A thread whose creation has not delivered its turn yet: the prompt only
+  // exists in the outbox, so it is appended to whatever the server has. The
+  // detail is usually present but empty during a worktree checkout, so this
+  // cannot be an either/or with the loaded messages.
+  const pendingCreationMessage = selectedThreadCreation?.message ?? null;
   const selectedThreadFeed = useMemo(() => {
-    if (!selectedThreadDetail) {
-      return [];
+    const loadedMessages = selectedThreadMessages ?? [];
+    const feed =
+      (selectedThreadMessages && selectedThreadActivities) || pendingCreationMessage !== null
+        ? buildThreadFeed({
+            messages:
+              pendingCreationMessage !== null &&
+              !loadedMessages.some((message) => message.id === pendingCreationMessage.messageId)
+                ? [...loadedMessages, pendingThreadCreationMessage(pendingCreationMessage)]
+                : loadedMessages,
+            activities: selectedThreadActivities ?? [],
+          })
+        : [];
+    const pendingAcknowledgments = acknowledgedMessages.filter(
+      (message) =>
+        scopedThreadKey(message.environmentId, message.threadId) === selectedThreadKey &&
+        !selectedThreadQueuedMessages.some((queued) => queued.messageId === message.messageId),
+    );
+    if (pendingAcknowledgments.length === 0) return feed;
+    return appendPendingThreadMessages(feed, feed, pendingAcknowledgments).map((entry) =>
+      entry.pendingMessage ? { ...entry, acknowledged: true } : entry,
+    );
+  }, [
+    selectedThreadActivities,
+    selectedThreadMessages,
+    pendingCreationMessage,
+    selectedThreadKey,
+    selectedThreadQueuedMessages,
+    acknowledgedMessages,
+  ]);
+  useEffect(() => {
+    const echoedIds = new Set(selectedThreadMessages?.map((message) => message.id));
+    if (acknowledgedMessages.some((message) => echoedIds.has(message.messageId))) {
+      appAtomRegistry.set(
+        acknowledgedThreadMessagesAtom,
+        appAtomRegistry
+          .get(acknowledgedThreadMessagesAtom)
+          .filter((message) => !echoedIds.has(message.messageId)),
+      );
     }
-    const submissions = selectedThreadKey
-      ? (feedbackSubmissionsByThreadKey[selectedThreadKey] ?? [])
-      : [];
-    return buildThreadFeed(selectedThreadDetail, {
-      localMessages: submissions.flatMap((submission) =>
-        submission.status === "interrupted"
-          ? []
-          : [codexFeedbackMessage(submission), codexFeedbackMessage(submission, "assistant")],
-      ),
-    });
-  }, [feedbackSubmissionsByThreadKey, selectedThreadDetail, selectedThreadKey]);
+  }, [acknowledgedMessages, selectedThreadMessages]);
 
   // The composer prints the share of the window in use and the thread's
   // running cost; both come off the newest `context-window.updated` activity.
-  const selectedThreadActivities = selectedThreadDetail?.activities;
   const selectedThreadContextWindow = useMemo(
     () =>
       selectedThreadActivities ? deriveLatestContextWindowSnapshot(selectedThreadActivities) : null,
@@ -245,6 +303,13 @@ export function useThreadComposerState() {
     if (!selectedThreadShell) {
       return null;
     }
+    // The server has not created this thread yet. Queuing a follow-up against
+    // its id would strand the message: if the creation is rejected the thread
+    // never appears and the drain drops the orphan. The composer disables its
+    // send button too; this guard also covers the editor's submit key.
+    if (selectedThreadCreation !== null) {
+      return null;
+    }
 
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
     const draft = getComposerDraftSnapshot(threadKey);
@@ -302,7 +367,7 @@ export function useThreadComposerState() {
         return null;
       }
       const metadata = makeQueuedMessageMetadata();
-      const result = await submitCodexFeedback({
+      await submitCodexFeedback({
         submission: {
           id: MessageId.make(metadata.messageId),
           command: text,
@@ -330,25 +395,6 @@ export function useThreadComposerState() {
             },
           }),
       });
-      if (result._tag === "Failure") {
-        if (isAtomCommandInterrupted(result)) {
-          return null;
-        }
-        const error = Cause.squash(result.cause);
-        Alert.alert(
-          "Could not send feedback to OpenAI",
-          error instanceof Error ? error.message : "An error occurred.",
-        );
-        return null;
-      }
-      const feedbackId = result.value.feedbackId;
-      Alert.alert("Feedback sent to OpenAI", `Thread ID: ${feedbackId}`, [
-        { text: "OK", style: "cancel" },
-        {
-          text: "Copy ID",
-          onPress: () => copyTextWithHaptic(feedbackId, { target: "Codex feedback thread ID" }),
-        },
-      ]);
       return null;
     }
 
@@ -398,6 +444,7 @@ export function useThreadComposerState() {
   }, [
     selectedEnvironmentRuntime?.connectionState,
     selectedEnvironmentRuntime?.serverConfig,
+    selectedThreadCreation,
     selectedThreadDetail,
     selectedThreadShell,
     uploadThreadFeedback,
@@ -604,9 +651,13 @@ export function useThreadComposerState() {
   );
 
   return {
+    feedbackSubmissions,
+    dismissFeedback,
     selectedThreadFeed,
     selectedThreadContextWindow,
     selectedThreadQueueCount,
+    selectedThreadQueuedMessages,
+    dispatchingQueuedMessageId,
     activeWorkStartedAt,
     isCompacting,
     draftMessage,

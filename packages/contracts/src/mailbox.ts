@@ -160,6 +160,6 @@ export const MailboxGetResult = Schema.Struct({
 });
 export type MailboxGetResult = typeof MailboxGetResult.Type;
 
-export class MailboxError extends Schema.TaggedErrorClass<MailboxError>()("MailboxError", {
+export class MailboxError extends Schema.TaggedError<MailboxError>()("MailboxError", {
   message: Schema.String,
 }) {}

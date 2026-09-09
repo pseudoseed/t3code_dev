@@ -344,11 +344,11 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   useEffect(() => {
     terminalDebugLog("surface:props", {
       terminalKey,
-      surfaceBufferLen: session.surfaceContent.buffer.length,
+      surfaceRetainedBytes: session.surfaceContent.output.retainedBytes,
       status: terminal.status,
       version: terminal.version,
     });
-  }, [session.surfaceContent.buffer.length, terminal.status, terminal.version, terminalKey]);
+  }, [session.surfaceContent.output.retainedBytes, terminal.status, terminal.version, terminalKey]);
 
   const terminalTheme = getMobileTerminalTheme(themeId, appearanceScheme);
   const usesNativeHeaderGlass = Platform.OS === "ios";

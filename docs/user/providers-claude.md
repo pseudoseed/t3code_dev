@@ -1,226 +1,101 @@
 # Claude
 
-This guide is for people who want to use more than one Claude setup in PseudoCode. For Codex, see
-[Codex](./providers-codex.md). For first-time setup, see [Install PseudoCode](./install.md).
+PseudoCode uses Claude Code's login and configuration. Start with the default provider
+for one account; [provider setup](./install.md#providers) covers installation and
+shared provider settings.
 
-Common reasons:
+## Separate accounts or configurations
 
-- use separate work and personal Claude accounts
-- try a different Claude Code configuration without disturbing your main setup
-- run Claude through a router such as Claude Code Router
-- use external providers exposed through a Claude-compatible workflow
+Use a separate Claude config directory for each account. This also works for named
+presets that need different Claude settings or a router connection.
 
-## Signing In
-
-Open Settings, select your Claude provider, and press **Sign in to Claude**.
-
-PseudoCode opens Anthropic's sign-in page and shows you a link you can open on any device. After you
-approve, Anthropic gives you a code. Paste it back into PseudoCode and the sign-in finishes.
-
-This works the same from the web app, the desktop app, and the phone app, including when the server
-is on another machine. You never need a terminal.
-
-If the sign-in expires or is revoked, the provider shows as signed out and the same button reads
-**Sign in again**. Nothing else has to be reset.
-
-PseudoCode does not hold your Claude credentials. Claude Code stores them itself, in its own format,
-and refreshes them as it works.
-
-## I Only Use One Claude Account
-
-Use the default provider.
-
-```text
-Display name: Claude
-Binary path: claude
-CLAUDE_CONFIG_DIR path: empty
-```
-
-An empty `CLAUDE_CONFIG_DIR path` means PseudoCode uses Claude Code's normal config directory, so a
-login you already made with `claude auth login` keeps working.
-
-When you set this field, PseudoCode points Claude Code at that directory with the
-`CLAUDE_CONFIG_DIR` environment variable. It does not change `HOME`, so your system keychain and
-the rest of your environment stay as they are.
-
-## Reduce Context Usage
-
-In Settings, open your Claude provider and set **Auto-compact after** to a token count between
-`100000` and `1000000`. For example, `300000` compacts the conversation into a summary once it
-reaches about 300,000 tokens, without changing the model's context window. Leave the field
-empty to keep Claude Code's default behavior.
-
-On web and desktop, when you return to an older Claude thread with a large context, PseudoCode
-offers to compact the conversation before you continue. You can also select **Compact context**
-from the context meter. On every client, you can enter `/compact` in the message composer, and
-Claude can show its own resume prompt when you continue an old session.
-
-## Where Claude Skills Are Loaded
-
-PseudoCode looks for Claude skills in the Claude config directory's `skills` folder and
-`<workspace>/.claude/skills`, the two places Claude Code loads them from.
-
-If the same skill name exists in more than one folder, the one in the Claude config directory
-wins, the same way Claude Code resolves it.
-
-A skill set to `off` in Claude Code's `skillOverrides` is left out of both composer menus. A skill
-marked `disable-model-invocation` still appears, because you start it yourself when you pick it.
-Claude Code runs one skill per message; when a message names several, the last one runs directly and
-Claude starts the others through its Skill tool, which refuses skills marked
-`disable-model-invocation`.
-
-## I Want Work And Personal Claude Accounts
-
-Add a second Claude provider and sign in to it. There is nothing else to set up.
-
-1. In Settings, press **Add provider** and choose Claude.
-2. Give it a name such as `Claude Personal`.
-3. Select it and press **Sign in to Claude**.
-
-Each Claude provider you add gets its own config directory, so signing in to the second account
-leaves the first one signed in. You can add as many as you have accounts.
-
-Use the email shown in Settings to confirm each provider is using the intended account. Emails are
-blurred by default; click the blurred email to reveal it.
-
-### Pointing At A Directory You Already Have
-
-If you already keep a Claude config directory per account, set it yourself and PseudoCode uses it
-instead of provisioning one:
-
-```text
-Display name: Claude Personal
-Binary path: claude
-CLAUDE_CONFIG_DIR path: ~/.claude_personal_home
-```
-
-Use `CLAUDE_CONFIG_DIR`, not `HOME`. Setting `HOME` writes the login to
-`~/.claude_personal_home/.claude`, which is not where PseudoCode looks.
-
-Each config directory holds its own settings, skills, and project history as well as its own login.
-Providers do not share those with each other.
-
-## Can I Switch Claude Accounts In An Existing Thread?
-
-Usually, no.
-
-PseudoCode only offers Claude providers that use the same config directory for an existing thread. A
-different config directory is treated as a different Claude environment.
-
-This is different from the recommended Codex setup. Claude Code keeps account and local state across
-multiple files under its config directory, so PseudoCode keeps separate config directories isolated
-instead of trying to share part of the state.
-
-## I Want To Use OpenRouter
-
-Use this when you want Claude Code to talk to OpenRouter directly, without running a local router.
-This is the simplest external-provider setup.
-
-OpenRouter provides a Claude Code integration through Claude's Anthropic-compatible environment
-variables.
-
-### Configure A Claude OpenRouter Provider
-
-Add or edit a Claude provider in PseudoCode Settings:
-
-```text
-Display name: Claude OpenRouter
-Binary path: claude
-CLAUDE_CONFIG_DIR path: ~/.claude_openrouter_home
-```
-
-In that provider's Environment variables section, add:
-
-```text
-ANTHROPIC_BASE_URL   https://openrouter.ai/api
-ANTHROPIC_AUTH_TOKEN sk-or-...                Sensitive
-ANTHROPIC_API_KEY                              Empty value
-```
-
-Mark `ANTHROPIC_AUTH_TOKEN` as sensitive. PseudoCode stores the value as a server secret and does not
-send it back to the app after saving.
-
-If you want this setup isolated from your normal Claude account, create that home first:
+Keep your existing account in the default directory. On the environment's machine,
+create the second login:
 
 ```bash
-mkdir -p ~/.claude_openrouter_home
+mkdir -p ~/.claude_personal
+CLAUDE_CONFIG_DIR=~/.claude_personal claude auth login
 ```
 
-If you previously used the same Claude home with a normal Anthropic login, run `/logout` in a Claude
-Code session for that home before using OpenRouter. Otherwise Claude Code may keep using cached
-Anthropic credentials instead of the OpenRouter token.
+Add another Claude instance in **Settings > Providers**:
 
-### Pick OpenRouter Models
+| Instance        | Binary path | CLAUDE_CONFIG_DIR path |
+| --------------- | ----------- | ---------------------- |
+| Claude Work     | `claude`    | Leave empty            |
+| Claude Personal | `claude`    | `~/.claude_personal`   |
 
-OpenRouter can route Claude Code's default model roles to OpenRouter model IDs.
+An empty config-directory setting uses Claude Code's normal configuration. The
+custom setting changes `CLAUDE_CONFIG_DIR`, leaving `HOME` and the system keychain
+location intact. Use the same variable for the login command. Setting `HOME`
+instead can put credentials where this provider will not find them.
 
-Example:
+Check the account reported in provider settings after signing in. Existing
+threads can switch only between Claude instances with the same config directory.
+Separate account directories stay isolated, including their local conversation
+state. Claude does not have Codex's shared-home and shadow-home arrangement.
 
-```text
-ANTHROPIC_DEFAULT_OPUS_MODEL    anthropic/claude-opus-4.6
-ANTHROPIC_DEFAULT_SONNET_MODEL  anthropic/claude-sonnet-4.6
-ANTHROPIC_DEFAULT_HAIKU_MODEL   anthropic/claude-haiku-4.5
-CLAUDE_CODE_SUBAGENT_MODEL      anthropic/claude-sonnet-4.6
-```
+For presets that differ only in API keys or endpoints, use the instance's
+**Environment variables**. Variable assignments do not belong in **Launch arguments**.
 
-Add those to the same provider's Environment variables section if you want stable model choices.
+Claude Code's verbose mode can stay enabled when you use Claude for text generation, including
+thread titles, branch names, commit messages, and pull request descriptions. On a remote connection,
+PseudoCode uses the Claude configuration on the connected server.
 
-### Verify OpenRouter Is Being Used
+## Compact long conversations
 
-Open a Claude session and run:
+Set **Auto-compact after** in the Claude provider settings to an integer between
+`100000` and `1000000`. For example, `300000` asks Claude to summarize at about
+300,000 tokens. This changes when compaction happens, not the model's context
+window. Leave it empty for Claude Code's default.
 
-```text
-/status
-```
+You can also send `/compact` in an existing conversation. Web and desktop offer
+**Compact context** from the context meter and may suggest it when you return to
+a large older thread. See [commands and skills](./composer.md#commands-and-skills)
+for using composer commands.
 
-You should see the Anthropic base URL set to:
+## Usage limits
 
-```text
-https://openrouter.ai/api
-```
+If your Claude subscription runs out of usage mid-turn, the thread shows which
+limit was reached and the remaining wait when Claude provides a reset time.
+Claude Code holds the turn until that window reopens, so it can keep showing as
+working. Wait for the reset, or stop the turn and continue later. The warning's
+timestamp shows when the displayed wait started.
 
-You can also check the OpenRouter activity dashboard for requests from your API key.
+## Skills
 
-### Common OpenRouter Mistakes
+Claude skills come from the config directory's `skills` folder and the project's
+`.claude/skills` folder. If both define the same name, the config-directory copy
+wins. Skills disabled in Claude's settings do not appear in the composer.
 
-- Use `https://openrouter.ai/api`, not `https://openrouter.ai/api/v1`, for Claude Code.
-- Set `ANTHROPIC_AUTH_TOKEN` to your OpenRouter API key.
-- Set `ANTHROPIC_API_KEY` to an empty string so Claude Code does not try to use an Anthropic login.
-- Put these variables on the Claude provider instance, not in global shell startup files.
+Use `$` in the composer to select a skill. Skills marked `disable-model-invocation`
+can still be started by you. Invoke those one per message: Claude directly runs
+only the last named skill and may try to start earlier ones through its Skill
+tool, which refuses skills reserved for manual invocation.
 
-OpenRouter's setup can change over time. Use its upstream Claude Code guide for the current details:
-<https://openrouter.ai/docs/guides/guides/claude-code-integration>.
+## OpenRouter
 
-## I Want To Use Claude Code Router
+Create a Claude instance with its own config directory, such as
+`~/.claude_openrouter`, and keep **Binary path** set to `claude`. In that instance's
+**Environment variables**, use:
 
-Claude Code Router is useful when you want a local routing layer with more control than a direct
-OpenRouter setup.
+| Variable               | Value                                     |
+| ---------------------- | ----------------------------------------- |
+| `ANTHROPIC_BASE_URL`   | `https://openrouter.ai/api`               |
+| `ANTHROPIC_AUTH_TOKEN` | Your OpenRouter API key, marked Sensitive |
+| `ANTHROPIC_API_KEY`    | An explicitly empty value                 |
 
-PseudoCode does not need a special Claude Code Router provider. Treat the router as a Claude
-environment: give a Claude provider its own `CLAUDE_CONFIG_DIR path`, and put whatever variables
-the router tells you to export into that provider's Environment variables section. Mark tokens
-and API keys as sensitive.
+If that Claude config directory has a cached Anthropic login, run `/logout` in a
+Claude Code session using that directory before starting the router setup. Cached
+login credentials can conflict with the router token.
 
-```text
-Display name: Claude Router
-Binary path: claude
-CLAUDE_CONFIG_DIR path: ~/.claude_router_home
-```
+Verify requests in OpenRouter's activity dashboard. For model-role overrides and
+current compatibility requirements, use the
+[OpenRouter Claude Code guide](https://openrouter.ai/docs/cookbook/coding-agents/claude-code-integration).
 
-Follow the upstream project's README for the router's own install, startup, and configuration
-steps: <https://github.com/musistudio/claude-code-router>.
+## Other routers
 
-## I Want Different Claude Settings, Not A Different Account
-
-Create another Claude provider with the same account if you want a named preset.
-
-Examples:
-
-- "Claude Default"
-- "Claude Router"
-- "Claude Experimental"
-
-If the preset needs different Claude files, give it a different `CLAUDE_CONFIG_DIR path`. If it needs
-different API keys, base URLs, or router settings, use Environment variables.
-
-Do not put environment variable assignments in `Launch arguments`.
+A local router uses an ordinary Claude provider instance. Give it a separate
+config directory and put the router's endpoint and credential variables in that
+instance's **Environment variables**. The router must run where the environment
+can reach it. Follow the [Claude Code Router instructions](https://github.com/musistudio/claude-code-router)
+for its installation and routing configuration.

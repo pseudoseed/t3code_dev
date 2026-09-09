@@ -185,7 +185,6 @@ function EnvironmentMcpSettings({
       <SettingsSection
         id={`mcp-servers-${formId}`}
         title={`MCP servers · ${label}`}
-        description="Add servers, manage connector sign-ins, and repair missing refresh credentials for each account. After changing a connection, start a new conversation to load its tools."
         headerAction={
           <Button variant="ghost" size="sm" onClick={refresh} disabled={isPending}>
             <RefreshCwIcon className="size-3.5" />
@@ -193,6 +192,10 @@ function EnvironmentMcpSettings({
           </Button>
         }
       >
+        <p className="px-3 text-xs text-muted-foreground sm:px-4">
+          Add servers, manage connector sign-ins, and repair missing refresh credentials for each
+          account. After changing a connection, start a new conversation to load its tools.
+        </p>
         {error ? <p className="px-3 text-sm text-destructive sm:px-4">{error}</p> : null}
         {status ? (
           <p role="status" className="px-3 text-sm text-muted-foreground sm:px-4">
@@ -358,12 +361,12 @@ function EnvironmentMcpSettings({
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        id={`mcp-add-${formId}`}
-        title="Add a server"
-        description="Enter a server URL and choose its accounts. Use JSON for a local command or custom headers."
-      >
+      <SettingsSection id={`mcp-add-${formId}`} title="Add a server">
         <div className="space-y-3 px-3 py-3 sm:px-4">
+          <p className="text-xs text-muted-foreground">
+            Enter a server URL and choose its accounts. Use JSON for a local command or custom
+            headers.
+          </p>
           <div className="space-y-1.5">
             <Label htmlFor={`mcp-name-${formId}`}>Name</Label>
             <Input

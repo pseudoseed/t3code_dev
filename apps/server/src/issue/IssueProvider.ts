@@ -24,7 +24,7 @@ import { SourceControlProviderKind as SourceControlProviderKindSchema } from "@t
  * or unauthenticated tool takes the host out of the panel with a sentence saying how to fix it,
  * and anything else belongs to the one request that failed.
  */
-export class IssueProviderError extends Schema.TaggedErrorClass<IssueProviderError>()(
+export class IssueProviderError extends Schema.TaggedError<IssueProviderError>()(
   "IssueProviderError",
   {
     provider: SourceControlProviderKindSchema,
