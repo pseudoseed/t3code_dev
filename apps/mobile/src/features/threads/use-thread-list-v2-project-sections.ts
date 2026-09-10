@@ -5,7 +5,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 
 /**
- * Persisted per-project section state for the iPad sidebar.
+ * Persisted per-project section state for the phone list and tablet sidebar.
  *
  * Collapse is stored as the folded set rather than the expanded set, so a
  * project added later starts open instead of silently hidden. Like the shelf
