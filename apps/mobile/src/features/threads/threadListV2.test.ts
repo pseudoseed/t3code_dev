@@ -1120,6 +1120,39 @@ describe("buildThreadListV2ProjectSectionItems", () => {
     ).toEqual(["v2-project-header:alpha"]);
   });
 
+  it("keeps projects accessible when all their threads are on collapsed shelves", () => {
+    const layout = buildThreadListV2Items({
+      threads: [
+        makeThread({
+          id: ThreadId.make("snoozed"),
+          title: "Snoozed",
+          snoozedUntil: "2026-06-03T09:00:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.make("settled"),
+          title: "Settled",
+          settledOverride: "settled",
+          settledAt: "2026-06-01T09:00:00.000Z",
+        }),
+      ],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      snoozedShelfExpanded: false,
+      settledShelfExpanded: false,
+    });
+    const items = buildThreadListV2ProjectSectionItems({
+      sections: [{ ...section("alpha", []), layout, settledShelfExpanded: false }],
+    });
+    expect(items.map((item) => item.type)).toEqual([
+      "v2-project-header",
+      "v2-snoozed-shelf",
+      "v2-settled-shelf",
+    ]);
+    expect(items[0]).toMatchObject({ threadCount: 2 });
+    expect(items.at(-1)).toMatchObject({ endsProjectSection: true });
+  });
+
   it("gives each project its own settled pager", () => {
     const withHidden = {
       ...section("alpha", ["a1"]),

@@ -594,7 +594,7 @@ function GeneralSettingsSection() {
 }
 
 /**
- * Gives every project its own container in the iPad sidebar, with a larger
+ * Gives every project its own container in the thread list, with a larger
  * name in the project's own color. Device-local mirror of web's
  * `sidebarProjectSectionsEnabled`.
  */
@@ -604,7 +604,7 @@ function SidebarProjectSectionsSwitch() {
   return (
     <SettingsSwitchRow
       icon="rectangle.grid.1x2"
-      label="Group Sidebar by Project"
+      label="Group Threads by Project"
       value={enabled}
       onValueChange={(value) => savePreferences({ sidebarProjectSectionsEnabled: value })}
     />

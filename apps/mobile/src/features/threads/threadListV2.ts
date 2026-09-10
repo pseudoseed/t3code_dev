@@ -410,7 +410,10 @@ export function buildThreadListV2ProjectSectionItems(input: {
   const items: ThreadListV2ListItem[] = [];
   for (const section of input.sections) {
     const threadCount =
-      section.layout.items.length + section.layout.hiddenSettledCount + section.pendingTasks.length;
+      section.layout.items.filter((item) => item.variant === "card").length +
+      section.layout.snoozedCount +
+      section.layout.settledCount +
+      section.pendingTasks.length;
     if (threadCount === 0) continue;
     const sectionStart = items.length;
     items.push({
