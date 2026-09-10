@@ -1,3 +1,4 @@
+import * as ActivitySummaries from "./pseudocode/ActivitySummaries.ts";
 import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
@@ -296,6 +297,7 @@ const ReactorLayerLive = Layer.empty.pipe(
       Layer.provide(ApnsTransport.layer),
     ),
   ),
+  Layer.provideMerge(ActivitySummaries.layer),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 

@@ -85,14 +85,25 @@ const decodeApnsErrorResponseJson = Schema.decodeUnknownOption(
     }),
   ),
 );
-function contentState(state: RelayAgentActivityAggregateState) {
-  return {
-    name: LIVE_ACTIVITY_NAME,
-    props: JSON.stringify(state),
+function contentState(state: RelayAgentActivityAggregateState, appScheme?: string) {
+  const compact = {
+    ...state,
+    ...(appScheme ? { appScheme } : {}),
+    activities: [...state.activities],
   };
+  const content = () => ({ name: LIVE_ACTIVITY_NAME, props: JSON.stringify(compact) });
+  // Leave space for APS metadata and alerts, including escaped JSON and UTF-8 summaries.
+  while (
+    new TextEncoder().encode(JSON.stringify(content())).byteLength > 3000 &&
+    compact.activities.length
+  ) {
+    compact.activities.pop();
+  }
+  return content();
 }
 
 interface LiveActivityRequestBase {
+  readonly appScheme?: string;
   readonly token: string;
   readonly nowEpochSeconds: number;
   readonly nowIso: string;
@@ -134,7 +145,7 @@ function makeLiveActivityRequest(input: MakeLiveActivityRequestInput): ApnsLiveA
         aps: {
           timestamp,
           event: "end",
-          ...(input.state ? { "content-state": contentState(input.state) } : {}),
+          ...(input.state ? { "content-state": contentState(input.state, input.appScheme) } : {}),
           ...(input.alert ? liveActivityAlertPayload(input.alert) : {}),
           "dismissal-date":
             timestamp + (input.state ? DISMISS_AFTER_SECONDS : CONTENTLESS_DISMISS_AFTER_SECONDS),
@@ -166,7 +177,7 @@ function makeLiveActivityRequest(input: MakeLiveActivityRequestInput): ApnsLiveA
             }
           : {}),
         ...(input.event === "update" && input.alert ? liveActivityAlertPayload(input.alert) : {}),
-        "content-state": contentState(state),
+        "content-state": contentState(state, input.appScheme),
         "stale-date": timestamp + STALE_AFTER_SECONDS,
       },
     },

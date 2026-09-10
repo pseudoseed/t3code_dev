@@ -115,7 +115,7 @@ describe("agent widget snapshots", () => {
     const snapshot = buildAgentWidgetSnapshot({ projects: [project], threads });
     expect(snapshot.activeCount).toBe(5);
     expect(snapshot.attentionCount).toBe(1);
-    expect(snapshot.activities).toHaveLength(3);
+    expect(snapshot.activities).toHaveLength(5);
     expect(snapshot.activities[0]?.threadId).toBe("thread-4");
     expect(snapshot.activities[0]?.headline).toBe("Waiting for input");
   });

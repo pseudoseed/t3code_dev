@@ -18,10 +18,14 @@ export interface AgentAwarenessState {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly projectTitle: string;
+  readonly projectId?: string | undefined;
   readonly threadTitle: string;
   readonly phase: AgentAwarenessPhase;
   readonly headline: string;
-  readonly detail?: string;
+  readonly detail?: string | undefined;
+  readonly summary?: string | undefined;
+  readonly turnId?: string | undefined;
+  readonly projectIcon?: string;
   readonly modelTitle: string;
   readonly updatedAt: string;
   readonly deepLink: string;
@@ -48,7 +52,8 @@ export function selectWidgetActivities(states: Iterable<AgentAwarenessState>, no
 
 export interface ProjectThreadAwarenessInput {
   readonly environmentId: EnvironmentId;
-  readonly project: Pick<OrchestrationProjectShell, "title">;
+  readonly project: Pick<OrchestrationProjectShell, "title"> &
+    Partial<Pick<OrchestrationProjectShell, "id">>;
   readonly thread: Pick<
     OrchestrationThreadShell,
     | "id"
@@ -83,7 +88,9 @@ export function projectThreadAwareness(
     environmentId,
     threadId: thread.id,
     projectTitle: project.title,
+    ...(project.id ? { projectId: project.id } : {}),
     threadTitle: thread.title,
+    ...(thread.latestTurn ? { turnId: thread.latestTurn.turnId } : {}),
     phase,
     headline: headlineForPhase(phase),
     ...(detail === undefined ? {} : { detail }),

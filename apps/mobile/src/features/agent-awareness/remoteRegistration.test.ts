@@ -83,7 +83,8 @@ vi.mock("expo-widgets", () => ({
   addPushToStartTokenListener: vi.fn(() => ({ remove: vi.fn() })),
 }));
 
-vi.mock("../../widgets/AgentActivity", () => ({
+vi.mock("expo-linking", () => ({ createURL: () => "t3code-dev:///" }));
+vi.mock("../../widgets/pseudocode/OverviewActivity", () => ({
   default: {
     getInstances: widgetMocks.getInstances,
     start: widgetMocks.start,

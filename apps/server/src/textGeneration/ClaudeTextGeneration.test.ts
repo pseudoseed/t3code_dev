@@ -373,6 +373,30 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
       ),
   );
 
+  it.effect("generates a bounded widget summary outside the project without tools", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({
+          structured_output: { summary: "Checking notification routing." },
+        }),
+        cwdMustNotBe: process.cwd(),
+        stdinMustContain: "The supplied status is authoritative",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const result = yield* textGeneration.generateActivitySummary!({
+            cwd: process.cwd(),
+            context: '{"status":"running"}',
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+            },
+          });
+          expect(result.summary).toBe("Checking notification routing.");
+        }),
+    ),
+  );
+
   it.effect(
     "generates thread titles outside the project with tools, skills, and hooks disabled",
     () =>

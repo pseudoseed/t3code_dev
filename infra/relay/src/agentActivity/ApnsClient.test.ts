@@ -1,7 +1,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { RelayAgentActivityAggregateState } from "@t3tools/contracts/relay";
+import { RelayAgentActivityAggregateState } from "@t3tools/contracts/relay";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -18,6 +18,17 @@ import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import type { ApnsCredentials } from "../Config.ts";
 import * as ApnsClient from "./ApnsClient.ts";
 import * as ApnsProviderTokens from "./ApnsProviderTokens.ts";
+
+const encodePayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeActivityPayload = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    aps: Schema.Struct({
+      "content-state": Schema.Struct({
+        props: Schema.fromJsonString(RelayAgentActivityAggregateState),
+      }),
+    }),
+  }),
+);
 
 const isApnsJwtSigningError = Schema.is(ApnsClient.ApnsJwtSigningError);
 const isApnsHttpRequestError = Schema.is(ApnsClient.ApnsHttpRequestError);
@@ -53,6 +64,35 @@ describe("ApnsClient", () => {
       },
     ],
   };
+
+  it.effect("bounds UTF-8 summary payloads while preserving the first thread and total count", () =>
+    Effect.gen(function* () {
+      const apns = yield* ApnsClient.ApnsClient;
+      const request = apns.makeLiveActivityRequest({
+        token: "token",
+        event: "update",
+        nowEpochSeconds: 0,
+        nowIso: state.updatedAt,
+        state: {
+          ...state,
+          activeCount: 5,
+          activities: Array.from({ length: 5 }, (_, i) => ({
+            ...state.activities[0]!,
+            threadId: ThreadId.make(`thread-${i}`),
+            threadTitle: "界".repeat(120),
+            summary: "界".repeat(160),
+          })),
+        },
+      });
+      const encoded = yield* encodePayload(request.payload);
+      expect(new TextEncoder().encode(encoded).byteLength).toBeLessThanOrEqual(4096);
+      const payload = yield* decodeActivityPayload(request.payload);
+      const props = payload.aps["content-state"].props;
+      expect(props.activeCount).toBe(5);
+      expect(props.activities[0]?.threadId).toBe("thread-0");
+      expect(props.activities.length).toBeLessThan(5);
+    }).pipe(Effect.provide(TestLayer)),
+  );
 
   it.effect("requests an update push token when remotely starting a Live Activity", () =>
     Effect.gen(function* () {

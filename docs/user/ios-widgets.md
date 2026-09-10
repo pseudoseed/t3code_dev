@@ -15,6 +15,21 @@ setup complete, the widget also receives occasional background snapshot updates.
 Input and approval alerts include a fresh snapshot. iOS may delay these updates;
 open the app to refresh when needed.
 
+Add **PseudoCode Overview** from the widget gallery for a separate medium or large
+widget. The large version shows up to four threads with project icons, a short
+update, and colored status text. Tap an individual row to open that thread.
+Project icons are saved when you open the connected app; a folder appears until
+an icon is available. The existing PseudoCode widget remains available.
+
+Overview and Live Activities can include AI progress summaries when the host has
+an enabled, signed-in Claude provider. Summaries use Haiku through that connection
+and consume provider usage. They refresh as work changes, with a rate limit;
+approval, input, and completion labels come directly from the thread status and
+do not wait for a summary. If a summary is unavailable, a factual status appears.
+Direct background updates require **Apple notifications from my servers**; Cloud
+Connect supplies summaries to its Live Activities. iOS still controls delivery
+and widget refresh timing.
+
 Live Activities on the Lock Screen and Dynamic Island are a separate feature.
 Enable them through Cloud Connect, or under **Apple notifications from my servers**
 after configuring your server. The direct option requires no Cloud Connect account.
@@ -24,7 +39,7 @@ again during subsequent work to create a new card.
 
 Each card shows the PseudoCode icon, task title, project, and a short status. The
 Lock Screen card highlights the task that needs attention, with a prompt to reply
-or approve, and the model for working tasks. Hold the Dynamic Island to see the
+or approve, and a concise progress update when available. Hold the Dynamic Island to see the
 highlighted task; its compact view shows the app icon and active count or action.
 
 Completed and failed tasks appear among recent results for up to an hour when

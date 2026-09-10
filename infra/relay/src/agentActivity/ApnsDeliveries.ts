@@ -482,10 +482,16 @@ function makeLiveActivityDeliveryRequest(
   apns: Apns.ApnsClient["Service"],
   input: SendLiveActivityDeliveryInput,
   now: DateTime.DateTime,
+  bundleId: string,
 ) {
   const epochSeconds = Math.floor(now.epochMilliseconds / 1_000);
   const base = {
     token: input.token,
+    appScheme: bundleId.endsWith(".dev")
+      ? "t3code-dev"
+      : bundleId.endsWith(".preview")
+        ? "t3code-preview"
+        : "t3code",
     nowEpochSeconds: epochSeconds,
     nowIso: DateTime.formatIso(now),
   };
@@ -776,6 +782,7 @@ export const make = Effect.gen(function* () {
       apns,
       { ...input, aggregate, alert } as SendLiveActivityDeliveryInput,
       now,
+      credentialsForTarget(config.apns, input.target).bundleId,
     );
     const result = yield* apns
       .sendLiveActivityRequest({

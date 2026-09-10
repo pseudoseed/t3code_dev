@@ -1,3 +1,4 @@
+import { ActivitySummaries } from "../pseudocode/ActivitySummaries.ts";
 import type {
   EnvironmentId,
   OrchestrationEvent,
@@ -85,6 +86,7 @@ export function shouldPublishAgentAwarenessEvent(event: OrchestrationEvent): boo
       return false;
     case "thread.activity-appended":
       return (
+        event.payload.activity.kind === "tool.completed" ||
         event.payload.activity.kind === "approval.requested" ||
         event.payload.activity.kind === "approval.resolved" ||
         event.payload.activity.kind === "provider.approval.respond.failed" ||
@@ -292,6 +294,7 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
+  const summaries = yield* Effect.serviceOption(ActivitySummaries);
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
   const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
@@ -409,12 +412,27 @@ export const make = Effect.gen(function* () {
     const project = Option.isSome(thread)
       ? yield* snapshotQuery.getProjectShellById(thread.value.projectId)
       : Option.none<OrchestrationProjectShell>();
-    const snapshot = resolveAgentAwarenessRelayPublishSnapshot({
+    let snapshot = resolveAgentAwarenessRelayPublishSnapshot({
       environmentId,
       threadId,
       thread,
       project,
     });
+    if (
+      snapshot.state &&
+      Option.isSome(summaries) &&
+      Option.isSome(thread) &&
+      Option.isSome(project)
+    ) {
+      snapshot = {
+        ...snapshot,
+        state: yield* summaries.value.enrich({
+          state: snapshot.state,
+          thread: thread.value,
+          project: project.value,
+        }),
+      };
+    }
     const publishIdentity = agentAwarenessPublishIdentity(snapshot.state);
     const publishedStateByThread = yield* Ref.get(publishedStateByThreadRef);
     if (publishedStateByThread.get(threadId) === publishIdentity) {
@@ -578,6 +596,8 @@ export const make = Effect.gen(function* () {
 
   const start: AgentAwarenessRelay["Service"]["start"] = Effect.fn("AgentAwarenessRelay.start")(
     function* () {
+      if (Option.isSome(summaries))
+        yield* forkParked(Stream.runForEach(summaries.value.changes, worker.enqueue));
       const [relayConfig, publishEnabled] = yield* Effect.all([
         readRelayConfig.pipe(Effect.orElseSucceed(() => null)),
         readPublishAgentActivityEnabled.pipe(Effect.orElseSucceed(() => false)),

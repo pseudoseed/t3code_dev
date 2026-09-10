@@ -79,6 +79,13 @@ export interface ThreadTitleGenerationResult {
 export class TextGeneration extends Context.Service<
   TextGeneration,
   {
+    /** Optional fork capability; unsupported providers retain factual status labels. */
+    readonly generateActivitySummary?: (input: {
+      cwd: string;
+      context: string;
+      modelSelection: ModelSelection;
+    }) => Effect.Effect<{ summary: string }, TextGenerationError>;
+
     /**
      * Generate a commit message from staged change context.
      */

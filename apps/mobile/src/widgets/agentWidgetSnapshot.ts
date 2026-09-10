@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/agentAwareness";
 
 export interface AgentWidgetSnapshot {
+  readonly appScheme?: string;
   readonly activeCount: number;
   readonly attentionCount: number;
   readonly activities: readonly AgentAwarenessState[];
@@ -67,7 +68,7 @@ export function buildAgentWidgetSnapshot(input: {
     }
   }
   const selected = selectWidgetActivities(activities, input.now ?? Date.now());
-  const visible = selected.slice(0, 3);
+  const visible = selected.slice(0, 5);
   const environmentIds = [...new Set(input.projects.map((project) => project.environmentId))];
   return {
     activeCount: activities.filter((activity) => priority(activity.phase) < 2).length,
@@ -87,7 +88,7 @@ export function buildAgentWidgetSnapshot(input: {
               snapshot: {
                 activeCount: rows.filter((activity) => priority(activity.phase) < 2).length,
                 attentionCount: rows.filter((activity) => priority(activity.phase) === 0).length,
-                activities: rows.slice(0, 3),
+                activities: rows.slice(0, 5),
                 updatedAt: rows.reduce<string | null>(
                   (latest, row) =>
                     latest === null || row.updatedAt > latest ? row.updatedAt : latest,
@@ -146,7 +147,7 @@ export function mergeWidgetUpdate(
   const activities = next
     .flatMap((entry) => entry.snapshot.activities)
     .sort((a, b) => priority(a.phase) - priority(b.phase) || b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 3);
+    .slice(0, 5);
   return {
     activeCount: next.reduce((sum, entry) => sum + entry.snapshot.activeCount, 0),
     attentionCount: next.reduce((sum, entry) => sum + entry.snapshot.attentionCount, 0),

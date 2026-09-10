@@ -37,7 +37,7 @@ export function aggregateActivity(
       : "All caught up",
     activeCount: active.length,
     updatedAt: now,
-    activities: selected.slice(0, 3).map((state) => ({
+    activities: selected.slice(0, 5).map((state) => ({
       environmentId: state.environmentId,
       threadId: state.threadId,
       projectTitle: truncate(state.projectTitle),
@@ -46,6 +46,9 @@ export function aggregateActivity(
       phase: state.phase,
       status: state.headline,
       ...(state.detail ? { detail: state.detail } : {}),
+      ...(state.summary ? { summary: state.summary } : {}),
+      ...(state.turnId ? { turnId: state.turnId } : {}),
+      ...(state.projectId ? { projectId: state.projectId } : {}),
       updatedAt: state.updatedAt,
       deepLink: state.deepLink,
     })),
@@ -56,8 +59,9 @@ export function liveActivityPayload(
   nowSeconds: number,
   end = false,
   name = "DirectAgentActivity",
+  appScheme = "t3code",
 ) {
-  const compact = { ...state, activities: [...state.activities] };
+  const compact = { ...state, appScheme, activities: [...state.activities] };
   const make = () => ({
     aps: {
       timestamp: nowSeconds,

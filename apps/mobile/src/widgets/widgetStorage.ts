@@ -1,3 +1,5 @@
+import { reconcileOverviewSnapshot } from "./pseudocode/overviewSnapshot";
+import * as Linking from "expo-linking";
 import type { DirectWidgetUpdate } from "@t3tools/contracts";
 import { mergeWidgetUpdate, type AgentWidgetSnapshot } from "./agentWidgetSnapshot";
 
@@ -11,6 +13,9 @@ export function saveWidgetSnapshot(snapshot: AgentWidgetSnapshot) {
   return write(async () => {
     const { default: widget } = await import("./AgentWidget");
     widget.updateSnapshot(snapshot);
+    const { default: overview } = await import("./pseudocode/OverviewWidget");
+    const previous = (await overview.getTimeline()).at(0)?.props;
+    updateOverview(overview, reconcileOverviewSnapshot(snapshot, previous));
   });
 }
 export function saveWidgetPush(update: DirectWidgetUpdate) {
@@ -21,5 +26,41 @@ export function saveWidgetPush(update: DirectWidgetUpdate) {
     if (!current) return;
     const next = mergeWidgetUpdate(current, update);
     if (next !== current) widget.updateSnapshot(next);
+    const { default: overview } = await import("./pseudocode/OverviewWidget");
+    const overviewCurrent = (await overview.getTimeline()).at(0)?.props ?? current;
+    const overviewNext = mergeWidgetUpdate(overviewCurrent, update);
+    if (overviewNext !== overviewCurrent)
+      updateOverview(overview, {
+        ...overviewNext,
+        activities: overviewNext.activities.map((row) => {
+          const cached = overviewCurrent.activities.find(
+            (other) =>
+              other.environmentId === row.environmentId &&
+              (other.threadId === row.threadId ||
+                (row.projectId != null && other.projectId === row.projectId)) &&
+              other.projectIcon != null,
+          );
+          return { ...row, ...(cached?.projectIcon ? { projectIcon: cached.projectIcon } : {}) };
+        }),
+      });
   });
+}
+
+function updateOverview(
+  widget: import("expo-widgets").Widget<AgentWidgetSnapshot>,
+  snapshot: AgentWidgetSnapshot,
+) {
+  const now = new Date();
+  const props = {
+    ...snapshot,
+    appScheme: Linking.createURL("/").split(":")[0],
+    updatedAt: snapshot.updatedAt ?? now.toISOString(),
+  };
+  widget.updateTimeline([
+    { date: now, props },
+    {
+      date: new Date(Math.max(now.getTime(), Date.parse(props.updatedAt)) + 25 * 60_000 + 1),
+      props,
+    },
+  ]);
 }

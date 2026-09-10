@@ -41,6 +41,9 @@ function aggregateRowForState(state: RelayAgentActivityState) {
     modelTitle: state.modelTitle,
     phase: state.phase,
     status: statusForPhase(state.phase),
+    ...(state.summary ? { summary: state.summary } : {}),
+    ...(state.turnId ? { turnId: state.turnId } : {}),
+    ...(state.projectId ? { projectId: state.projectId } : {}),
     updatedAt: state.updatedAt,
     deepLink: state.deepLink,
   };

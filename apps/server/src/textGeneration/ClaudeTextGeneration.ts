@@ -1,3 +1,4 @@
+import { ACTIVITY_SUMMARY_PROMPT, cleanActivitySummary } from "../pseudocode/activitySummary.ts";
 /**
  * ClaudeTextGeneration – Text generation layer using the Claude CLI.
  *
@@ -102,7 +103,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateActivitySummary",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -132,7 +134,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateActivitySummary";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -187,7 +190,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
-        operation === "generateThreadTitle"
+        operation === "generateThreadTitle" || operation === "generateActivitySummary"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
@@ -408,7 +411,21 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  const generateActivitySummary = Effect.fn("ClaudeTextGeneration.generateActivitySummary")(
+    function* (input: { cwd: string; context: string; modelSelection: ModelSelection }) {
+      const result = yield* runClaudeJson({
+        operation: "generateActivitySummary",
+        cwd: input.cwd,
+        prompt: ACTIVITY_SUMMARY_PROMPT + input.context,
+        outputSchemaJson: Schema.Struct({ summary: Schema.String }),
+        modelSelection: input.modelSelection,
+      });
+      return { summary: cleanActivitySummary(result.summary) };
+    },
+  );
+
   return {
+    generateActivitySummary,
     generateCommitMessage,
     generatePrContent,
     generateBranchName,

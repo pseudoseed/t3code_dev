@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import { type LiveActivity } from "expo-widgets";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -31,7 +32,7 @@ import {
   loadPreferences,
   saveAgentAwarenessRegistrationRecord,
 } from "../../persistence/imperative";
-import AgentActivity, { type AgentActivityProps } from "../../widgets/AgentActivity";
+import AgentActivity, { type AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
 import { supportsAgentAwarenessPush } from "./capabilities";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
@@ -492,6 +493,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     }
     const nowIso = new Date(Date.now()).toISOString();
     const activity = AgentActivity.start({
+      appScheme: Linking.createURL("/").split(":")[0],
       title: "PseudoCode",
       subtitle: "Agent work in progress",
       activeCount: 1,
@@ -1070,6 +1072,7 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
           const primed = yield* Effect.try({
             try: () =>
               AgentActivity.start({
+                appScheme: Linking.createURL("/").split(":")[0],
                 title: aggregate.title,
                 subtitle: aggregate.subtitle,
                 activeCount: aggregate.activeCount,

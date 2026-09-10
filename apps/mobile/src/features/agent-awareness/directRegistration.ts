@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import type { DirectPushRegistration, DirectPushStatus, EnvironmentId } from "@t3tools/contracts";
 import { requestDirectPush } from "@t3tools/client-runtime/rpc";
 import {
@@ -13,7 +14,7 @@ import { AppState } from "react-native";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadOrCreateAgentAwarenessDeviceId } from "../../persistence/imperative";
-import type { AgentActivityProps } from "../../widgets/AgentActivity";
+import type { AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
 
 const command = createRuntimeCommand(connectionAtomRuntime, {
   label: "direct-push",
@@ -69,7 +70,7 @@ async function factory(environmentId: EnvironmentId) {
   if (existing) return existing;
   const [{ createLiveActivity }, { AgentActivity }] = await Promise.all([
     import("expo-widgets"),
-    import("../../widgets/AgentActivity"),
+    import("../../widgets/pseudocode/OverviewActivity"),
   ]);
   const created = createLiveActivity(`DirectAgentActivity:${environmentId}`, AgentActivity);
   factories.set(environmentId, created);
@@ -150,15 +151,18 @@ export function syncDirectPush(
         listeners.delete(environmentId);
       } else if (!activity && AppState.currentState === "active") {
         activity = activityFactory.start(
-          status.activity,
-          "t3code://",
+          { ...status.activity, appScheme: Linking.createURL("/").split(":")[0] },
+          undefined,
           new Date(Date.now() + 600_000),
         );
       }
       if (activity) {
         const token = await attachToken(environmentId, activity);
         if (token) registrations.set(environmentId, { ...registration, activityToken: token });
-        await activity.update(status.activity, new Date(Date.now() + 600_000));
+        await activity.update(
+          { ...status.activity, appScheme: Linking.createURL("/").split(":")[0] },
+          new Date(Date.now() + 600_000),
+        );
       }
     } catch {
       activityFailed = true;

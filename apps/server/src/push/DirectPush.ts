@@ -1,3 +1,4 @@
+import { ActivitySummaries } from "../pseudocode/ActivitySummaries.ts";
 import {
   AuthOrchestrationReadScope,
   AuthSessionId,
@@ -65,6 +66,7 @@ export class DirectPush extends Context.Service<
 >()("t3/push/DirectPush") {}
 
 export const make = Effect.gen(function* () {
+  const summaries = yield* Effect.serviceOption(ActivitySummaries);
   const transport = yield* ApnsTransport;
   const secrets = yield* ServerSecretStore;
   const sessions = yield* AuthSessionRepository;
@@ -124,6 +126,7 @@ export const make = Effect.gen(function* () {
     record: DeviceRecord,
     attention: AgentAwarenessState | null,
     forceEnd = false,
+    statusChanged = false,
   ) {
     const registration = record.registration;
     if (registration.bundleId !== transport.bundleId) return;
@@ -188,8 +191,9 @@ export const make = Effect.gen(function* () {
     } else if (
       !forceEnd &&
       registration.pushToken &&
-      (!lastWidgetPush.has(record.sessionId) ||
-        now.epochMilliseconds - lastWidgetPush.get(record.sessionId)! >= 20 * 60_000)
+      (statusChanged ||
+        !lastWidgetPush.has(record.sessionId) ||
+        now.epochMilliseconds - lastWidgetPush.get(record.sessionId)! >= 5 * 60_000)
     ) {
       yield* push("background", registration.pushToken, {
         aps: { "content-available": 1 },
@@ -209,6 +213,11 @@ export const make = Effect.gen(function* () {
           Math.floor(now.epochMilliseconds / 1000),
           end,
           `DirectAgentActivity:${environmentId}`,
+          registration.bundleId.endsWith(".dev")
+            ? "t3code-dev"
+            : registration.bundleId.endsWith(".preview")
+              ? "t3code-preview"
+              : "t3code",
         ),
       );
       if (end)
@@ -278,7 +287,7 @@ export const make = Effect.gen(function* () {
           const project = Option.isSome(thread)
             ? yield* query.getProjectShellById(thread.value.projectId)
             : Option.none();
-          const next =
+          let next =
             Option.isSome(thread) && Option.isSome(project) && thread.value.archivedAt === null
               ? projectThreadAwareness({
                   environmentId: yield* environment.getEnvironmentId,
@@ -286,6 +295,19 @@ export const make = Effect.gen(function* () {
                   thread: thread.value,
                 })
               : null;
+          if (
+            next &&
+            Option.isSome(summaries) &&
+            Option.isSome(thread) &&
+            Option.isSome(project) &&
+            records.length > 0
+          ) {
+            next = yield* summaries.value.enrich({
+              state: next,
+              thread: thread.value,
+              project: project.value,
+            });
+          }
           const previous = states.get(threadId);
           const previousFlags = attentionFlags.get(threadId);
           const flags = {
@@ -311,7 +333,7 @@ export const make = Effect.gen(function* () {
                 }
               : null;
           for (const record of records)
-            yield* deliver(record, attention).pipe(
+            yield* deliver(record, attention, false, previous?.phase !== next?.phase).pipe(
               Effect.catch(() =>
                 Effect.logWarning(
                   "Direct APNs delivery failed; will reconcile on the next activity change or device registration.",
@@ -323,6 +345,8 @@ export const make = Effect.gen(function* () {
       .pipe(Effect.catch(() => Effect.logWarning("Could not publish direct agent activity.")));
   const start = Effect.fn("DirectPush.start")(function* () {
     if (!transport.bundleId) return;
+    if (Option.isSome(summaries))
+      yield* forkParked(Stream.runForEach(summaries.value.changes, publishThread));
     yield* forkParked(
       Effect.gen(function* () {
         const events = yield* engine.subscribeDomainEvents;

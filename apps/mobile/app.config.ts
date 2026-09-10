@@ -158,6 +158,12 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
     frequentUpdates: true,
     widgets: [
       {
+        name: "PseudoCodeOverview",
+        displayName: "PseudoCode Overview",
+        description: "Project updates, concise summaries, and requests that need you.",
+        supportedFamilies: ["systemMedium", "systemLarge"],
+      },
+      {
         name: "AgentActivity",
         displayName: "PseudoCode",
         description: "Follow your tasks, answer requests, and review recent results.",
