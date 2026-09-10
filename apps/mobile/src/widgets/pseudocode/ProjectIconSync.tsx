@@ -23,13 +23,15 @@ export function ProjectIconSync({
   const key = `${project.environmentId}:${project.id}`;
   useEffect(() => {
     const controller = new AbortController();
-    onIcon(key, null);
     if (url && !isProjectFaviconFallbackUrl(url))
       void downscaleProjectFavicon({ url }, controller.signal)
         .then((icon) => {
           if (!controller.signal.aborted) onIcon(key, icon);
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted)
+            console.warn("Could not prepare widget project icon", error);
+        });
     return () => controller.abort();
   }, [key, url, onIcon]);
   return null;

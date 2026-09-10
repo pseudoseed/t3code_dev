@@ -7,6 +7,7 @@ import {
   lineLimit,
   resizable,
   widgetURL,
+  widgetAccentedRenderingMode,
 } from "@expo/ui/swift-ui/modifiers";
 import { createWidget, type WidgetEnvironment } from "expo-widgets";
 import type { AgentWidgetSnapshot } from "../agentWidgetSnapshot";
@@ -30,14 +31,15 @@ export function OverviewWidget(
   const tint = (phase: string) => {
     if (
       environment.isLuminanceReduced ||
-      (delayed && !phase.startsWith("waiting")) ||
+      (delayed && (phase === "running" || phase === "starting")) ||
       phase === "stale"
     )
       return "secondary";
-    if (phase.startsWith("waiting")) return dark ? "#e9c57c" : "#855600";
-    if (phase === "failed") return dark ? "#ed9caa" : "#a42d49";
-    if (phase === "completed") return dark ? "#a6cbb8" : "#35664d";
-    return dark ? "#8cced3" : "#276c76";
+    if (phase === "waiting_for_input") return dark ? "#c4a1ff" : "#7040a8";
+    if (phase === "waiting_for_approval") return dark ? "#ffc65c" : "#805000";
+    if (phase === "failed") return dark ? "#ff758f" : "#ad2045";
+    if (phase === "completed") return dark ? "#62e4b3" : "#146b49";
+    return dark ? "#68c8ff" : "#126799";
   };
   const label = (phase: string) =>
     delayed && (phase === "running" || phase === "starting")
@@ -81,6 +83,14 @@ export function OverviewWidget(
       ]}
     >
       <HStack spacing={6}>
+        <Image
+          assetName="AppMark"
+          modifiers={[
+            resizable(),
+            widgetAccentedRenderingMode("fullColor"),
+            frame({ width: 18, height: 18 }),
+          ]}
+        />
         <Text modifiers={[font({ size: 13, weight: "semibold" }), foregroundStyle("primary")]}>
           PseudoCode
         </Text>
@@ -96,7 +106,9 @@ export function OverviewWidget(
         >
           {(props.attentionCount ?? 0) > 0
             ? `${props.attentionCount} need you`
-            : `${props.activeCount ?? 0} active`}
+            : (props.activeCount ?? 0) > 0
+              ? `${props.activeCount} active`
+              : "Recent results"}
         </Text>
       </HStack>
       {rows.map((row) => (
@@ -107,6 +119,7 @@ export function OverviewWidget(
                 uiImage={row.projectIcon}
                 modifiers={[
                   resizable(),
+                  widgetAccentedRenderingMode("fullColor"),
                   frame({ width: 24, height: 24 }),
                   accessibilityLabel(row.projectTitle),
                 ]}
@@ -151,7 +164,7 @@ export function OverviewWidget(
                 <Spacer minLength={2} />
                 <Text
                   modifiers={[
-                    font({ size: 10, weight: "semibold" }),
+                    font({ size: large ? 12 : 10, weight: "semibold" }),
                     foregroundStyle(tint(row.phase)),
                     lineLimit(1),
                   ]}

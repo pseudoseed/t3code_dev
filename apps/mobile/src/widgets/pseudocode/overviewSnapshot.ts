@@ -44,8 +44,15 @@ export function reconcileOverviewSnapshot(
           other.phase === row.phase &&
           other.turnId === row.turnId,
       );
-      const icon = snapshot.activities.find(
-        (other) => other.environmentId === row.environmentId && other.threadId === row.threadId,
+      // Icons belong to a project, not a turn. Keep the last resolved bitmap while
+      // the app reconnects, including when a different thread becomes visible.
+      const icon = [...snapshot.activities, ...(previous?.activities ?? [])].find(
+        (other) =>
+          other.projectIcon &&
+          other.environmentId === row.environmentId &&
+          (row.projectId != null
+            ? other.projectId === row.projectId
+            : other.threadId === row.threadId),
       )?.projectIcon;
       return {
         ...row,

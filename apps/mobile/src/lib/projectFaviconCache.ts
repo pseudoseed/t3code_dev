@@ -6,6 +6,7 @@ import {
   type ProjectFaviconEntry,
 } from "@t3tools/client-runtime/project-favicon-cache";
 import * as Effect from "effect/Effect";
+import { Platform } from "react-native";
 
 import * as MobileDatabase from "../persistence/mobile-database";
 
@@ -31,9 +32,8 @@ const runDatabase = <A, E>(
     : Promise.reject(new Error("Project icon storage is not attached."));
 
 /**
- * Rasterizes a bitmap that is too large to inline. The native decoder writes the
- * downsized frame to expo-image's disk cache, which is the only encode path it
- * exposes; the temporary entry is removed once its bytes are read.
+ * Produces a bounded bitmap for the cache and WidgetKit. iOS repaints decoded
+ * vectors before PNG encoding; Android uses expo-image's temporary disk cache.
  */
 export async function downscaleProjectFavicon(
   image: { readonly url: string },
@@ -44,11 +44,23 @@ export async function downscaleProjectFavicon(
     import("expo-file-system"),
   ]);
   for (const size of [PROJECT_FAVICON_THUMBNAIL_SIZE, PROJECT_FAVICON_THUMBNAIL_SIZE / 2]) {
-    signal.throwIfAborted();
+    if (signal.aborted) throw new Error("Project icon request aborted.");
     const decoded = await Image.loadAsync(image.url, { maxWidth: size, maxHeight: size });
     const cacheKey = `t3-favicon-thumbnail:${size}:${image.url}`;
     try {
-      signal.throwIfAborted();
+      if (signal.aborted) throw new Error("Project icon request aborted.");
+      if (Platform.OS === "ios") {
+        const { requireNativeModule } = await import("expo-modules-core");
+        const native = requireNativeModule<{
+          projectIconPng: (
+            image: import("expo-image").ImageRef,
+            maximumSize: number,
+          ) => string | null;
+        }>("T3NativeControls");
+        const dataUrl = native.projectIconPng(decoded, size);
+        if (dataUrl && dataUrl.length <= PROJECT_FAVICON_MAX_DATA_URL_LENGTH) return dataUrl;
+        continue;
+      }
       if (decoded.width > size || decoded.height > size) {
         throw new Error("Project icon was not resized.");
       }
@@ -59,7 +71,7 @@ export async function downscaleProjectFavicon(
       try {
         if (file.size > PROJECT_FAVICON_MAX_DATA_URL_LENGTH) continue;
         const base64 = await file.base64();
-        // SDWebImage chooses JPEG for opaque images and PNG for transparency; Glide always writes PNG.
+        // Detect the cache encoding rather than trusting the source extension.
         const mimeType = base64.startsWith("/9j/")
           ? "image/jpeg"
           : base64.startsWith("iVBORw0KGgo")

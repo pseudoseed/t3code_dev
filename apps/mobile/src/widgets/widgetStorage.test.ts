@@ -37,7 +37,7 @@ const row = {
   deepLink: "/threads/env/thread",
   projectIcon: "data:image/png;base64,aWNvbg==",
 };
-function snapshot(activity = row): AgentWidgetSnapshot {
+function snapshot(activity: AgentWidgetSnapshot["activities"][number] = row): AgentWidgetSnapshot {
   const state = {
     activeCount: 1,
     attentionCount: 0,
@@ -113,4 +113,28 @@ it("does not roll an attention push back when an older foreground snapshot arriv
     phase: "waiting_for_input",
     summary: "Choose the deployment environment.",
   });
+});
+
+it("keeps a project's resolved icon while foreground image loading restarts", async () => {
+  await saveWidgetSnapshot(snapshot());
+  const { projectIcon: _icon, ...withoutIcon } = row;
+  await saveWidgetSnapshot(snapshot(withoutIcon));
+  expect(storage.overview[0]?.props.activities[0]?.projectIcon).toBe(row.projectIcon);
+});
+
+it("reuses icons for another thread in the same project without crossing environments", async () => {
+  await saveWidgetSnapshot(snapshot({ ...row, projectId: "project" }));
+  const { projectIcon: _icon, ...withoutIcon } = row;
+  await saveWidgetSnapshot(
+    snapshot({ ...withoutIcon, projectId: "project", threadId: ThreadId.make("other") }),
+  );
+  expect(storage.overview[0]?.props.activities[0]?.projectIcon).toBe(row.projectIcon);
+  const otherEnvironment = EnvironmentId.make("other-environment");
+  await saveWidgetSnapshot({
+    activeCount: 1,
+    attentionCount: 0,
+    updatedAt: row.updatedAt,
+    activities: [{ ...withoutIcon, projectId: "project", environmentId: otherEnvironment }],
+  });
+  expect(storage.overview[0]?.props.activities[0]?.projectIcon).toBeUndefined();
 });

@@ -269,6 +269,18 @@ describe("project favicon image loader", () => {
     expect(downscale).not.toHaveBeenCalled();
   });
 
+  it("loads icons with React Native's AbortSignal and still respects cancellation", async () => {
+    const controller = new AbortController();
+    // React Native exposes `aborted` but not this newer browser method.
+    Object.defineProperty(controller.signal, "throwIfAborted", { value: undefined });
+    const response = () => new Response(svg, { headers: { "content-type": "image/svg+xml" } });
+    expect(await loader(response()).load(url, controller.signal)).toBe(
+      `data:image/svg+xml;base64,${svgBase64}`,
+    );
+    controller.abort();
+    await expect(loader(response()).load(url, controller.signal)).rejects.toThrow("aborted");
+  });
+
   it("falls back to the file extension when the response has no image type", async () => {
     const { load } = loader(new Response(svg, { headers: { "content-type": "text/plain" } }));
     expect(await load(url, signal())).toBe(`data:image/svg+xml;base64,${svgBase64}`);
