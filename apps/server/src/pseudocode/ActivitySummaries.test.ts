@@ -140,3 +140,30 @@ it("removes emoji and bounds generated text", () => {
   expect(cleanActivitySummary("  ✨ Checking\n routing.  ")).toBe("Checking routing.");
   expect(cleanActivitySummary("a".repeat(200))).toHaveLength(160);
 });
+
+it.effect("retries identical evidence after a transient generation failure", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    let calls = 0;
+    const service = yield* makeActivitySummaries(() =>
+      Effect.suspend(() => {
+        calls++;
+        return calls === 1
+          ? Effect.fail(
+              new TextGenerationError({
+                operation: "generateActivitySummary",
+                detail: "temporary failure",
+              }),
+            )
+          : Effect.succeed({ summary: "Checking notification routing." });
+      }),
+    );
+    yield* service.enrich(f.request());
+    yield* service.drain;
+    yield* TestClock.adjust("2 minutes");
+    yield* service.enrich(f.request());
+    yield* service.drain;
+    expect((yield* service.enrich(f.request())).summary).toBe("Checking notification routing.");
+    expect(calls).toBe(2);
+  }).pipe(Effect.provide(f.layer), Effect.scoped);
+});

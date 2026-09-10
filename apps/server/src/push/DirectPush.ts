@@ -332,8 +332,12 @@ export const make = Effect.gen(function* () {
                   headline: phase === "waiting_for_input" ? "Waiting for input" : "Approval needed",
                 }
               : null;
+          // Generation finishes after the phase update. Deliver its result even
+          // inside the routine refresh interval; there may be no later event.
+          const meaningfulUpdate =
+            previous?.phase !== next?.phase || previous?.summary !== next?.summary;
           for (const record of records)
-            yield* deliver(record, attention, false, previous?.phase !== next?.phase).pipe(
+            yield* deliver(record, attention, false, meaningfulUpdate).pipe(
               Effect.catch(() =>
                 Effect.logWarning(
                   "Direct APNs delivery failed; will reconcile on the next activity change or device registration.",

@@ -75,10 +75,11 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
         activities,
       });
       if (context === entry.context) return;
-      entry.context = context;
       const result = yield* generate(context, input.project.workspaceRoot).pipe(
         Effect.timeout("30 seconds"),
       );
+      // A failed or unavailable provider must be allowed to retry the same evidence.
+      if (result) entry.context = context;
       // A delayed result must never describe a newer turn or overwrite an attention transition.
       const current = yield* query.getThreadShellById(threadId);
       if (

@@ -6,10 +6,12 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  TurnId,
   AuthOrchestrationReadScope,
   type DirectPushRegistration,
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
+import { ActivitySummaries } from "../pseudocode/ActivitySummaries.ts";
 import { DirectPush, make } from "./DirectPush.ts";
 import { ApnsTransport, type ApnsRequest, type ApnsResult } from "./ApnsTransport.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
@@ -96,10 +98,14 @@ function harness() {
   const requests: ApnsRequest[] = [];
   let result: ApnsResult = { status: 200 };
   let revoked = false;
+  let summary: string | undefined;
   const secrets = new Map<string, Uint8Array>();
   const layer = Layer.effect(DirectPush, make).pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(ActivitySummaries)({
+          enrich: ({ state }) => Effect.succeed({ ...state, ...(summary ? { summary } : {}) }),
+        }),
         Layer.succeed(ApnsTransport, {
           bundleId: "test.app",
           send: (request) =>
@@ -138,6 +144,9 @@ function harness() {
     layer,
     requests,
     secrets,
+    summarize: (value: string) => {
+      summary = value;
+    },
     change: (patch: Partial<OrchestrationThreadShell>) => {
       thread = { ...thread, ...patch };
     },
@@ -269,4 +278,62 @@ it("bounds ActivityKit payload bytes with Unicode titles and uses the right layo
   );
   expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThanOrEqual(4096);
   expect(payload.aps["content-state"].name).toBe(`DirectAgentActivity:${environmentId}`);
+});
+
+it.effect(
+  "delivers a generated summary after the immediate phase push, without another phase change",
+  () => {
+    const h = harness();
+    return Effect.gen(function* () {
+      const push = yield* DirectPush;
+      yield* push.register(sessionId, registration);
+      h.requests.length = 0;
+      h.summarize("Checking notification delivery retries.");
+      yield* push.publishThread(threadId);
+      const updates = h.requests.filter((request) => request.kind === "background");
+      expect(updates).toHaveLength(1);
+      expect(updates[0]?.payload).toMatchObject({
+        directWidget: {
+          activity: {
+            activities: [{ summary: "Checking notification delivery retries." }],
+          },
+        },
+      });
+      yield* push.publishThread(threadId);
+      expect(h.requests.filter((request) => request.kind === "background")).toHaveLength(1);
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+
+it.effect("sends the final summary after the live activity has ended", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const push = yield* DirectPush;
+    yield* push.register(sessionId, registration);
+    h.change({
+      session: null,
+      latestTurn: {
+        turnId: TurnId.make("finished"),
+        state: "completed",
+        requestedAt: now,
+        startedAt: now,
+        completedAt: now,
+        assistantMessageId: null,
+      },
+    });
+    yield* push.publishThread(threadId);
+    h.requests.length = 0;
+    h.summarize("Fixed retries and verified notification delivery.");
+    yield* push.publishThread(threadId);
+    expect(h.requests.filter((request) => request.kind === "liveactivity")).toHaveLength(0);
+    expect(h.requests.find((request) => request.kind === "background")?.payload).toMatchObject({
+      directWidget: {
+        activity: {
+          activities: [
+            { phase: "completed", summary: "Fixed retries and verified notification delivery." },
+          ],
+        },
+      },
+    });
+  }).pipe(Effect.provide(h.layer));
 });
