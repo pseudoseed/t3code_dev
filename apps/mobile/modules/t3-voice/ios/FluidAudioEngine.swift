@@ -13,11 +13,14 @@ struct SpeakerFilteringOutcome {
   /// A `SpeakerFilterFallback` raw value when filtering was asked for and did
   /// not happen.
   let fallbackReason: String?
+  /// Audio dropped as other voices, so the composer can say how much went.
+  let removedSeconds: Double
 
   static let notRequested = SpeakerFilteringOutcome(
     requested: false,
     applied: false,
-    fallbackReason: nil
+    fallbackReason: nil,
+    removedSeconds: 0
   )
 }
 
@@ -167,7 +170,7 @@ actor FluidAudioEngine {
     try Task.checkCancellation()
 
     switch decision {
-    case let .filter(_, ranges):
+    case let .filter(_, ranges, removedSeconds):
       let filtered = Self.slice(samples, to: ranges)
       let text = try await Self.transcribe(filtered, with: asrManager, locale: locale)
       return VoiceTranscriptionOutput(
@@ -175,7 +178,8 @@ actor FluidAudioEngine {
         speakerFiltering: SpeakerFilteringOutcome(
           requested: true,
           applied: true,
-          fallbackReason: nil
+          fallbackReason: nil,
+          removedSeconds: removedSeconds
         )
       )
     case let .passThrough(reason):
@@ -185,7 +189,8 @@ actor FluidAudioEngine {
         speakerFiltering: SpeakerFilteringOutcome(
           requested: true,
           applied: false,
-          fallbackReason: reason.rawValue
+          fallbackReason: reason.rawValue,
+          removedSeconds: 0
         )
       )
     }
@@ -223,23 +228,49 @@ actor FluidAudioEngine {
   ) throws -> SpeakerFilterDecision {
     let result = try diarizer.performCompleteDiarization(samples, sampleRate: sampleRate)
     let spans = result.segments.map { segment in
-      SpeakerSpan(
+      let start = Double(segment.startTimeSeconds)
+      let end = Double(segment.endTimeSeconds)
+      return SpeakerSpan(
         speakerId: segment.speakerId,
-        startSeconds: Double(segment.startTimeSeconds),
-        endSeconds: Double(segment.endTimeSeconds)
+        startSeconds: start,
+        endSeconds: end,
+        levelDb: Self.level(of: samples, from: start, to: end)
       )
     }
 
     let decision = SpeakerFilter.decide(spans: spans)
-    // What the diarizer heard, so a filter that quietly did nothing can be told
-    // apart from one that decided not to.
-    let speakers = Set(spans.map(\.speakerId)).count
+    // What the diarizer heard, per voice, so a wrong drop can be traced to the
+    // duration or level that caused it and the thresholds tuned from a real
+    // recording rather than a guess.
+    let levels = SpeakerFilter.levelBySpeaker(spans)
+    var seconds: [String: Double] = [:]
+    for span in spans { seconds[span.speakerId, default: 0] += span.duration }
+    let voices = seconds.keys.sorted().map { id in
+      let level = levels[id].map { String(format: "%.1fdB", $0) } ?? "?"
+      return "\(id)=\(String(format: "%.1fs", seconds[id] ?? 0))@\(level)"
+    }
     VoiceDiagnostics.report(
       "speakers",
-      "spans=\(spans.count) speakers=\(speakers) decision=\(String(describing: decision))"
+      "spans=\(spans.count) voices=[\(voices.joined(separator: " "))] decision=\(String(describing: decision))"
     )
 
     return decision
+  }
+
+  /// Mean level of one stretch in dBFS, the evidence for how far a voice was
+  /// from the microphone. Nil for an empty stretch.
+  private static func level(of samples: [Float], from startSeconds: Double, to endSeconds: Double)
+    -> Double?
+  {
+    let start = max(0, Int(startSeconds * Double(sampleRate)))
+    let end = min(samples.count, Int(endSeconds * Double(sampleRate)))
+    guard start < end else { return nil }
+    var power = 0.0
+    for sample in samples[start..<end] {
+      power += Double(sample) * Double(sample)
+    }
+    let mean = power / Double(end - start)
+    return 10 * log10(max(mean, 1e-12))
   }
 
   /// Concatenates the kept ranges into one buffer.

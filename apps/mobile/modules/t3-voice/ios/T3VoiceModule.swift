@@ -249,6 +249,7 @@ public class T3VoiceModule: Module {
         "requested": output.speakerFiltering.requested,
         "applied": output.speakerFiltering.applied,
         "fallbackReason": output.speakerFiltering.fallbackReason as Any,
+        "removedSeconds": output.speakerFiltering.removedSeconds,
       ],
     ]
   }

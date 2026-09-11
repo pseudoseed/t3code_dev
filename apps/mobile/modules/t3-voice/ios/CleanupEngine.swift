@@ -40,7 +40,8 @@ private final class CancellationFlag: @unchecked Sendable {
 /// `@unchecked Sendable` because every mutable property below is touched only
 /// on `queue`.
 final class CleanupEngine: @unchecked Sendable {
-  /// Enough for a five-minute dictation plus the prompt and its hints, clamped
+  /// Enough for several minutes of dictation plus the prompt and its hints; longer
+  /// transcripts arrive in chunks from the controller. Clamped
   /// down to whatever the model was actually trained on.
   private static let contextLength: Int32 = 4096
 
