@@ -17,6 +17,8 @@ export interface AgentWidgetSnapshot {
   readonly attentionCount: number;
   readonly activities: readonly AgentAwarenessState[];
   readonly updatedAt: string | null;
+  /** Last resolved bitmap per `environmentId:projectId`; see `carryProjectIcons`. */
+  readonly projectIcons?: Readonly<Record<string, string>>;
   readonly environments?: readonly {
     readonly environmentId: string;
     readonly snapshot: AgentWidgetSnapshot;

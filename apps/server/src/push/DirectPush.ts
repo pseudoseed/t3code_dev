@@ -33,8 +33,12 @@ import {
   aggregateActivity,
   attentionPayload,
   compactWidgetUpdate,
+  isActive,
   liveActivityPayload,
 } from "./payloads.ts";
+
+/** Background pushes are budgeted by iOS; below the widget's 25 minute delayed threshold. */
+const HEARTBEAT_INTERVAL = "10 minutes";
 
 const RecordSchema = Schema.Struct({
   sessionId: AuthSessionId,
@@ -61,6 +65,7 @@ export class DirectPush extends Context.Service<
     ) => Effect.Effect<DirectPushStatus, DirectPushError>;
     readonly unregister: (sessionId: AuthSessionId) => Effect.Effect<void, DirectPushError>;
     readonly publishThread: (threadId: ThreadId) => Effect.Effect<void>;
+    readonly refresh: () => Effect.Effect<void>;
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
   }
 >()("t3/push/DirectPush") {}
@@ -347,10 +352,32 @@ export const make = Effect.gen(function* () {
         }),
       )
       .pipe(Effect.catch(() => Effect.logWarning("Could not publish direct agent activity.")));
+  // Long turns emit no shell changes, so devices would otherwise read a working
+  // agent as delayed. Routine delivery still applies its own interval.
+  const refresh = () =>
+    mutex
+      .withPermit(
+        Effect.gen(function* () {
+          if (!transport.bundleId || records.length === 0) return;
+          yield* hydrate;
+          if (![...states.values()].some(isActive)) return;
+          for (const record of records)
+            yield* deliver(record, null).pipe(
+              Effect.catch(() => Effect.logWarning("Direct APNs heartbeat delivery failed.")),
+            );
+        }),
+      )
+      .pipe(Effect.catch(() => Effect.logWarning("Could not refresh direct agent activity.")));
   const start = Effect.fn("DirectPush.start")(function* () {
     if (!transport.bundleId) return;
     if (Option.isSome(summaries))
       yield* forkParked(Stream.runForEach(summaries.value.changes, publishThread));
+    yield* forkParked(
+      refresh().pipe(
+        Effect.repeat(Schedule.spaced(HEARTBEAT_INTERVAL)),
+        Effect.delay(HEARTBEAT_INTERVAL),
+      ),
+    );
     yield* forkParked(
       Effect.gen(function* () {
         const events = yield* engine.subscribeDomainEvents;
@@ -380,6 +407,7 @@ export const make = Effect.gen(function* () {
       register(id, registration).pipe(Effect.mapError(operationError)),
     unregister: (id) => unregister(id).pipe(Effect.mapError(operationError)),
     publishThread,
+    refresh,
     start,
   });
 });

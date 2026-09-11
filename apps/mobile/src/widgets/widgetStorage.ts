@@ -1,4 +1,4 @@
-import { reconcileOverviewSnapshot } from "./pseudocode/overviewSnapshot";
+import { carryProjectIcons, reconcileOverviewSnapshot } from "./pseudocode/overviewSnapshot";
 import * as Linking from "expo-linking";
 import type { DirectWidgetUpdate } from "@t3tools/contracts";
 import { mergeWidgetUpdate, type AgentWidgetSnapshot } from "./agentWidgetSnapshot";
@@ -15,7 +15,7 @@ export function saveWidgetSnapshot(snapshot: AgentWidgetSnapshot) {
     widget.updateSnapshot(snapshot);
     const { default: overview } = await import("./pseudocode/OverviewWidget");
     const previous = (await overview.getTimeline()).at(0)?.props;
-    updateOverview(overview, reconcileOverviewSnapshot(snapshot, previous));
+    updateOverview(overview, reconcileOverviewSnapshot(snapshot, previous), previous);
   });
 }
 export function saveWidgetPush(update: DirectWidgetUpdate) {
@@ -29,30 +29,18 @@ export function saveWidgetPush(update: DirectWidgetUpdate) {
     const { default: overview } = await import("./pseudocode/OverviewWidget");
     const overviewCurrent = (await overview.getTimeline()).at(0)?.props ?? current;
     const overviewNext = mergeWidgetUpdate(overviewCurrent, update);
-    if (overviewNext !== overviewCurrent)
-      updateOverview(overview, {
-        ...overviewNext,
-        activities: overviewNext.activities.map((row) => {
-          const cached = overviewCurrent.activities.find(
-            (other) =>
-              other.environmentId === row.environmentId &&
-              (other.threadId === row.threadId ||
-                (row.projectId != null && other.projectId === row.projectId)) &&
-              other.projectIcon != null,
-          );
-          return { ...row, ...(cached?.projectIcon ? { projectIcon: cached.projectIcon } : {}) };
-        }),
-      });
+    if (overviewNext !== overviewCurrent) updateOverview(overview, overviewNext, overviewCurrent);
   });
 }
 
 function updateOverview(
   widget: import("expo-widgets").Widget<AgentWidgetSnapshot>,
   snapshot: AgentWidgetSnapshot,
+  previous: AgentWidgetSnapshot | undefined,
 ) {
   const now = new Date();
   const props = {
-    ...snapshot,
+    ...carryProjectIcons(snapshot, previous),
     appScheme: Linking.createURL("/").split(":")[0],
     updatedAt: snapshot.updatedAt ?? now.toISOString(),
   };

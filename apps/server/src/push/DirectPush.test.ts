@@ -1,5 +1,6 @@
 import { it, expect } from "@effect/vitest";
 import { Effect, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import {
   AuthSessionId,
   EnvironmentId,
@@ -335,5 +336,28 @@ it.effect("sends the final summary after the live activity has ended", () => {
         },
       },
     });
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect("heartbeats the widget while an agent is active and stays quiet when idle", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const push = yield* DirectPush;
+    yield* push.register(sessionId, registration);
+    h.requests.length = 0;
+    yield* push.refresh();
+    expect(h.requests.filter((request) => request.kind === "background")).toHaveLength(0);
+    yield* TestClock.adjust("10 minutes");
+    yield* push.refresh();
+    expect(h.requests.filter((request) => request.kind === "background")).toHaveLength(1);
+    expect(h.requests.find((request) => request.kind === "liveactivity")?.payload).toMatchObject({
+      aps: { event: "update" },
+    });
+    h.change({ session: null, latestTurn: null, updatedAt: "2026-09-06T12:10:00.000Z" });
+    yield* push.publishThread(threadId);
+    h.requests.length = 0;
+    yield* TestClock.adjust("10 minutes");
+    yield* push.refresh();
+    expect(h.requests).toEqual([]);
   }).pipe(Effect.provide(h.layer));
 });
