@@ -121,6 +121,87 @@ export type CleanupOutcome =
   | { readonly kind: "cleaned"; readonly text: string }
   | { readonly kind: "raw"; readonly text: string; readonly reason: CleanupDegradeReason };
 
+/** What the composer says when only some chunks of a long transcript degraded. */
+export const CLEANUP_PARTIAL_NOTICE =
+  "Part of the message could not be cleaned up and was kept as transcribed.";
+
+/**
+ * How much transcript one rewrite is given.
+ *
+ * A long dictation is cleaned in pieces rather than in one pass. One pass over
+ * a five-minute transcript needs more output tokens than the cap allows and
+ * more time than the timeout, so it degrades to raw text exactly when cleanup
+ * would help most. A piece this size finishes well inside both on every model
+ * shipped, and a piece that degrades costs only its own sentences.
+ */
+const CLEANUP_CHUNK_TARGET_LENGTH = 700;
+
+export type CleanupChunk = {
+  readonly text: string;
+  /** Whitespace that followed the chunk, preserved when the pieces are joined. */
+  readonly separator: string;
+};
+
+/**
+ * Splits a transcript at sentence ends into chunks of roughly the target
+ * length. A short transcript is one chunk. A transcript without punctuation
+ * splits at word boundaries instead, so nothing is ever cut mid-word.
+ */
+export function splitTranscriptForCleanup(
+  transcript: string,
+  target = CLEANUP_CHUNK_TARGET_LENGTH,
+): readonly CleanupChunk[] {
+  const trimmed = transcript.trim();
+  if (trimmed.length === 0) return [];
+  if (trimmed.length <= target * 1.5) return [{ text: trimmed, separator: "" }];
+
+  const units: string[] = [];
+  for (const sentence of trimmed.match(/[^.!?\n]*[.!?\n]+\s*|[^.!?\n]+$/g) ?? [trimmed]) {
+    if (sentence.length <= target * 1.5) {
+      units.push(sentence);
+      continue;
+    }
+    // No punctuation for a long stretch: fall back to words.
+    let current = "";
+    for (const word of sentence.match(/\S+\s*/g) ?? []) {
+      if (current.length > 0 && current.length + word.length > target) {
+        units.push(current);
+        current = "";
+      }
+      current += word;
+    }
+    if (current.length > 0) units.push(current);
+  }
+
+  const chunks: CleanupChunk[] = [];
+  let current = "";
+  const flush = () => {
+    const text = current.trim();
+    if (text.length === 0) return;
+    const trailing = current.slice(current.trimEnd().length);
+    chunks.push({ text, separator: trailing.includes("\n") ? "\n\n" : " " });
+    current = "";
+  };
+  for (const unit of units) {
+    if (current.length > 0 && current.length + unit.length > target) flush();
+    current += unit;
+  }
+  flush();
+  if (chunks.length > 0)
+    chunks[chunks.length - 1] = { ...chunks[chunks.length - 1]!, separator: "" };
+  return chunks;
+}
+
+/** Reassembles cleaned or raw pieces in transcript order. */
+export function joinCleanupChunks(
+  chunks: readonly CleanupChunk[],
+  texts: readonly string[],
+): string {
+  return chunks
+    .map((chunk, index) => (texts[index] ?? chunk.text).trim() + chunk.separator)
+    .join("");
+}
+
 /**
  * Decides whether a cleanup result is usable, or whether the raw transcript
  * wins.

@@ -1,6 +1,45 @@
 import { selectWidgetActivities } from "@t3tools/shared/agentAwareness";
 import type { AgentWidgetSnapshot } from "../agentWidgetSnapshot";
 
+/** Bounded by WidgetKit's App Group defaults and extension memory; 5 rows are visible. */
+const PROJECT_ICON_LIMIT = 8;
+
+const projectIconKey = (row: AgentWidgetSnapshot["activities"][number]) =>
+  row.projectId != null ? `${row.environmentId}:${row.projectId}` : null;
+
+/**
+ * Icons belong to a project, not a turn. They resolve only while the app is open,
+ * so every write carries the last known bitmap forward in `projectIcons`, including
+ * for projects that a background push rotated out of the visible rows.
+ */
+export function carryProjectIcons(
+  snapshot: AgentWidgetSnapshot,
+  previous?: AgentWidgetSnapshot,
+): AgentWidgetSnapshot {
+  const icons = new Map(Object.entries(previous?.projectIcons ?? {}));
+  for (const row of [...(previous?.activities ?? []), ...snapshot.activities]) {
+    const key = projectIconKey(row);
+    if (!key || !row.projectIcon) continue;
+    icons.delete(key);
+    icons.set(key, row.projectIcon);
+  }
+  const projectIcons = Object.fromEntries([...icons].slice(-PROJECT_ICON_LIMIT));
+  const activities = snapshot.activities.map((row) => {
+    if (row.projectIcon) return row;
+    const key = projectIconKey(row);
+    const icon = key
+      ? projectIcons[key]
+      : [...snapshot.activities, ...(previous?.activities ?? [])].find(
+          (other) =>
+            other.projectIcon &&
+            other.environmentId === row.environmentId &&
+            other.threadId === row.threadId,
+        )?.projectIcon;
+    return icon ? { ...row, projectIcon: icon } : row;
+  });
+  return { ...snapshot, activities, projectIcons };
+}
+
 /** A cached shell or late icon load must not roll back a more recent server push. */
 export function reconcileOverviewSnapshot(
   snapshot: AgentWidgetSnapshot,
@@ -44,21 +83,7 @@ export function reconcileOverviewSnapshot(
           other.phase === row.phase &&
           other.turnId === row.turnId,
       );
-      // Icons belong to a project, not a turn. Keep the last resolved bitmap while
-      // the app reconnects, including when a different thread becomes visible.
-      const icon = [...snapshot.activities, ...(previous?.activities ?? [])].find(
-        (other) =>
-          other.projectIcon &&
-          other.environmentId === row.environmentId &&
-          (row.projectId != null
-            ? other.projectId === row.projectId
-            : other.threadId === row.threadId),
-      )?.projectIcon;
-      return {
-        ...row,
-        ...(cached?.summary && !row.summary ? { summary: cached.summary } : {}),
-        ...(icon ? { projectIcon: icon } : {}),
-      };
+      return { ...row, ...(cached?.summary && !row.summary ? { summary: cached.summary } : {}) };
     }),
   };
 }

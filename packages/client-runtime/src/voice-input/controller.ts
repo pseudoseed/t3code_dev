@@ -2,7 +2,11 @@ import { replaceTextRange } from "@t3tools/shared/composerTrigger";
 
 import {
   CLEANUP_FALLBACK_NOTICES,
+  CLEANUP_PARTIAL_NOTICE,
+  joinCleanupChunks,
   resolveCleanupOutcome,
+  splitTranscriptForCleanup,
+  type CleanupDegradeReason,
   type CleanupOutcome,
   type VoiceCleanup,
 } from "./cleanup.ts";
@@ -13,7 +17,13 @@ import {
   type VoiceTranscriber,
 } from "./transcription.ts";
 
-export const VOICE_RECORDING_LIMIT_SECONDS = 5 * 60;
+/**
+ * Long enough that a long-winded message never hits it in practice; the cap
+ * exists so a forgotten microphone cannot record indefinitely. Hitting it is
+ * disclosed, since the words after it are gone.
+ */
+export const VOICE_RECORDING_LIMIT_SECONDS = 15 * 60;
+const RECORDING_LIMIT_NOTICE = `Recording stopped at the ${VOICE_RECORDING_LIMIT_SECONDS / 60} minute limit. Anything said after that was not captured.`;
 
 export type VoiceInputPhase =
   | "idle"
@@ -432,7 +442,10 @@ export class VoiceInputController {
       if (!status.url) {
         return this.interruptRecording();
       }
-      return this.finishRecording(true, status.url);
+      // The user's own stop goes through `stop()`; a finish that arrives while
+      // still recording means the native duration cap ended the capture.
+      this.rememberRecordingUri(status.url);
+      return this.finishRecording(true, status.url, RECORDING_LIMIT_NOTICE);
     }
   }
 
@@ -582,7 +595,12 @@ export class VoiceInputController {
         const outcome = await this.runCleanup(cleanup, transcript);
         committedTranscript = outcome.text;
         if (outcome.kind === "raw") {
-          notice = [notice, CLEANUP_FALLBACK_NOTICES[outcome.reason]].filter(Boolean).join(" ");
+          notice = [
+            notice,
+            outcome.partial ? CLEANUP_PARTIAL_NOTICE : CLEANUP_FALLBACK_NOTICES[outcome.reason],
+          ]
+            .filter(Boolean)
+            .join(" ");
         }
         if (!this.isCurrent(operationToken)) return;
       }
@@ -676,28 +694,64 @@ export class VoiceInputController {
    * stops between tokens, so only the side running it can end a run early; a
    * timer here would abandon the promise while the model kept burning battery.
    */
-  private async runCleanup(cleanup: VoiceCleanup, transcript: string): Promise<CleanupOutcome> {
+  private async runCleanup(
+    cleanup: VoiceCleanup,
+    transcript: string,
+  ): Promise<CleanupOutcome & { readonly partial?: boolean }> {
     const abortController = new AbortController();
     this.cleanupAbortController = abortController;
-    let modelPrepared = false;
+    const signal = abortController.signal;
+    const degradeReason = (): CleanupDegradeReason => (signal.aborted ? "cancelled" : "failed");
 
     try {
-      const cleaned = await runTranscriptionOperation(async () => {
-        const prepared = await cleanup.prepare({ signal: abortController.signal });
-        modelPrepared = true;
-        return prepared.clean(transcript, { signal: abortController.signal });
-      });
-      return resolveCleanupOutcome(transcript, cleaned);
+      // A long transcript is rewritten piece by piece. Each piece degrades on
+      // its own, so a timeout on the last one keeps the rest of the cleanup
+      // instead of throwing the whole rewrite away.
+      const chunks = splitTranscriptForCleanup(transcript);
+      const texts: string[] = [];
+      let reason: CleanupDegradeReason | null = null;
+      let cleanedCount = 0;
+      let failed = false;
+
+      const prepared = await runTranscriptionOperation(() => cleanup.prepare({ signal })).catch(
+        () => null,
+      );
+      if (!prepared) {
+        return {
+          kind: "raw",
+          text: transcript,
+          reason: signal.aborted ? "cancelled" : "load-failed",
+        };
+      }
+
+      for (const chunk of chunks) {
+        // A cancel or a thrown rewrite ends cleaning; the remaining pieces are
+        // what the user said and go in as transcribed.
+        if (signal.aborted || failed) {
+          texts.push(chunk.text);
+          reason ??= degradeReason();
+          continue;
+        }
+        try {
+          const cleaned = await runTranscriptionOperation(() =>
+            prepared.clean(chunk.text, { signal }),
+          );
+          const outcome = resolveCleanupOutcome(chunk.text, cleaned);
+          texts.push(outcome.text);
+          if (outcome.kind === "raw") reason ??= outcome.reason;
+          else cleanedCount += 1;
+        } catch {
+          failed = true;
+          texts.push(chunk.text);
+          reason ??= degradeReason();
+        }
+      }
+
+      const text = chunks.length > 0 ? joinCleanupChunks(chunks, texts) : transcript.trim();
+      if (reason === null) return { kind: "cleaned", text };
+      return { kind: "raw", text, reason, partial: cleanedCount > 0 };
     } catch {
-      return {
-        kind: "raw",
-        text: transcript,
-        reason: abortController.signal.aborted
-          ? "cancelled"
-          : modelPrepared
-            ? "failed"
-            : "load-failed",
-      };
+      return { kind: "raw", text: transcript, reason: degradeReason() };
     } finally {
       if (this.cleanupAbortController === abortController) this.cleanupAbortController = null;
     }

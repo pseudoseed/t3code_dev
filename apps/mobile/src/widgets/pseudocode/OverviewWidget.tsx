@@ -20,9 +20,14 @@ export function OverviewWidget(
   "widget";
   const large = environment.widgetFamily === "systemLarge";
   const dark = environment.colorScheme !== "light";
+  // The server heartbeats only while agents are active; idle results are not late.
   const delayed =
     props.updatedAt != null &&
-    environment.date.getTime() - Date.parse(props.updatedAt) > 25 * 60_000;
+    environment.date.getTime() - Date.parse(props.updatedAt) > 25 * 60_000 &&
+    (props.activities ?? []).some(
+      (row) =>
+        row.phase === "running" || row.phase === "starting" || row.phase.startsWith("waiting"),
+    );
   const scheme = props.appScheme ?? "t3code";
   const url = (path?: string) =>
     path?.startsWith("/threads/") && !path.includes("?") && !path.includes("#")

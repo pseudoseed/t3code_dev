@@ -140,7 +140,7 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
 function identity(thread: OrchestrationThreadShell, phase: string) {
   return `${thread.latestTurn?.turnId ?? ""}:${phase}`;
 }
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry;
   return yield* makeActivitySummaries(
     Effect.fn("ActivitySummaries.generate")(function* (context: string, cwd: string) {

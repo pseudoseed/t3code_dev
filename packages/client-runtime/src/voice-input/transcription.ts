@@ -14,12 +14,15 @@ export type SpeakerFilterFallbackReason =
   | "singleSpeaker"
   | "noSpeech"
   | "ambiguousDominantSpeaker"
-  | "keptAudioTooShort";
+  | "keptAudioTooShort"
+  | "similarVoices";
 
 export type SpeakerFilteringOutcome = {
   readonly requested: boolean;
   readonly applied: boolean;
   readonly fallbackReason: SpeakerFilterFallbackReason | null;
+  /** Seconds of other voices dropped when filtering applied. Absent from older natives. */
+  readonly removedSeconds?: number;
 };
 
 export type VoiceTranscriptionResult = {
@@ -35,21 +38,31 @@ export type VoiceTranscriptionResult = {
 };
 
 /**
- * What the composer says when filtering was asked for and did not happen.
+ * What the composer says about speaker filtering.
  *
- * Null means say nothing: either filtering ran, or it was never on, or the
- * reason is one the user does not need to hear about. Everything else is a
- * transcript that may contain a voice the user did not want, and staying quiet
- * about that is worse than not offering the feature.
+ * Null means say nothing: filtering was never on, or the reason is one the
+ * user does not need to hear about. Audio that was dropped is always
+ * disclosed, with how much, so a filter that took the user's own words is
+ * caught on the spot rather than discovered in a sent message. A transcript
+ * that may contain a voice the user did not want is disclosed too; staying
+ * quiet about either is worse than not offering the feature.
  */
 export function resolveSpeakerFilteringNotice(
   outcome: SpeakerFilteringOutcome | undefined,
 ): string | null {
-  if (!outcome?.requested || outcome.applied) return null;
+  if (!outcome?.requested) return null;
+  if (outcome.applied) {
+    const seconds = Math.round(outcome.removedSeconds ?? 0);
+    return seconds > 0
+      ? `Removed ${seconds}s of other voices. Check that nothing of yours is missing.`
+      : null;
+  }
 
   switch (outcome.fallbackReason) {
     case "ambiguousDominantSpeaker":
       return "More than one voice was speaking, so the whole recording was transcribed.";
+    case "similarVoices":
+      return "Another voice was as close as yours, so the whole recording was transcribed.";
     case "keptAudioTooShort":
       return "Too little of the recording was yours to use on its own, so all of it was transcribed.";
     case "noSpeech":

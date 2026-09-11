@@ -310,7 +310,24 @@ describe("VoiceInputController", () => {
     ).toBe(false);
   });
 
-  it("uses the native five-minute cap and commits one final transcript", async () => {
+  it("discloses when the native duration cap ended the recording", async () => {
+    const harness = createHarness();
+    await harness.controller.start();
+    const finishing = harness.controller.handleRecorderStatus({
+      isFinished: true,
+      hasError: false,
+      error: null,
+      url: "file:///voice.m4a",
+    });
+    await finishing;
+
+    expect(harness.commits).toEqual([
+      { text: "hello new text", selection: { start: 14, end: 14 } },
+    ]);
+    expect(harness.controller.currentState.notice).toContain("15 minute limit");
+  });
+
+  it("uses the native duration cap and commits one final transcript", async () => {
     const harness = createHarness();
     await harness.controller.start();
     expect(harness.recorder.record).toHaveBeenCalledWith({
@@ -849,6 +866,42 @@ describe("VoiceInputController cleanup stage", () => {
     ]);
   });
 
+  it("cleans a long transcript in pieces and keeps the cleaned pieces when one degrades", async () => {
+    const sentences = Array.from(
+      { length: 40 },
+      (_, i) => `so um this is sentence number ${i + 1} of a very long dictation.`,
+    );
+    const raw = sentences.join(" ");
+    const seen: string[] = [];
+    const harness = createHarness({
+      getTranscriber: () => ({
+        prepare: async () => preparedTranscription(transcribingText(async () => raw)),
+      }),
+      getCleanup: () => ({
+        prepare: async () => ({
+          clean: async (chunk) => {
+            seen.push(chunk);
+            // The last piece times out; everything before it was rewritten.
+            if (seen.length === 3) return { text: chunk.slice(0, 40), complete: false };
+            return { text: chunk.replaceAll("so um ", ""), complete: true };
+          },
+        }),
+      }),
+    });
+    await harness.controller.start();
+    await harness.controller.stop();
+
+    expect(seen.length).toBeGreaterThan(3);
+    expect(seen.join(" ")).toBe(raw);
+    const committed = harness.commits[0]?.text ?? "";
+    expect(committed).toContain("this is sentence number 1 of");
+    expect(committed).toContain(seen[2]!);
+    expect(committed.endsWith(sentences.at(-1)!.replace("so um ", ""))).toBe(true);
+    expect(harness.controller.currentState.notice).toBe(
+      "Part of the message could not be cleaned up and was kept as transcribed.",
+    );
+  });
+
   it("keeps the raw transcript when the user cancels the rewrite", async () => {
     const cleaning = deferred<VoiceCleanupResult>();
     const cleaningEntered = deferred<AbortSignal>();
@@ -927,6 +980,24 @@ describe("speaker filtering disclosure", () => {
     expect(
       resolveSpeakerFilteringNotice({ requested: true, applied: true, fallbackReason: null }),
     ).toBeNull();
+  });
+
+  it("says how much audio filtering removed, so a lost sentence is caught on the spot", () => {
+    expect(
+      resolveSpeakerFilteringNotice({
+        requested: true,
+        applied: true,
+        fallbackReason: null,
+        removedSeconds: 12.4,
+      }),
+    ).toBe("Removed 12s of other voices. Check that nothing of yours is missing.");
+    expect(
+      resolveSpeakerFilteringNotice({
+        requested: true,
+        applied: false,
+        fallbackReason: "similarVoices",
+      }),
+    ).toBe("Another voice was as close as yours, so the whole recording was transcribed.");
   });
 
   it("says nothing when there was only one voice to begin with", () => {

@@ -16,8 +16,13 @@ export function isApplicationActiveWakeup(reason: ConnectionWakeup): boolean {
   );
 }
 
+/**
+ * Web resubscribes on focus because no transport check runs there. The mobile
+ * probe already proves the socket alive (a healthy socket delivered everything
+ * queued) or replaces it, and a replacement session resubscribes on its own.
+ */
 export function shouldResubscribeAfterWakeup(reason: ConnectionWakeup): boolean {
-  return reason === "application-active" || reason === "application-active-probe";
+  return reason === "application-active";
 }
 
 export class ConnectionWakeups extends Context.Service<

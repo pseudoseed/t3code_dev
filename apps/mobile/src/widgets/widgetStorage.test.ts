@@ -138,3 +138,39 @@ it("reuses icons for another thread in the same project without crossing environ
   });
   expect(storage.overview[0]?.props.activities[0]?.projectIcon).toBeUndefined();
 });
+
+it("restores a project's icon when a push rotates it out of the visible rows and back", async () => {
+  const projectRow = { ...row, projectId: "project" };
+  await saveWidgetSnapshot(snapshot(projectRow));
+  const { headline, projectIcon: _icon, ...activity } = projectRow;
+  const otherThread = {
+    ...activity,
+    threadId: ThreadId.make("other"),
+    projectId: "other-project",
+    status: headline,
+  };
+  await saveWidgetPush({
+    environmentId,
+    attentionCount: 0,
+    activity: {
+      title: "Activity",
+      subtitle: "Working",
+      activeCount: 1,
+      updatedAt: "2026-09-09T12:01:00.000Z",
+      activities: [otherThread],
+    },
+  });
+  expect(storage.overview[0]?.props.activities[0]?.projectIcon).toBeUndefined();
+  await saveWidgetPush({
+    environmentId,
+    attentionCount: 0,
+    activity: {
+      title: "Activity",
+      subtitle: "Working",
+      activeCount: 1,
+      updatedAt: "2026-09-09T12:02:00.000Z",
+      activities: [{ ...activity, status: headline, updatedAt: "2026-09-09T12:02:00.000Z" }],
+    },
+  });
+  expect(storage.overview[0]?.props.activities[0]?.projectIcon).toBe(row.projectIcon);
+});

@@ -87,11 +87,10 @@ then confirm to transcribe. Text is inserted where your selection was when
 recording started, ready for you to review and edit before sending.
 
 The first use may download Apple's speech model and needs a network connection.
-Later transcription works offline for that language. Recordings can be up to five
-minutes long. Canceling, leaving the screen, or an audio interruption discards the
-recording and preserves your existing draft.
+Later transcription works offline for that language.
 
-A recording can be up to five minutes long. If the microphone is interrupted or the app moves to
+A recording can be up to 15 minutes long; if it reaches that limit, PseudoCode transcribes what it
+captured and tells you it stopped. If the microphone is interrupted or the app moves to
 the background, PseudoCode finishes transcribing the audio captured so far and tells you that
 recording stopped. If transcription fails, tap the microphone to retry the saved recording.
 Dismissing that error discards the saved audio. Canceling voice input or leaving the screen during
@@ -118,15 +117,18 @@ Some speech models can tell voices apart. With one of those selected, turn on **
 and PseudoCode keeps only the voice that did most of the talking, so a conversation nearby does not end
 up in your message. This needs one extra small download.
 
-When it cannot tell which voice is yours, it transcribes the whole recording and tells you it did.
-Losing your own words would be worse than leaving a stray voice in.
+It only drops a voice that is clearly farther from the phone than yours. When another voice is as
+close as you are, or it cannot tell which voice is yours, it transcribes the whole recording and
+tells you it did. Losing your own words would be worse than leaving a stray voice in. When it does
+drop something, the composer says how many seconds went, so you can check that nothing of yours
+is missing.
 
 ### Cleaning up transcripts
 
 Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
 written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed.
-If cleanup fails or stops before finishing, PseudoCode keeps the original transcription and tells
-you why.
+Long messages are cleaned up a few sentences at a time. If cleanup fails or stops before finishing,
+PseudoCode keeps the original transcription for that part and tells you.
 
 Three cleanup models are available, trading speed for quality. You can edit the instructions they
 follow and reset them to the default at any time.

@@ -10,7 +10,7 @@ export function compactWidgetUpdate(input: DirectWidgetUpdate): DirectWidgetUpda
   return update;
 }
 
-function isActive(state: AgentAwarenessState) {
+export function isActive(state: AgentAwarenessState) {
   return (
     state.phase === "starting" ||
     state.phase === "running" ||
@@ -54,6 +54,8 @@ export function aggregateActivity(
     })),
   };
 }
+/** Past the widget's delayed threshold, so one missed heartbeat does not read as stale. */
+const LIVE_ACTIVITY_STALE_SECONDS = 25 * 60;
 export function liveActivityPayload(
   state: RelayAgentActivityAggregateState,
   nowSeconds: number,
@@ -67,7 +69,9 @@ export function liveActivityPayload(
       timestamp: nowSeconds,
       event: end ? "end" : "update",
       "content-state": { name, props: JSON.stringify(compact) },
-      ...(end ? { "dismissal-date": nowSeconds + 30 } : { "stale-date": nowSeconds + 600 }),
+      ...(end
+        ? { "dismissal-date": nowSeconds + 30 }
+        : { "stale-date": nowSeconds + LIVE_ACTIVITY_STALE_SECONDS }),
     },
   });
   // UTF-8 titles and nested JSON can exceed APNs' limit even at three rows.

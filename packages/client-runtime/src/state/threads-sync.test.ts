@@ -974,18 +974,13 @@ describe("EnvironmentThreads", () => {
       );
       expect(Option.getOrThrow(live.data).title).toBe("Latest title");
 
+      // Mobile probes keep the live subscription; only a replacement session resubscribes.
       yield* Queue.offer(harness.wakeups, "application-active-probe");
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 3) break;
-        yield* Effect.yieldNow;
-      }
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(3);
-
       yield* Queue.offer(harness.wakeups, "application-active-reconnect");
       for (let attempt = 0; attempt < 10; attempt += 1) {
         yield* Effect.yieldNow;
       }
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(3);
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
     }),
   );
 });

@@ -6,7 +6,6 @@ import {
   type ProjectFaviconEntry,
 } from "@t3tools/client-runtime/project-favicon-cache";
 import * as Effect from "effect/Effect";
-import { Platform } from "react-native";
 
 import * as MobileDatabase from "../persistence/mobile-database";
 
@@ -39,9 +38,12 @@ export async function downscaleProjectFavicon(
   image: { readonly url: string },
   signal: AbortSignal,
 ) {
-  const [{ Image }, { File }] = await Promise.all([
+  // Loaded lazily with the other native modules so the cache stays importable
+  // in tests, where react-native's Flow entry point cannot be parsed.
+  const [{ Image }, { File }, { Platform }] = await Promise.all([
     import("expo-image"),
     import("expo-file-system"),
+    import("react-native"),
   ]);
   for (const size of [PROJECT_FAVICON_THUMBNAIL_SIZE, PROJECT_FAVICON_THUMBNAIL_SIZE / 2]) {
     if (signal.aborted) throw new Error("Project icon request aborted.");

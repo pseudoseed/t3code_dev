@@ -153,6 +153,12 @@ catch some of these failures. The timeout is enforced natively, between generate
 because nothing in JS can interrupt a running model. Native background assertions end on expiration
 and request cancellation of the associated operation.
 
+**Long transcripts are cleaned in chunks.** One rewrite of a multi-minute transcript exceeds the
+output-token cap and the timeout on every shipped model, so a single pass degrades to raw text on
+exactly the dictations where cleanup matters. The controller splits at sentence ends into pieces of
+about `CLEANUP_CHUNK_TARGET_LENGTH`, rewrites them in order on the prepared model, and judges each
+with the same rules; a piece that degrades goes in as transcribed and the rest stay cleaned.
+
 **A rewrite carries whether the model finished it, and an unfinished one is never committed.**
 Generation stops at the model's end of turn, at the output-token cap, or at the timeout. The last two
 return a rewrite of everything up to that point, which reads as finished text that stops
@@ -195,6 +201,14 @@ Diarization returns speaker spans; the rule that turns those into "this one is t
 who did most of the talking, and only when they beat the runner-up by a clear margin. When it cannot
 tell, it keeps everything and the composer says so, because dropping the user's own words is a far
 worse failure than leaving a stray voice in.
+
+**Talking the most is not evidence of being the user.** The diarizer splits one person into two
+clusters often enough on a long recording, and when it does, the duration rule alone drops a
+block of the user's own speech, usually the end of it. Each span therefore carries its mean level,
+and a non-dominant voice is dropped only when it is clearly quieter than the dominant one: the
+person holding the phone is the loudest voice in a dictation, and a self-split produces two voices
+at the same level. Everything filtering removes is disclosed with its duration, so a wrong drop is
+seen in the composer rather than in a sent message.
 
 Filtering needs both a diarizing speech model and the separate diarizer model. Without either it
 stays off rather than reporting a fallback nobody can act on.

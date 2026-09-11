@@ -19,6 +19,8 @@ vi.mock("expo-image", () => ({
     getCachePathAsync: native.path,
   },
 }));
+// These cases cover the expo-image cache path; iOS encodes through a native call.
+vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 vi.mock("expo-file-system", () => ({
   File: class {
     size = 24_000;

@@ -2,8 +2,8 @@ import XCTest
 
 @testable import T3VoiceLogic
 
-private func span(_ id: String, _ start: Double, _ end: Double) -> SpeakerSpan {
-  SpeakerSpan(speakerId: id, startSeconds: start, endSeconds: end)
+private func span(_ id: String, _ start: Double, _ end: Double, level: Double? = nil) -> SpeakerSpan {
+  SpeakerSpan(speakerId: id, startSeconds: start, endSeconds: end, levelDb: level)
 }
 
 final class SpeakerFilterTests: XCTestCase {
@@ -20,7 +20,7 @@ final class SpeakerFilterTests: XCTestCase {
   func testDropsABackgroundVoiceFromTheDominantSpeaker() {
     let decision = SpeakerFilter.decide(spans: [
       span("A", 0, 4),
-      span("B", 4.2, 4.9),
+      span("B", 4.25, 5),
       span("A", 5, 9),
     ])
 
@@ -28,10 +28,12 @@ final class SpeakerFilterTests: XCTestCase {
       decision,
       .filter(
         speakerId: "A",
+        // Widened by the edge padding so boundary words survive.
         ranges: [
-          KeptRange(startSeconds: 0, endSeconds: 4),
-          KeptRange(startSeconds: 5, endSeconds: 9),
-        ]
+          KeptRange(startSeconds: 0, endSeconds: 4.2),
+          KeptRange(startSeconds: 4.8, endSeconds: 9.2),
+        ],
+        removedSeconds: 0.75
       )
     )
   }
@@ -46,8 +48,55 @@ final class SpeakerFilterTests: XCTestCase {
     let decision = SpeakerFilter.decide(spans: [span("A", 0, 6), span("B", 6, 10)])
     XCTAssertEqual(
       decision,
-      .filter(speakerId: "A", ranges: [KeptRange(startSeconds: 0, endSeconds: 6)])
+      .filter(speakerId: "A", ranges: [KeptRange(startSeconds: 0, endSeconds: 6.2)], removedSeconds: 4)
     )
+  }
+
+  func testKeepsAVoiceAsLoudAsTheDominantOne() {
+    // The diarizer split one person at the same distance into two clusters.
+    // Dropping B would silently lose the second half of their own dictation.
+    let decision = SpeakerFilter.decide(spans: [
+      span("A", 0, 30, level: -20),
+      span("B", 30, 45, level: -23),
+    ])
+    XCTAssertEqual(decision, .passThrough(reason: .similarVoices))
+  }
+
+  func testDropsAVoiceClearlyFartherFromTheMicrophone() {
+    let decision = SpeakerFilter.decide(spans: [
+      span("A", 0, 30, level: -20),
+      span("B", 30, 45, level: -31),
+    ])
+    XCTAssertEqual(
+      decision,
+      .filter(speakerId: "A", ranges: [KeptRange(startSeconds: 0, endSeconds: 30.2)], removedSeconds: 15)
+    )
+  }
+
+  func testKeepsTheNearerVoiceWhenAFartherOneTalkedMore() {
+    // A colleague across the table out-talked the phone's owner. Level says
+    // who the owner is; dropping the quieter but shorter speaker would be wrong.
+    let decision = SpeakerFilter.decide(spans: [
+      span("A", 0, 40, level: -32),
+      span("B", 40, 60, level: -20),
+    ])
+    XCTAssertEqual(decision, .passThrough(reason: .similarVoices))
+  }
+
+  func testFallsBackToDurationWhenLevelsAreUnknownForAnyVoice() {
+    let decision = SpeakerFilter.decide(spans: [
+      span("A", 0, 30, level: -20),
+      span("B", 30, 45),
+    ])
+    XCTAssertEqual(decision, .passThrough(reason: .similarVoices))
+  }
+
+  func testWeightsLevelsByDuration() {
+    let levels = SpeakerFilter.levelBySpeaker([
+      span("A", 0, 9, level: -20),
+      span("A", 9, 10, level: -40),
+    ])
+    XCTAssertEqual(levels["A"]!, -20.45, accuracy: 0.05)
   }
 
   func testKeepsEverythingWhenTooLittleAudioWouldSurvive() {

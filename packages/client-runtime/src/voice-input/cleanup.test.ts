@@ -9,6 +9,8 @@ import {
   parseCorrectionPairs,
   parsePreferredSpellings,
   resolveCleanupOutcome,
+  joinCleanupChunks,
+  splitTranscriptForCleanup,
 } from "./cleanup.ts";
 
 describe("resolveCleanupOutcome", () => {
@@ -219,5 +221,53 @@ describe("buildCleanupPrompt", () => {
 
     expect(prompt).not.toContain("Replace the left side");
     expect(prompt).toContain("- Ghostty");
+  });
+});
+
+describe("splitTranscriptForCleanup", () => {
+  it("keeps a short transcript whole", () => {
+    expect(splitTranscriptForCleanup("Add a retry button. Then ship it.", 100)).toEqual([
+      { text: "Add a retry button. Then ship it.", separator: "" },
+    ]);
+  });
+
+  it("splits a long transcript at sentence ends and reassembles it losslessly", () => {
+    const sentences = Array.from({ length: 12 }, (_, i) => `Sentence number ${i + 1} is here.`);
+    const transcript = `${sentences.slice(0, 6).join(" ")}\n${sentences.slice(6).join(" ")}`;
+    const chunks = splitTranscriptForCleanup(transcript, 80);
+
+    expect(chunks.length).toBeGreaterThan(2);
+    for (const chunk of chunks) {
+      expect(chunk.text.length).toBeLessThanOrEqual(120);
+      expect(chunk.text.endsWith(".")).toBe(true);
+    }
+    expect(
+      joinCleanupChunks(
+        chunks,
+        chunks.map((chunk) => chunk.text),
+      ),
+    ).toBe(transcript.replace("\n", "\n\n"));
+  });
+
+  it("falls back to word boundaries when there is no punctuation", () => {
+    const transcript = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ");
+    const chunks = splitTranscriptForCleanup(transcript, 60);
+
+    expect(chunks.length).toBeGreaterThan(3);
+    expect(chunks.every((chunk) => /^word\d+( word\d+)*$/.test(chunk.text))).toBe(true);
+    expect(
+      joinCleanupChunks(
+        chunks,
+        chunks.map((chunk) => chunk.text),
+      ),
+    ).toBe(transcript);
+  });
+
+  it("substitutes a rewrite for its own chunk only", () => {
+    const chunks = [
+      { text: "one two.", separator: " " },
+      { text: "three four.", separator: "" },
+    ];
+    expect(joinCleanupChunks(chunks, ["One, two.", "three four."])).toBe("One, two. three four.");
   });
 });
