@@ -10,20 +10,8 @@ public final class T3NativeControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("T3NativeControls")
 
-    // Repaint decoded SVG/ICO images before encoding: their original format can
-    // survive decoding, and SDWebImage's disk cache cannot encode those formats.
     Function("projectIconPng") { (image: SharedRef<UIImage>, maximumSize: Int) -> String? in
-      let source = image.ref
-      guard source.size.width > 0, source.size.height > 0 else { return nil }
-      let limit = CGFloat(max(1, min(maximumSize, 96)))
-      let scale = min(1, limit / max(source.size.width, source.size.height))
-      let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
-      let format = UIGraphicsImageRendererFormat()
-      format.scale = 1
-      let data = UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
-        source.draw(in: CGRect(origin: .zero, size: size))
-      }
-      return "data:image/png;base64," + data.base64EncodedString()
+      Self.projectIconPng(image.ref, maximumSize: maximumSize)
     }
 
     AsyncFunction("presentVideo") { (url: URL, title: String, sourceIdentifier: String, identifier: String, promise: Promise) in
@@ -164,6 +152,21 @@ public final class T3NativeControlsModule: Module {
       let readyPath = NSHomeDirectory() + "/Library/Caches/T3ShowcaseReadyScene"
       try? scene.write(toFile: readyPath, atomically: true, encoding: .utf8)
     }
+  }
+
+  /// Repaints a decoded SVG/ICO before encoding: the original format can
+  /// survive decoding, and SDWebImage's disk cache cannot encode those formats.
+  private static func projectIconPng(_ source: UIImage, maximumSize: Int) -> String? {
+    guard source.size.width > 0, source.size.height > 0 else { return nil }
+    let limit = CGFloat(max(1, min(maximumSize, 96)))
+    let scale = min(1, limit / max(source.size.width, source.size.height))
+    let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let data = UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
+      source.draw(in: CGRect(origin: .zero, size: size))
+    }
+    return "data:image/png;base64," + data.base64EncodedString()
   }
 
   private func presentVideo(url: URL, title: String, sourceIdentifier: String, identifier: String, promise: Promise) throws {

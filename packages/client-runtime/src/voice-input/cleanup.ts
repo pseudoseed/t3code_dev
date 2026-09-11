@@ -134,7 +134,7 @@ export const CLEANUP_PARTIAL_NOTICE =
  * would help most. A piece this size finishes well inside both on every model
  * shipped, and a piece that degrades costs only its own sentences.
  */
-export const CLEANUP_CHUNK_TARGET_LENGTH = 700;
+const CLEANUP_CHUNK_TARGET_LENGTH = 700;
 
 export type CleanupChunk = {
   readonly text: string;

@@ -259,9 +259,9 @@ actor FluidAudioEngine {
 
   /// Mean level of one stretch in dBFS, the evidence for how far a voice was
   /// from the microphone. Nil for an empty stretch.
-  private static func level(of samples: [Float], from startSeconds: Double, to endSeconds: Double)
-    -> Double?
-  {
+  private static func level(
+    of samples: [Float], from startSeconds: Double, to endSeconds: Double
+  ) -> Double? {
     let start = max(0, Int(startSeconds * Double(sampleRate)))
     let end = min(samples.count, Int(endSeconds * Double(sampleRate)))
     guard start < end else { return nil }
