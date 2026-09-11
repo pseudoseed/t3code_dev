@@ -1,6 +1,12 @@
 import type { Wakeups } from "@t3tools/client-runtime/connection";
 
-export const MOBILE_BACKGROUND_RECONNECT_AFTER_MS = 10_000;
+/**
+ * iOS keeps the socket open while the app is suspended, and a Node host never
+ * closes it for idleness, so a resume normally finds every event queued on the
+ * live connection. The probe settles a dead socket within 3 seconds; only a
+ * suspension long enough that the transport is surely gone skips it.
+ */
+export const MOBILE_BACKGROUND_RECONNECT_AFTER_MS = 15 * 60_000;
 
 export type MobileApplicationActiveWakeup = Extract<
   Wakeups.ConnectionWakeup,
