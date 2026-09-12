@@ -429,7 +429,9 @@ describe("EnvironmentSupervisor", () => {
         supervisor.state,
         (state) => state.phase === "connecting" && state.stage === "synchronizing",
       );
-      yield* TestClock.adjust("14 seconds");
+      // The socket is open and the server accepted the upgrade, so this stage
+      // gets its own longer budget instead of the one that covers reachability.
+      yield* TestClock.adjust("44 seconds");
       expect((yield* SubscriptionRef.get(supervisor.state)).stage).toBe("synchronizing");
 
       yield* TestClock.adjust("1 second");
@@ -445,6 +447,60 @@ describe("EnvironmentSupervisor", () => {
       });
       expect(yield* Ref.get(harness.releaseCount)).toBe(1);
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.prepared))).toBe(true);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("gives each establishment stage its own budget instead of one deadline", () =>
+    Effect.gen(function* () {
+      // Reaching "opening" burns most of the reachability budget. The stalled
+      // stage that follows must still get a full window of its own, otherwise
+      // a slow prepare silently shortens the wait for the first config frame.
+      const harness = yield* makeHarness({
+        prepare: () => Effect.sleep("14 seconds").pipe(Effect.as(PREPARED_CONNECTION)),
+        ready: () => Effect.never,
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* TestClock.adjust("14 seconds");
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connecting" && state.stage === "synchronizing",
+      );
+
+      yield* TestClock.adjust("44 seconds");
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connecting");
+
+      yield* TestClock.adjust("1 second");
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("restarts the establishment budget when the application returns", () =>
+    Effect.gen(function* () {
+      // iOS freezes timers while the process is suspended, so an attempt can
+      // look expired the moment the app resumes. The resume restarts the
+      // stage rather than failing it on time it never got to use.
+      const harness = yield* makeHarness({
+        ready: (attempt) => (attempt === 1 ? Effect.never : Effect.void),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connecting" && state.stage === "synchronizing",
+      );
+      yield* TestClock.adjust("44 seconds");
+      yield* harness.wake("application-active-probe");
+
+      yield* TestClock.adjust("44 seconds");
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connecting");
+
+      yield* TestClock.adjust("1 second");
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
@@ -1057,7 +1113,7 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("quickly times out a stalled mobile foreground liveness probe", () =>
+  it.effect("times out a stalled mobile foreground liveness probe", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         probe: (attempt) => (attempt === 1 ? Effect.never : Effect.void),
@@ -1068,7 +1124,10 @@ describe("EnvironmentSupervisor", () => {
 
       yield* awaitState(supervisor.state, (state) => state.phase === "connected");
       yield* harness.wake("application-active-probe");
-      yield* TestClock.adjust("3 seconds");
+      yield* TestClock.adjust("7 seconds");
+      expect((yield* SubscriptionRef.get(supervisor.state)).generation).toBe(1);
+
+      yield* TestClock.adjust("1 second");
       // The timed-out wake probe reconnects immediately without a backoff
       // sleep: no further clock advance is needed.
       yield* awaitState(

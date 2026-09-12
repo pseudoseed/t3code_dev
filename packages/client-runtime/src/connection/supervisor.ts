@@ -2,6 +2,7 @@ import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -18,6 +19,7 @@ import * as Connectivity from "./connectivity.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
   type ConnectionAttemptError,
+  type ConnectionAttemptStage,
   type ConnectionTarget,
   ConnectionTransientError,
   type NetworkStatus,
@@ -30,9 +32,31 @@ import { NETWORK_BLOCKING_HINT } from "../errors/network.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 
 const RETRY_DELAYS_MS = [3_000, 4_000, 8_000, 16_000] as const;
-const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
+/**
+ * Each establishment stage gets its own budget, restarted when the stage
+ * advances, rather than one deadline covering the whole attempt.
+ *
+ * `preparing` and `opening` are reachability: nothing has answered yet, so
+ * failing fast and retrying is the cheapest move. `synchronizing` means the
+ * socket is open and the server accepted the upgrade, and the client is only
+ * waiting for the first config frame. Abandoning there throws away a
+ * connection whose data may already be in the receive buffer, and the
+ * replacement pays for a fresh ticket, a fresh upgrade, and the server's
+ * config rebuild. Waiting is strictly cheaper, and any wakeup, retry, or
+ * network change still interrupts it immediately.
+ */
+const CONNECTION_STAGE_TIMEOUTS = {
+  preparing: 15_000,
+  opening: 15_000,
+  synchronizing: 45_000,
+} as const satisfies Record<ConnectionAttemptStage, number>;
 const CONNECTION_PROBE_TIMEOUT = "15 seconds";
-const MOBILE_CONNECTION_PROBE_TIMEOUT = "3 seconds";
+/**
+ * A resume runs while the JS thread is busiest, so a healthy socket can miss a
+ * very short deadline. A false positive here is expensive: it replaces a
+ * working connection with a full reconnect during the same busy window.
+ */
+const MOBILE_CONNECTION_PROBE_TIMEOUT = "8 seconds";
 const BACKOFF_RESET_AFTER_MS = 30_000;
 
 interface SupervisorIntent {
@@ -273,6 +297,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }),
   );
 
+  // Carries the attempt's current stage to its deadline watcher. Sliding, so a
+  // stage that lands while the watcher is asleep replaces the previous one
+  // instead of blocking the driver; tagged by generation so a report from an
+  // abandoned attempt cannot extend the current one's budget.
+  const stageReports = yield* Queue.sliding<{
+    readonly generation: number;
+    readonly stage: ConnectionAttemptStage;
+  }>(1);
+
   const reportProgress = Effect.fn("EnvironmentSupervisor.reportProgress")(function* (
     attempt: number,
     generation: number,
@@ -282,9 +315,36 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     if ("prepared" in progress) {
       yield* SubscriptionRef.set(prepared, Option.some(progress.prepared));
     }
+    yield* Queue.offer(stageReports, { generation, stage: progress.stage });
     yield* setState(
       connectingState(yield* Ref.get(intent), generation, attempt, lastFailure, progress.stage),
     );
+  });
+
+  /**
+   * Completes when the attempt has spent its current stage's whole budget
+   * without advancing. Never completes while stages keep arriving. Tracks an
+   * absolute deadline so consuming a report from an abandoned attempt cannot
+   * extend the current one.
+   */
+  const awaitEstablishmentDeadline = Effect.fnUntraced(function* (generation: number) {
+    let deadline = (yield* Clock.currentTimeMillis) + CONNECTION_STAGE_TIMEOUTS.preparing;
+    for (;;) {
+      const remaining = deadline - (yield* Clock.currentTimeMillis);
+      if (remaining <= 0) {
+        return;
+      }
+      const report = yield* Queue.take(stageReports).pipe(
+        Effect.timeoutOption(Duration.millis(remaining)),
+      );
+      if (Option.isNone(report)) {
+        return;
+      }
+      if (report.value.generation !== generation) {
+        continue;
+      }
+      deadline = (yield* Clock.currentTimeMillis) + CONNECTION_STAGE_TIMEOUTS[report.value.stage];
+    }
   });
 
   const establishConnection = Effect.fnUntraced(function* (
@@ -365,7 +425,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     );
   });
 
-  const waitForEstablishmentInterrupt = Effect.fnUntraced(function* () {
+  const waitForEstablishmentInterrupt = Effect.fnUntraced(function* (generation: number) {
     for (;;) {
       const next = yield* Queue.take(signals);
       switch (next._tag) {
@@ -386,6 +446,16 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           if (next.reason === "credentials-changed" && target._tag === "RelayConnectionTarget") {
             yield* logManagedRelayAccountChange;
             return false;
+          }
+          if (ConnectionWakeups.isApplicationActiveWakeup(next.reason)) {
+            // The attempt may have spent its budget while the OS had the
+            // process suspended and its timers frozen. The app is running
+            // again now, so restart the current stage rather than judging it
+            // on time it never got to use.
+            const stage = (yield* SubscriptionRef.get(state)).stage;
+            if (stage !== null) {
+              yield* Queue.offer(stageReports, { generation, stage });
+            }
           }
           break;
       }
@@ -502,13 +572,13 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           exit,
         })),
       ),
-      waitForEstablishmentInterrupt().pipe(
+      waitForEstablishmentInterrupt(generation).pipe(
         Effect.map((resetRetry): EstablishmentEvent => ({
           _tag: "Interrupted",
           resetRetry,
         })),
       ),
-      Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(
+      awaitEstablishmentDeadline(generation).pipe(
         Effect.as<EstablishmentEvent>({ _tag: "TimedOut" }),
       ),
     ]);
