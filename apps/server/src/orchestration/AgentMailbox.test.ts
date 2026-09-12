@@ -260,6 +260,11 @@ describe("durable agent mailbox", () => {
                   Effect.provideService(McpSchema.McpServerClient, client),
                 );
               expect(peers.isError).toBe(false);
+              // MCP rejects array-shaped structured content, so peers must be an object.
+              expect(Array.isArray(peers.structuredContent)).toBe(false);
+              expect(peers.structuredContent).toMatchObject({
+                peers: [{ threadId: recipient }],
+              });
               const sent = yield* server
                 .callTool({
                   name: "mailbox_send",

@@ -25,9 +25,12 @@ export const MailboxToolkit = Toolkit.make(
     description:
       "Discover threads explicitly linked for collaboration, including their projects and titles.",
     parameters: Schema.Struct({ turnKey }),
-    success: Schema.Array(
-      Schema.Struct({ threadId: ThreadId, title: Schema.String, project: Schema.String }),
-    ),
+    // MCP only allows object-shaped structured content, so the list is wrapped.
+    success: Schema.Struct({
+      peers: Schema.Array(
+        Schema.Struct({ threadId: ThreadId, title: Schema.String, project: Schema.String }),
+      ),
+    }),
     failure: MailboxError,
     dependencies,
   }),
@@ -88,15 +91,17 @@ export const MailboxToolkitHandlersLive = MailboxToolkit.toLayer(
         yield* mailbox.agentTurn(scope, input.turnKey);
         const peers = yield* mailbox.repository.peers(scope.threadId);
         const snapshot = yield* snapshots.getShellSnapshot();
-        return snapshot.threads
-          .filter((thread) => peers.includes(thread.id))
-          .map((thread) => ({
-            threadId: thread.id,
-            title: thread.title,
-            project:
-              snapshot.projects.find((project) => project.id === thread.projectId)?.title ??
-              "Unknown project",
-          }));
+        return {
+          peers: snapshot.threads
+            .filter((thread) => peers.includes(thread.id))
+            .map((thread) => ({
+              threadId: thread.id,
+              title: thread.title,
+              project:
+                snapshot.projects.find((project) => project.id === thread.projectId)?.title ??
+                "Unknown project",
+            })),
+        };
       }, Effect.mapError(error)),
       mailbox_send: Effect.fn("mcp.mailbox.send")(function* (input) {
         const scope = yield* McpInvocationContext;
