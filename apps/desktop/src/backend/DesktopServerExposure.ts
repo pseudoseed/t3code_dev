@@ -9,6 +9,7 @@ import {
   type DesktopServerExposureMode,
   type DesktopServerExposureState,
 } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { isTailscaleIpv4Address, readTailscaleStatus } from "@t3tools/tailscale";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -17,7 +18,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -77,34 +80,90 @@ const isHttpsEndpointUrl = (value: string): boolean => {
   }
 };
 
+/** Interfaces carrying an address a LAN client could be told to use. */
+const usableLanInterfaces = (
+  networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
+): ReadonlyArray<{ readonly name: string; readonly address: string }> => {
+  const candidates: Array<{ readonly name: string; readonly address: string }> = [];
+  for (const [name, interfaceAddresses] of Object.entries(networkInterfaces)) {
+    if (!interfaceAddresses) continue;
+    for (const address of interfaceAddresses) {
+      if (address.internal) continue;
+      if (address.family !== "IPv4") continue;
+      if (!isUsableLanIpv4Address(address.address)) continue;
+      candidates.push({ name, address: address.address });
+      break;
+    }
+  }
+  return candidates;
+};
+
+/**
+ * Picks the address pairing links advertise. A machine with Wi-Fi and wired
+ * on the same subnet lists Wi-Fi first, but the OS routes replies over the
+ * default-route interface and idles the other radio, so a phone paired to
+ * the Wi-Fi address sees minutes of unreachable host while the server is
+ * fine. When the default-route interface is known it wins; otherwise the
+ * first usable interface stands, as before.
+ */
 const resolveLanAdvertisedHost = (
   networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
   explicitHost: string | undefined,
+  preferredInterface: string | null = null,
 ): string | null => {
   const normalizedExplicitHost = normalizeOptionalHost(explicitHost);
   if (normalizedExplicitHost) {
     return normalizedExplicitHost;
   }
-
-  for (const interfaceAddresses of Object.values(networkInterfaces)) {
-    if (!interfaceAddresses) continue;
-
-    for (const address of interfaceAddresses) {
-      if (address.internal) continue;
-      if (address.family !== "IPv4") continue;
-      if (!isUsableLanIpv4Address(address.address)) continue;
-      return address.address;
-    }
-  }
-
-  return null;
+  const candidates = usableLanInterfaces(networkInterfaces);
+  const preferred = candidates.find((candidate) => candidate.name === preferredInterface);
+  return (preferred ?? candidates[0])?.address ?? null;
 };
+
+/** Reads the interface name out of the OS's default-route report. */
+export const parseDefaultRouteInterface = (output: string): string | null => {
+  // macOS `route -n get default`: "  interface: en7"; Linux `ip route show
+  // default`: "default via 10.0.0.1 dev eth0 ...".
+  const match = /(?:^\s*interface:\s*(\S+)|\bdev\s+(\S+))/m.exec(output);
+  return match?.[1] ?? match?.[2] ?? null;
+};
+
+const DEFAULT_ROUTE_PROBE_TIMEOUT = Duration.seconds(2);
+const DEFAULT_ROUTE_CACHE_TTL = Duration.seconds(60);
+
+const defaultRouteCommand = (platform: string): ChildProcess.Command | null => {
+  switch (platform) {
+    case "darwin":
+      return ChildProcess.make("route", ["-n", "get", "default"]);
+    case "linux":
+      return ChildProcess.make("ip", ["-o", "route", "show", "default"]);
+    default:
+      return null;
+  }
+};
+
+const readDefaultRouteInterface = Effect.gen(function* () {
+  const platform = yield* HostProcessPlatform;
+  const command = defaultRouteCommand(platform);
+  if (command === null) return null;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  return yield* Effect.gen(function* () {
+    const child = yield* spawner.spawn(command);
+    const stdout = yield* child.stdout.pipe(Stream.decodeText(), Stream.mkString);
+    return parseDefaultRouteInterface(stdout);
+  }).pipe(
+    Effect.scoped,
+    Effect.timeout(DEFAULT_ROUTE_PROBE_TIMEOUT),
+    Effect.catchCause(() => Effect.succeed(null)),
+  );
+});
 
 const resolveDesktopServerExposure = (input: {
   readonly mode: DesktopServerExposureMode;
   readonly port: number;
   readonly networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces;
   readonly advertisedHostOverride?: string;
+  readonly preferredInterface?: string | null;
 }): ResolvedDesktopServerExposure => {
   const localHttpUrl = `http://${DESKTOP_LOOPBACK_HOST}:${input.port}`;
   const localWsUrl = `ws://${DESKTOP_LOOPBACK_HOST}:${input.port}`;
@@ -123,6 +182,7 @@ const resolveDesktopServerExposure = (input: {
   const advertisedHost = resolveLanAdvertisedHost(
     input.networkInterfaces,
     input.advertisedHostOverride,
+    input.preferredInterface ?? null,
   );
 
   return {
@@ -369,12 +429,14 @@ function resolveRuntimeState(input: {
   readonly port: number;
   readonly networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces;
   readonly advertisedHostOverride: Option.Option<string>;
+  readonly preferredInterface?: string | null;
 }): ResolvedRuntimeState {
   const advertisedHostOverride = Option.getOrUndefined(input.advertisedHostOverride);
   const requestedExposure = resolveDesktopServerExposure({
     mode: input.requestedMode,
     port: input.port,
     networkInterfaces: input.networkInterfaces,
+    preferredInterface: input.preferredInterface ?? null,
     ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
   });
   const unavailable =
@@ -432,7 +494,23 @@ export const make = Effect.gen(function* () {
     TAILSCALE_STATUS_CACHE_TTL,
   );
 
+  const cachedReadDefaultRouteInterface = yield* Effect.cachedWithTTL(
+    readDefaultRouteInterface.pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+    ),
+    DEFAULT_ROUTE_CACHE_TTL,
+  );
+
   const readNetworkInterfaces = networkInterfaces.read;
+  // The route probe is a spawn, so it only runs when there is a choice to
+  // make: two or more LAN-capable interfaces and a mode that advertises one.
+  const readPreferredInterface = (
+    mode: DesktopServerExposureMode,
+    currentNetworkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
+  ) =>
+    mode === "network-accessible" && usableLanInterfaces(currentNetworkInterfaces).length > 1
+      ? cachedReadDefaultRouteInterface
+      : Effect.succeed(null);
 
   const getState = Ref.get(stateRef).pipe(Effect.map(toContractState));
   const backendConfig = Ref.get(stateRef).pipe(Effect.map(toBackendConfig));
@@ -448,6 +526,10 @@ export const make = Effect.gen(function* () {
         port,
         networkInterfaces: currentNetworkInterfaces,
         advertisedHostOverride: config.desktopLanHostOverride,
+        preferredInterface: yield* readPreferredInterface(
+          settings.serverExposureMode,
+          currentNetworkInterfaces,
+        ),
       });
       yield* Ref.set(stateRef, resolved.state);
       return toContractState(resolved.state);
@@ -471,6 +553,7 @@ export const make = Effect.gen(function* () {
       port: previous.port,
       networkInterfaces: currentNetworkInterfaces,
       advertisedHostOverride: config.desktopLanHostOverride,
+      preferredInterface: yield* readPreferredInterface(mode, currentNetworkInterfaces),
     });
 
     if (resolved.unavailable) {
