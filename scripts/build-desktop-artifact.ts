@@ -2746,6 +2746,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       extendInfo: {
         NSScreenCaptureUsageDescription:
           "T3 Code captures the active window when you use the window capture shortcut.",
+        // The desktop app hosts the server for phones and browsers. macOS App
+        // Nap throttles an app whose windows are hidden or occluded, and the
+        // server child shares the app's process coalition, so a napped app
+        // stops answering remote clients until its window is activated.
+        NSAppSleepDisabled: true,
       },
       protocols: [
         {

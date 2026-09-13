@@ -51,6 +51,13 @@ export class ElectronApp extends Context.Service<
      */
     readonly systemLocale: Effect.Effect<string>;
     readonly whenReady: Effect.Effect<void, ElectronAppWhenReadyError>;
+    /**
+     * Holds a power-save blocker for the scope's lifetime. The desktop app
+     * hosts the server for phones and browsers, and macOS App Nap otherwise
+     * throttles the whole process coalition, server child included, whenever
+     * the window is hidden or occluded.
+     */
+    readonly preventAppSuspension: Effect.Effect<void, never, Scope.Scope>;
     readonly quit: Effect.Effect<void>;
     readonly exit: (code: number) => Effect.Effect<void>;
     readonly relaunch: (options: Electron.RelaunchOptions) => Effect.Effect<void>;
@@ -138,6 +145,13 @@ export const make = ElectronApp.of({
       catch: (cause) => new ElectronAppWhenReadyError({ isPackaged, cause }),
     });
   }),
+  preventAppSuspension: Effect.acquireRelease(
+    Effect.sync(() => Electron.powerSaveBlocker.start("prevent-app-suspension")),
+    (id) =>
+      Effect.sync(() => {
+        Electron.powerSaveBlocker.stop(id);
+      }),
+  ).pipe(Effect.asVoid),
   quit: Effect.sync(() => {
     Electron.app.quit();
   }),
