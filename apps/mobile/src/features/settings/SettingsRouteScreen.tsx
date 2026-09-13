@@ -8,7 +8,7 @@ import { SymbolView } from "../../components/AppSymbol";
 import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Alert, Linking, Platform, Pressable, ScrollView, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, ScrollView, Share, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -869,6 +869,11 @@ function AppSettingsSection() {
   return (
     <SettingsSection title="App">
       <SettingsRow icon="internaldrive" label="Client Storage" target="SettingsClientStorage" />
+      <SettingsRow
+        icon="antenna.radiowaves.left.and.right"
+        label="Connection Log"
+        onPress={() => void shareConnectionLog()}
+      />
       <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
       {updateCheckAvailable ? (
         <Pressable
@@ -884,6 +889,21 @@ function AppSettingsSection() {
       )}
     </SettingsSection>
   );
+}
+
+/** The device-side log behind a bad resume; the share sheet also offers Copy. */
+async function shareConnectionLog(): Promise<void> {
+  try {
+    const { connectionDiagnosticsText } = await import("../../connection/diagnostics");
+    const text = await connectionDiagnosticsText();
+    if (text.length === 0) {
+      Alert.alert("Connection Log", "Nothing recorded yet.");
+      return;
+    }
+    await Share.share({ message: text, title: "PseudoCode connection log" });
+  } catch (error) {
+    Alert.alert("Connection Log", error instanceof Error ? error.message : "Could not share.");
+  }
 }
 
 function capitalize(value: string): string {

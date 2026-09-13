@@ -88,8 +88,11 @@ function Coordinator() {
       });
   }, [enabled, chosen]);
 
+  // Registration follows the socket, not the foreground: a reconnect while
+  // backgrounded (or a token rotated while suspended) must still reach the
+  // server, or the widget's push path stays dead until the next open.
   useEffect(() => {
-    if (!chosen || enabled || AppState.currentState !== "active") return;
+    if (!chosen || enabled) return;
     for (const environment of environments) {
       if (environment.connection.phase === "connected") {
         void disableDirectPush(environment.environmentId)
@@ -102,7 +105,8 @@ function Coordinator() {
   }, [connectionKey, chosen, enabled, refresh]);
 
   useEffect(() => {
-    if (!loaded || !enabled || AppState.currentState !== "active") return;
+    if (!loaded || !enabled) return;
+
     let cancelled = false;
     // Coalesce bursts from shell hydration and provider lifecycle changes.
     const timer = setTimeout(() => {

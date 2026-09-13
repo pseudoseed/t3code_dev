@@ -1,6 +1,7 @@
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  EMPTY_AGENT_WIDGET_SNAPSHOT,
   agentWidgetContentKey,
   buildAgentWidgetSnapshot,
   mergeWidgetUpdate,
@@ -83,9 +84,56 @@ describe("agent widget snapshots", () => {
         activity: { ...update.activity, updatedAt: "2026-09-06T17:00:00Z" },
       }),
     ).toBe(merged);
-    expect(
-      mergeWidgetUpdate(merged, { ...update, environmentId: EnvironmentId.make("removed") }),
-    ).toBe(merged);
+    const unknownServer = EnvironmentId.make("unknown");
+    const seeded = mergeWidgetUpdate(merged, {
+      ...update,
+      environmentId: unknownServer,
+      attentionCount: 1,
+      activity: {
+        ...update.activity,
+        activeCount: 1,
+        activities: [
+          {
+            environmentId: unknownServer,
+            threadId: ThreadId.make("thread-9"),
+            projectId: "project-9",
+            projectTitle: "Elsewhere",
+            threadTitle: "Waiting",
+            modelTitle: "Model",
+            phase: "waiting_for_input" as const,
+            status: "Needs input",
+            updatedAt: "2026-09-06T19:30:00Z",
+            deepLink: "pseudocode://thread/thread-9",
+          },
+        ],
+      },
+    });
+    expect(seeded.environments?.map((entry) => entry.environmentId)).toEqual([
+      environmentId,
+      secondEnvironment,
+      unknownServer,
+    ]);
+    expect(seeded.attentionCount).toBe(2);
+    expect(seeded.activities[0]?.environmentId).toBe(unknownServer);
+  });
+
+  it("seeds an empty widget from its first background push", () => {
+    const update = {
+      environmentId,
+      attentionCount: 0,
+      activity: {
+        title: "Agent activity",
+        subtitle: "Working",
+        activeCount: 1,
+        activities: [],
+        updatedAt: "2026-09-06T19:00:00Z",
+      },
+    };
+    const seeded = mergeWidgetUpdate(EMPTY_AGENT_WIDGET_SNAPSHOT, update);
+    expect(seeded).not.toBe(EMPTY_AGENT_WIDGET_SNAPSHOT);
+    expect(seeded.activeCount).toBe(1);
+    expect(seeded.updatedAt).toBe("2026-09-06T19:00:00Z");
+    expect(seeded.environments).toHaveLength(1);
   });
   it("publishes an empty state when no projects are connected", () => {
     expect(buildAgentWidgetSnapshot({ projects: [], threads: [] })).toEqual({

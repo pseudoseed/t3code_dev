@@ -25,6 +25,7 @@ import {
 import { guardHttpResponseWriteErrors } from "./httpResponseErrorGuard.ts";
 import { fixPath } from "./os-jank.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
+import { makeKeepAliveWebSocket } from "./wsKeepAlive.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { pullRequestHttpApiLayer } from "./pullRequest/http.ts";
 import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
@@ -158,6 +159,9 @@ export const HTTP_ROUTER_CONFIG = {
 // already closes the websocket gracefully. Do not add an artificial drain before
 // those finalizers get a chance to run.
 const HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS = 0;
+// See wsKeepAlive.ts: a socket silent for two intervals is terminated.
+const WS_KEEPALIVE_INTERVAL_MS = 30_000;
+const WS_KEEPALIVE_MISSES_BEFORE_CLOSE = 2;
 const ResourceAttributionLayerLive = ResourceAttribution.layer;
 const ApplicationObservabilityLive = ObservabilityLive.pipe(
   Layer.provideMerge(ResourceAttributionLayerLive),
@@ -250,9 +254,10 @@ const HttpServerLive = Layer.unwrap(
         },
       });
     } else {
-      const [NodeHttpServer, NodeHttp] = yield* Effect.all([
+      const [NodeHttpServer, NodeHttp, NodeWS] = yield* Effect.all([
         Effect.promise(() => import("@effect/platform-node/NodeHttpServer")),
         Effect.promise(() => import("node:http")),
+        Effect.promise(() => import("ws")),
       ]);
       return NodeHttpServer.layer(() => guardHttpResponseWriteErrors(NodeHttp.createServer()), {
         host: config.host ?? "127.0.0.1",
@@ -264,7 +269,13 @@ const HttpServerLive = Layer.unwrap(
         // window is shared across frames — that also makes small frames cheap
         // to compress, so no size threshold is set (ws only honors
         // `threshold` when context takeover is disabled).
-        websocket: { perMessageDeflate: true },
+        websocket: {
+          perMessageDeflate: true,
+          WebSocket: makeKeepAliveWebSocket(NodeWS.WebSocket, {
+            intervalMs: WS_KEEPALIVE_INTERVAL_MS,
+            missesBeforeClose: WS_KEEPALIVE_MISSES_BEFORE_CLOSE,
+          }),
+        },
       });
     }
   }),

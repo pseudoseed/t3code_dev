@@ -25,12 +25,24 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(TASK, async ({ dat
   const decoded = data.data.dataString
     ? decodePayloadJson(data.data.dataString)
     : decodePayload(data.data);
-  if (decoded._tag === "None") return Notifications.BackgroundNotificationTaskResult.NoData;
+  const { recordConnectionDiagnostic } = await import("../../connection/diagnostics");
+  if (decoded._tag === "None") {
+    recordConnectionDiagnostic("widget-push", "payload not decodable");
+    return Notifications.BackgroundNotificationTaskResult.NoData;
+  }
   try {
     const { saveWidgetPush } = await import("../../widgets/widgetStorage");
-    await saveWidgetPush(decoded.value.directWidget);
+    const outcome = await saveWidgetPush(decoded.value.directWidget);
+    recordConnectionDiagnostic(
+      "widget-push",
+      `${outcome} env=${decoded.value.directWidget.environmentId} active=${decoded.value.directWidget.activity.activeCount}`,
+    );
     return Notifications.BackgroundNotificationTaskResult.NewData;
-  } catch {
+  } catch (error) {
+    recordConnectionDiagnostic(
+      "widget-push",
+      `failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return Notifications.BackgroundNotificationTaskResult.Failed;
   }
 });

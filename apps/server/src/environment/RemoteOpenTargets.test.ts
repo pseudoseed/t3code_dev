@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { describe, expect } from "vite-plus/test";
 
@@ -123,4 +124,59 @@ describe("RemoteOpenTargets", () => {
       expect(targets).toEqual([{ kind: "mdns", host: "bb-1.local" }]);
     }),
   );
+});
+
+describe("RemoteOpenTargets cache", () => {
+  /** Spawner that counts `tailscale status` invocations. */
+  const countingSpawnerLayer = (spawns: { count: number }) =>
+    Layer.succeed(
+      ChildProcessSpawner.ChildProcessSpawner,
+      ChildProcessSpawner.make(() =>
+        Effect.sync(() => {
+          spawns.count += 1;
+          return ChildProcessSpawner.makeHandle({
+            pid: ChildProcessSpawner.ProcessId(1),
+            exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+            isRunning: Effect.succeed(false),
+            kill: () => Effect.void,
+            unref: Effect.succeed(Effect.void),
+            stdin: Sink.drain,
+            stdout: Stream.make(encoder.encode(TAILSCALE_STATUS_JSON)),
+            stderr: Stream.empty,
+            all: Stream.empty,
+            getInputFd: () => Sink.drain,
+            getOutputFd: () => Stream.empty,
+          });
+        }),
+      ),
+    );
+
+  it.effect("serves the cached answer and refreshes behind it once the TTL passes", () => {
+    const spawns = { count: 0 };
+    return Effect.gen(function* () {
+      const service = yield* RemoteOpenTargets.RemoteOpenTargets;
+      const first = yield* service.resolveTargets();
+      const second = yield* service.resolveTargets();
+      expect(first).toEqual(second);
+      expect(spawns.count).toBe(1);
+
+      yield* TestClock.adjust(RemoteOpenTargets.REMOTE_OPEN_TARGETS_TTL_MS);
+      const third = yield* service.resolveTargets();
+      expect(third).toEqual(first);
+      yield* TestClock.adjust(1);
+      expect(spawns.count).toBe(2);
+    }).pipe(
+      Effect.provideService(HostProcessHostname, "bb-1"),
+      Effect.provide(
+        Layer.merge(
+          RemoteOpenTargets.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(netLayer({ ipv4: true, ipv6: true }), countingSpawnerLayer(spawns)),
+            ),
+          ),
+          TestClock.layer(),
+        ),
+      ),
+    );
+  });
 });

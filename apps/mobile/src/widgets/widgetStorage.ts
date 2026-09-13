@@ -1,10 +1,14 @@
 import { carryProjectIcons, reconcileOverviewSnapshot } from "./pseudocode/overviewSnapshot";
 import * as Linking from "expo-linking";
 import type { DirectWidgetUpdate } from "@t3tools/contracts";
-import { mergeWidgetUpdate, type AgentWidgetSnapshot } from "./agentWidgetSnapshot";
+import {
+  EMPTY_AGENT_WIDGET_SNAPSHOT,
+  mergeWidgetUpdate,
+  type AgentWidgetSnapshot,
+} from "./agentWidgetSnapshot";
 
-let pending: Promise<void> = Promise.resolve();
-function write(operation: () => Promise<void>) {
+let pending: Promise<unknown> = Promise.resolve();
+function write<T>(operation: () => Promise<T>): Promise<T> {
   const result = pending.then(operation);
   pending = result.catch(() => undefined);
   return result;
@@ -18,18 +22,26 @@ export function saveWidgetSnapshot(snapshot: AgentWidgetSnapshot) {
     updateOverview(overview, reconcileOverviewSnapshot(snapshot, previous), previous);
   });
 }
-export function saveWidgetPush(update: DirectWidgetUpdate) {
+export type WidgetPushOutcome = "applied" | "seeded" | "unchanged";
+
+/**
+ * Applies a background push. A widget with no timeline yet (fresh install,
+ * cleared state) is seeded from the push instead of waiting for the app to
+ * open, so the push path never depends on a prior foreground write.
+ */
+export function saveWidgetPush(update: DirectWidgetUpdate): Promise<WidgetPushOutcome> {
   return write(async () => {
     const { default: widget } = await import("./AgentWidget");
     const timeline = await widget.getTimeline();
     const current = timeline.at(-1)?.props;
-    if (!current) return;
-    const next = mergeWidgetUpdate(current, update);
-    if (next !== current) widget.updateSnapshot(next);
+    const base = current ?? EMPTY_AGENT_WIDGET_SNAPSHOT;
+    const next = mergeWidgetUpdate(base, update);
+    if (next !== base) widget.updateSnapshot(next);
     const { default: overview } = await import("./pseudocode/OverviewWidget");
-    const overviewCurrent = (await overview.getTimeline()).at(0)?.props ?? current;
+    const overviewCurrent = (await overview.getTimeline()).at(0)?.props ?? base;
     const overviewNext = mergeWidgetUpdate(overviewCurrent, update);
     if (overviewNext !== overviewCurrent) updateOverview(overview, overviewNext, overviewCurrent);
+    return current === undefined ? "seeded" : next !== base ? "applied" : "unchanged";
   });
 }
 

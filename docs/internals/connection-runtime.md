@@ -10,9 +10,19 @@ several views need the same environment.
 
 The [supervisor](../../packages/client-runtime/src/connection/supervisor.ts) owns
 transport retry policy; resolving an endpoint and opening an RPC session are single
-attempts. Transient failures retry with capped backoff. Offline states and
-authentication failures wait for a wakeup instead of spending attempts on
-unchanged conditions.
+attempts. Transient failures retry with capped backoff. Authentication failures
+wait for a wakeup instead of spending attempts on unchanged conditions.
+
+The platform's network report never decides anything by itself. iOS answers
+"no path" for a moment on most wakes while the socket underneath is healthy, so
+an offline report only colours a pending retry; it does not abandon an attempt,
+close a session, or hold a retry. A path coming back wakes a pending retry at
+once and probes a live session, because the socket may have died on the old
+path. Liveness is the transport's call on both ends: the RPC client pings every
+5 seconds while the app is awake, and the Node server
+([wsKeepAlive](../../apps/server/src/wsKeepAlive.ts)) pings every 30 seconds
+and terminates a socket silent for two intervals, so a device that vanished
+without a close frame is reaped instead of holding its subscriptions forever.
 
 Foregrounding needs different treatment depending on the connection's state.
 It wakes a retry immediately, leaves an ordinary in-flight attempt alone, and
