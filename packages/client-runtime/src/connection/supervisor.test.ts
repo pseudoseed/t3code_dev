@@ -298,22 +298,18 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  it.effect("waits while offline and connects immediately when the network returns", () =>
+  it.effect("attempts a connection even while the platform reports offline", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ networkStatus: "offline" });
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
         initiallyDesired: true,
       }).pipe(Effect.provide(harness.dependencies));
 
-      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
-      expect(yield* Ref.get(harness.prepareCount)).toBe(0);
-
-      yield* harness.setNetworkStatus("online");
       const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
 
       expect(ready).toMatchObject({
         desired: true,
-        network: "online",
+        network: "offline",
         phase: "connected",
         attempt: 1,
         generation: 1,
@@ -323,7 +319,7 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  it.effect("resets retries when activation arrives before the network returns", () =>
+  it.effect("colours a pending retry as offline and lets activation reconnect anyway", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
@@ -337,22 +333,37 @@ describe("EnvironmentSupervisor", () => {
         (state) => state.phase === "backoff" && state.attempt === 1,
       );
       yield* harness.setNetworkStatus("offline");
-      yield* awaitState(
-        supervisor.state,
-        (state) => state.phase === "offline" && state.attempt === 2,
-      );
+      const offline = yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+      expect(offline.retryAt).not.toBeNull();
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
 
       yield* harness.wake("application-active-reconnect");
       yield* awaitState(
         supervisor.state,
-        (state) => state.phase === "offline" && state.attempt === 1,
+        (state) => state.phase === "connected" && state.generation === 2 && state.attempt === 1,
       );
+      expect((yield* SubscriptionRef.get(supervisor.state)).network).toBe("offline");
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("retries at once when the network path comes back during backoff", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ networkStatus: "offline" });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.closeLatestSession();
+      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+
       yield* harness.setNetworkStatus("online");
       yield* awaitState(
         supervisor.state,
-        (state) => state.phase === "connected" && state.generation === 2 && state.attempt === 1,
+        (state) => state.phase === "connected" && state.generation === 2,
       );
-    }),
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("retries forever with exponential backoff capped at sixteen seconds", () =>
@@ -699,9 +710,12 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("releases a live session while offline and starts a new generation when online", () =>
+  it.effect("keeps a live session through an offline report and probes when the path returns", () =>
     Effect.gen(function* () {
-      const harness = yield* makeHarness();
+      const probes = yield* Ref.make(0);
+      const harness = yield* makeHarness({
+        probe: () => Ref.update(probes, (count) => count + 1),
+      });
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
         initiallyDesired: true,
       }).pipe(Effect.provide(harness.dependencies));
@@ -711,18 +725,43 @@ describe("EnvironmentSupervisor", () => {
         (state) => state.phase === "connected" && state.generation === 1,
       );
       yield* harness.setNetworkStatus("offline");
-      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+      yield* awaitState(supervisor.state, (state) => state.network === "offline");
 
-      expect(yield* Ref.get(harness.releaseCount)).toBe(1);
-      expect(Option.isNone(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connected");
+      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+      expect(Option.isSome(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
 
       yield* harness.setNetworkStatus("online");
+      yield* eventuallyState(supervisor.state, (state) => state.network === "online");
+      for (let iteration = 0; iteration < 20; iteration += 1) {
+        yield* Effect.yieldNow;
+      }
+      expect(yield* Ref.get(probes)).toBe(1);
+      expect((yield* SubscriptionRef.get(supervisor.state)).generation).toBe(1);
+      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+    }),
+  );
+
+  it.effect("replaces a session without backoff when the returning path finds it dead", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        probe: (attempt) => (attempt === 1 ? Effect.fail(transient("Probe failed.")) : Effect.void),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.setNetworkStatus("offline");
+      yield* awaitState(supervisor.state, (state) => state.network === "offline");
+      yield* harness.setNetworkStatus("online");
+
       yield* awaitState(
         supervisor.state,
-        (state) => state.phase === "connected" && state.generation === 2,
+        (state) => state.phase === "connected" && state.generation === 2 && state.attempt === 1,
       );
       expect(yield* Ref.get(harness.sessionCount)).toBe(2);
-    }),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("retries a blocked connection when platform credentials change", () =>

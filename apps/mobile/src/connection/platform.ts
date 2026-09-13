@@ -19,7 +19,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
+import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import Constants from "expo-constants";
 import * as Network from "expo-network";
@@ -32,7 +32,16 @@ import { appAtomRegistry } from "../state/atom-registry";
 import { clearThreadOutboxEnvironment } from "../state/thread-outbox-removal";
 import { clearComposerDraftsEnvironment } from "../state/use-composer-drafts";
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
+import { recordConnectionDiagnostic } from "./diagnostics";
 import { connectionStorageLayer } from "./storage";
+
+/**
+ * iOS reports a path change several times around a wake, and a resume-time
+ * query can briefly answer "no path" while the socket underneath is fine. The
+ * supervisor no longer acts on "offline", but it does probe on "online", so
+ * a flap is settled here before it can trigger a probe per bounce.
+ */
+const NETWORK_CHANGE_DEBOUNCE = "1 second";
 
 function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "online" {
   if (state.isConnected === false) {
@@ -44,22 +53,38 @@ function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "on
   return "unknown";
 }
 
-const connectivityLayer = Connectivity.layer({
-  status: Effect.tryPromise({
-    try: () => Network.getNetworkStateAsync(),
-    catch: () => undefined,
-  }).pipe(
-    Effect.match({
-      onFailure: () => "unknown" as const,
-      onSuccess: networkStatus,
-    }),
-  ),
-  changes: Stream.callback((queue) =>
-    Effect.acquireRelease(
+type MobileNetworkStatus = ReturnType<typeof networkStatus>;
+
+const queryNetworkStatus = Effect.tryPromise({
+  try: () => Network.getNetworkStateAsync(),
+  catch: () => undefined,
+}).pipe(
+  Effect.match({
+    onFailure: () => "unknown" as const,
+    onSuccess: networkStatus,
+  }),
+);
+
+// One native listener feeds every environment supervisor. Each supervisor
+// used to install its own listener and its own resume-time path query, which
+// on iOS spins up a fresh path monitor per call on the busiest frame of the
+// resume.
+const connectivityLayer = Layer.effect(
+  Connectivity.Connectivity,
+  Effect.gen(function* () {
+    const updates = yield* PubSub.unbounded<MobileNetworkStatus>();
+    let latest: MobileNetworkStatus | null = null;
+    const publish = (state: Network.NetworkState, source: string) => {
+      const status = networkStatus(state);
+      recordConnectionDiagnostic("network", `${status} type=${state.type ?? "?"} (${source})`);
+      latest = status;
+      PubSub.publishUnsafe(updates, status);
+    };
+    yield* Effect.acquireRelease(
       Effect.sync(() => {
         let active = true;
         const networkSubscription = Network.addNetworkStateListener((state) => {
-          Queue.offerUnsafe(queue, networkStatus(state));
+          if (active) publish(state, "listener");
         });
         const appStateSubscription = AppState.addEventListener("change", (state) => {
           if (state !== "active") {
@@ -67,50 +92,65 @@ const connectivityLayer = Connectivity.layer({
           }
           void Network.getNetworkStateAsync()
             .then((current) => {
-              if (active) {
-                Queue.offerUnsafe(queue, networkStatus(current));
-              }
+              if (active) publish(current, "resume");
             })
             .catch(() => undefined);
         });
-        return {
-          close: () => {
-            active = false;
-            networkSubscription.remove();
-            appStateSubscription.remove();
-          },
+        return () => {
+          active = false;
+          networkSubscription.remove();
+          appStateSubscription.remove();
         };
       }),
-      ({ close }) => Effect.sync(close),
-    ).pipe(Effect.asVoid),
-  ),
-});
+      (close) => Effect.sync(close),
+    );
+    return Connectivity.Connectivity.of({
+      status: Effect.suspend(() => (latest === null ? queryNetworkStatus : Effect.succeed(latest))),
+      changes: Stream.fromPubSub(updates).pipe(Stream.debounce(NETWORK_CHANGE_DEBOUNCE)),
+    });
+  }),
+);
 
-const wakeupsLayer = Wakeups.layer({
-  changes: Stream.merge(
-    Stream.callback<"application-active-probe" | "application-active-reconnect">((queue) =>
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          let backgroundedAtMs = AppState.currentState === "background" ? Date.now() : null;
-          return AppState.addEventListener("change", (state) => {
-            if (state === "background") {
-              backgroundedAtMs = Date.now();
-              return;
-            }
-            if (state === "active") {
-              Queue.offerUnsafe(queue, mobileApplicationActiveWakeup(backgroundedAtMs, Date.now()));
-              backgroundedAtMs = null;
-            }
-          });
-        }),
-        (subscription) => Effect.sync(() => subscription.remove()),
-      ).pipe(Effect.asVoid),
-    ),
-    managedRelayAccountChanges(appAtomRegistry).pipe(
-      Stream.map(() => "credentials-changed" as const),
-    ),
-  ),
-});
+const wakeupsLayer = Layer.effect(
+  Wakeups.ConnectionWakeups,
+  Effect.gen(function* () {
+    const wakeups = yield* PubSub.unbounded<
+      "application-active-probe" | "application-active-reconnect"
+    >();
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        let backgroundedAtMs = AppState.currentState === "background" ? Date.now() : null;
+        return AppState.addEventListener("change", (state) => {
+          recordConnectionDiagnostic("app-state", state);
+          if (state === "background") {
+            backgroundedAtMs = Date.now();
+            return;
+          }
+          if (state === "active") {
+            const wakeup = mobileApplicationActiveWakeup(backgroundedAtMs, Date.now());
+            recordConnectionDiagnostic(
+              "wakeup",
+              backgroundedAtMs === null
+                ? wakeup
+                : `${wakeup} after ${Math.round((Date.now() - backgroundedAtMs) / 1000)}s`,
+            );
+            backgroundedAtMs = null;
+            PubSub.publishUnsafe(wakeups, wakeup);
+          }
+        });
+      }),
+      (subscription) => Effect.sync(() => subscription.remove()),
+    );
+    return Wakeups.ConnectionWakeups.of({
+      changes: Stream.merge(
+        Stream.fromPubSub(wakeups),
+        managedRelayAccountChanges(appAtomRegistry).pipe(
+          Stream.map(() => "credentials-changed" as const),
+        ),
+      ),
+    });
+  }),
+);
 
 const capabilitiesLayer = Layer.effectContext(
   Effect.gen(function* () {

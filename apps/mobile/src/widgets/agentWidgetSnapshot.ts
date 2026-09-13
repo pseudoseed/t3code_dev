@@ -118,6 +118,13 @@ export function agentWidgetContentKey(snapshot: AgentWidgetSnapshot): string {
 }
 
 /** Replaces one server's snapshot and preserves other paired environments. */
+export const EMPTY_AGENT_WIDGET_SNAPSHOT: AgentWidgetSnapshot = {
+  activeCount: 0,
+  attentionCount: 0,
+  activities: [],
+  updatedAt: null,
+};
+
 export function mergeWidgetUpdate(
   snapshot: AgentWidgetSnapshot,
   update: DirectWidgetUpdate,
@@ -125,27 +132,33 @@ export function mergeWidgetUpdate(
   const environments = snapshot.environments ?? [];
   const previous = environments.find((entry) => entry.environmentId === update.environmentId);
   if (
-    !previous ||
-    (previous.snapshot.updatedAt !== null &&
-      previous.snapshot.updatedAt >= update.activity.updatedAt)
+    previous !== undefined &&
+    previous.snapshot.updatedAt !== null &&
+    previous.snapshot.updatedAt >= update.activity.updatedAt
   )
     return snapshot;
-  const next = environments.map((entry) =>
-    entry.environmentId !== update.environmentId
-      ? entry
-      : {
-          environmentId: entry.environmentId,
-          snapshot: {
-            activeCount: update.activity.activeCount,
-            attentionCount: update.attentionCount,
-            updatedAt: update.activity.updatedAt,
-            activities: update.activity.activities.map(({ status, ...row }) => ({
-              ...row,
-              headline: status,
-            })),
-          },
-        },
-  );
+  const replacement = {
+    environmentId: update.environmentId,
+    snapshot: {
+      activeCount: update.activity.activeCount,
+      attentionCount: update.attentionCount,
+      updatedAt: update.activity.updatedAt,
+      activities: update.activity.activities.map(({ status, ...row }) => ({
+        ...row,
+        headline: status,
+      })),
+    },
+  };
+  // A server the widget has never heard of (the app last wrote before its
+  // projects hydrated, or the widget was seeded from a push) still gets a
+  // row; dropping the push here used to leave the widget frozen for good.
+  const next =
+    previous === undefined
+      ? [...environments, replacement]
+      : environments.map((entry) =>
+          entry.environmentId !== update.environmentId ? entry : replacement,
+        );
+
   const activities = next
     .flatMap((entry) => entry.snapshot.activities)
     .sort((a, b) => priority(a.phase) - priority(b.phase) || b.updatedAt.localeCompare(a.updatedAt))
