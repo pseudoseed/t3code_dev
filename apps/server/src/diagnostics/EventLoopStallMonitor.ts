@@ -10,14 +10,14 @@ import * as Layer from "effect/Layer";
  * requests. Each stall becomes a span so the trace log carries proof of when
  * and for how long, next to the connection churn it caused.
  */
-export interface EventLoopStallMonitorOptions {
+interface EventLoopStallMonitorOptions {
   readonly intervalMs: number;
   readonly thresholdMs: number;
   readonly report: (stall: { readonly stalledMs: number }) => Effect.Effect<void>;
 }
 
-export const DEFAULT_STALL_INTERVAL_MS = 1_000;
-export const DEFAULT_STALL_THRESHOLD_MS = 5_000;
+const DEFAULT_STALL_INTERVAL_MS = 1_000;
+const DEFAULT_STALL_THRESHOLD_MS = 5_000;
 
 /** How late a timer fired: elapsed wall-clock time beyond the interval it asked for. */
 export function stalledMillis(input: {
@@ -28,7 +28,7 @@ export function stalledMillis(input: {
   return Math.max(0, input.afterMs - input.beforeMs - input.intervalMs);
 }
 
-export const run = Effect.fnUntraced(function* (options: EventLoopStallMonitorOptions) {
+const run = Effect.fnUntraced(function* (options: EventLoopStallMonitorOptions) {
   for (;;) {
     const beforeMs = yield* Clock.currentTimeMillis;
     yield* Effect.sleep(Duration.millis(options.intervalMs));
