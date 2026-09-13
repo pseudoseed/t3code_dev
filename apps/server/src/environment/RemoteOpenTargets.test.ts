@@ -168,13 +168,15 @@ describe("RemoteOpenTargets cache", () => {
     }).pipe(
       Effect.provideService(HostProcessHostname, "bb-1"),
       Effect.provide(
-        RemoteOpenTargets.layer.pipe(
-          Layer.provide(
-            Layer.mergeAll(netLayer({ ipv4: true, ipv6: true }), countingSpawnerLayer(spawns)),
+        Layer.merge(
+          RemoteOpenTargets.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(netLayer({ ipv4: true, ipv6: true }), countingSpawnerLayer(spawns)),
+            ),
           ),
+          TestClock.layer(),
         ),
       ),
-      Effect.provide(TestClock.layer()),
     );
   });
 });
