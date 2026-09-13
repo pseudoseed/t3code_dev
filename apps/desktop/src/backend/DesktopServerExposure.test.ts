@@ -321,6 +321,41 @@ describe("DesktopServerExposure", () => {
     ),
   );
 
+  it.effect("advertises the default-route interface when two LAN interfaces share a subnet", () =>
+    withHarness(
+      {
+        en0: [{ address: "10.10.20.20", family: "IPv4", internal: false }],
+        en7: [{ address: "10.10.20.117", family: "IPv4", internal: false }],
+      },
+      Effect.gen(function* () {
+        const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
+        yield* serverExposure.configureFromSettings({ port: 4173 });
+        yield* serverExposure.setMode("network-accessible");
+
+        const state = yield* serverExposure.getState;
+        assert.equal(state.advertisedHost, "10.10.20.117");
+      }),
+      {},
+      mockSpawnerLayer("   route to: default\n  interface: en7\n"),
+    ),
+  );
+
+  it("parses the default-route interface from macOS and Linux output", () => {
+    assert.equal(
+      DesktopServerExposure.parseDefaultRouteInterface(
+        "   route to: default\ndestination: default\n  interface: en7\n      flags: <UP,GATEWAY>\n",
+      ),
+      "en7",
+    );
+    assert.equal(
+      DesktopServerExposure.parseDefaultRouteInterface(
+        "default via 10.0.0.1 dev eth0 proto dhcp metric 100 \n",
+      ),
+      "eth0",
+    );
+    assert.equal(DesktopServerExposure.parseDefaultRouteInterface(""), null);
+  });
+
   it.effect("keeps Tailscale-only hosts network-accessible", () =>
     withHarness(
       tailnetNetworkInterfaces,
