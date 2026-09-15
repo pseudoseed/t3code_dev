@@ -54,6 +54,13 @@ const color = (family: TailwindColorFamily, shade?: TailwindColorShade, opacity 
 // neither literally `light` nor `dark`, so appearance-sensitive values must also be
 // represented as semantic variables for custom themes.
 const ADAPTIVE_COLORS: Readonly<Record<string, readonly [light: string, dark: string]>> = {
+  // Clerk's custom profile pages keep its native palette under every app theme.
+  // Keep these values aligned with clerk-theme.json, outside the runtime palette.
+  "--color-clerk-page": ["#f2f2f7", "#0e0e0e"],
+  "--color-clerk-foreground": ["#262626", "#f5f5f5"],
+  "--color-clerk-foreground-muted": ["#737373", "#a3a3a3"],
+  "--color-clerk-border": ["rgba(229, 229, 234, 0.06)", "rgba(42, 42, 42, 0.06)"],
+  "--color-clerk-danger": ["#dc2626", "#fca5a5"],
   "--color-adaptive-amber-50-950-a40": [color("amber", 50), color("amber", 950, 0.4)],
   "--color-adaptive-amber-200-900-a60": [color("amber", 200), color("amber", 900, 0.6)],
   "--color-adaptive-amber-500-a12-a16": [color("amber", 500, 0.12), color("amber", 500, 0.16)],
