@@ -29,6 +29,7 @@ function readModelWithSubagentSelection(
         id: ThreadId.make("thread-1"),
         projectId: ProjectId.make("project-1"),
         title: "Thread",
+        pullRequests: [],
         modelSelection: claudeSelection,
         subagentModelSelection,
         runtimeMode: "full-access",

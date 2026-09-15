@@ -78,6 +78,8 @@ function AccessoryContainer(props: { readonly children: ReactNode; readonly host
  */
 export function TerminalSurfacePanel(props: {
   readonly autoFocus?: boolean;
+  readonly captureRequest?: number;
+  readonly onCapture?: (text: string) => void;
   readonly content: TerminalSurfaceContent;
   /**
    * "inset" pads the surface above the software keyboard and pins the key
@@ -186,6 +188,8 @@ export function TerminalSurfacePanel(props: {
         <TerminalSurface
           autoFocus={(props.autoFocus ?? true) && !SHOWCASE_ENABLED}
           content={props.content}
+          captureRequest={props.captureRequest}
+          onCapture={props.onCapture}
           fontSize={props.fontSize}
           isRunning={props.isRunning}
           keyboardFocusRequest={keyboardFocusRequest}

@@ -682,11 +682,22 @@ export const make = Effect.gen(function* () {
   const sendLiveActivity: ApnsDeliveries["Service"]["sendLiveActivity"] = Effect.fn(
     "relay.apns_deliveries.send_live_activity",
   )(function* (input) {
+    if (!config.apns) {
+      return {
+        deviceId: input.target.device_id,
+        kind: input.kind,
+        ok: false,
+        apnsStatus: null,
+        apnsReason: "APNs is disabled for this relay.",
+        apnsId: null,
+      };
+    }
     yield* Effect.annotateCurrentSpan({
       "relay.mobile.device_id": input.target.device_id,
       "relay.delivery.kind": input.kind,
       ...(input.sourceJobId ? { "relay.delivery.job_id": input.sourceJobId } : {}),
     });
+    let deliveryTarget = input.target;
     const now = yield* DateTime.now;
     const aggregate =
       input.aggregate === null ? null : sanitizeAgentActivityAggregateState(input.aggregate);
@@ -728,6 +739,7 @@ export const make = Effect.gen(function* () {
         });
         return staleJobResult({ deviceId: input.target.device_id, kind: input.kind });
       }
+      deliveryTarget = currentTarget;
       if (alert) {
         const preferences = parsePreferences(currentTarget.preferences_json);
         const previousAggregate = parseAggregate(currentTarget.last_aggregate_json);
@@ -786,7 +798,7 @@ export const make = Effect.gen(function* () {
     );
     const result = yield* apns
       .sendLiveActivityRequest({
-        credentials: credentialsForTarget(config.apns, input.target),
+        credentials: credentialsForTarget(config.apns, deliveryTarget),
         request,
         issuedAtUnixSeconds: epochSeconds,
       })
@@ -847,11 +859,22 @@ export const make = Effect.gen(function* () {
   const sendPushNotification: ApnsDeliveries["Service"]["sendPushNotification"] = Effect.fn(
     "relay.apns_deliveries.send_push_notification",
   )(function* (input) {
+    if (!config.apns) {
+      return {
+        deviceId: input.target.device_id,
+        kind: "push_notification",
+        ok: false,
+        apnsStatus: null,
+        apnsReason: "APNs is disabled for this relay.",
+        apnsId: null,
+      };
+    }
     yield* Effect.annotateCurrentSpan({
       "relay.mobile.device_id": input.target.device_id,
       "relay.delivery.kind": "push_notification",
       ...(input.sourceJobId ? { "relay.delivery.job_id": input.sourceJobId } : {}),
     });
+    let deliveryTarget = input.target;
     const now = yield* DateTime.now;
     const epochSeconds = Math.floor(now.epochMilliseconds / 1_000);
     const notification = sanitizeApnsNotificationPayload(input.notification);
@@ -921,6 +944,7 @@ export const make = Effect.gen(function* () {
           kind: "push_notification",
         });
       }
+      deliveryTarget = currentTarget;
       const preferences = parsePreferences(currentTarget.preferences_json);
       const alertAllowed =
         notification.phase !== undefined && notification.updatedAt !== undefined
@@ -942,7 +966,7 @@ export const make = Effect.gen(function* () {
     }
     const result = yield* apns
       .sendPushNotificationRequest({
-        credentials: credentialsForTarget(config.apns, input.target),
+        credentials: credentialsForTarget(config.apns, deliveryTarget),
         request,
         issuedAtUnixSeconds: epochSeconds,
       })
@@ -1084,6 +1108,7 @@ export const make = Effect.gen(function* () {
     sendPushNotification,
     processSignedJob,
     sendPushNotificationForTarget: Effect.fnUntraced(function* (input) {
+      if (!config.apns) return null;
       const now = yield* DateTime.now;
       const notification = notificationForAggregate({
         target: input.target,
@@ -1103,6 +1128,7 @@ export const make = Effect.gen(function* () {
         : Effect.succeed(null);
     }),
     sendForTarget: Effect.fnUntraced(function* (input) {
+      if (!config.apns) return null;
       const delivery = chooseDelivery({
         target: input.target,
         aggregate: input.aggregate,

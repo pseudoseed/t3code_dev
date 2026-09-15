@@ -6,6 +6,7 @@ import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3too
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
+  CommonActions,
   NavigationContext,
   NavigationRouteContext,
   StackActions,
@@ -22,7 +23,12 @@ import {
   type ReactNode,
 } from "react";
 import { useWindowDimensions, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import {
@@ -36,7 +42,10 @@ import {
   type WorkspaceDockPaneLayout,
   type WorkspacePaneLayout,
 } from "../../lib/layout";
-import { resolveThreadSelectionNavigationAction } from "../../lib/adaptive-navigation";
+import {
+  resolveThreadSelectionNavigationAction,
+  resolveThreadSelectionOverlayState,
+} from "../../lib/adaptive-navigation";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import {
@@ -54,6 +63,7 @@ import { ThreadNavigationSidebar } from "../threads/ThreadNavigationSidebar";
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
 import { WorkspaceDockPane } from "./workspace-dock-pane";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
+import { WorkspaceContentWidthContext } from "./workspace-content-width";
 
 interface AdaptiveWorkspaceContextValue {
   readonly layout: Layout;
@@ -61,6 +71,7 @@ interface AdaptiveWorkspaceContextValue {
   readonly dock: WorkspaceDockPaneLayout;
   readonly fileInspector: FileInspectorPaneLayout;
   readonly primarySidebarSearchQuery: string;
+  readonly selectThread: (thread: EnvironmentThreadShell) => void;
   readonly activateAuxiliaryPaneRole: (role: WorkspaceAuxiliaryPaneRole) => () => void;
   /**
    * Route screens hand their inspector pane content to the workspace so it
@@ -99,6 +110,7 @@ const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextValue>({
   dock: compactDock,
   fileInspector: compactFileInspector,
   primarySidebarSearchQuery: "",
+  selectThread: () => undefined,
   activateAuxiliaryPaneRole: () => () => undefined,
   registerWorkspaceInspector: () => () => undefined,
   registerWorkspaceDock: () => () => undefined,
@@ -216,6 +228,7 @@ function useRegisterWorkspacePane(
 export function AdaptiveWorkspaceLayout(props: {
   readonly children: ReactNode;
   readonly pathname: string;
+  readonly workspaceRouteKey: string | undefined;
 }) {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   if (!AsyncResult.isSuccess(preferencesResult)) {
@@ -239,6 +252,7 @@ function AdaptiveWorkspaceLayoutContent(
   props: {
     readonly children: ReactNode;
     readonly pathname: string;
+    readonly workspaceRouteKey: string | undefined;
   } & {
     readonly projectGroupingMode: SidebarProjectGroupingMode;
   },
@@ -459,41 +473,6 @@ function AdaptiveWorkspaceLayoutContent(
     },
     [auxiliaryPaneRole],
   );
-  const contextValue = useMemo(
-    () => ({
-      layout,
-      panes,
-      dock,
-      fileInspector,
-      primarySidebarSearchQuery,
-      activateAuxiliaryPaneRole,
-      registerWorkspaceInspector,
-      registerWorkspaceDock,
-      setDockPaneHeight,
-      setPrimarySidebarSearchQuery,
-      showAuxiliaryPane,
-      toggleAuxiliaryPane,
-      togglePrimarySidebar,
-      setAuxiliaryPaneWidth,
-    }),
-    [
-      activateAuxiliaryPaneRole,
-      dock,
-      fileInspector,
-      layout,
-      panes,
-      primarySidebarSearchQuery,
-      registerWorkspaceDock,
-      registerWorkspaceInspector,
-      setDockPaneHeight,
-      showAuxiliaryPane,
-      setPrimarySidebarSearchQuery,
-      setAuxiliaryPaneWidth,
-      toggleAuxiliaryPane,
-      togglePrimarySidebar,
-    ],
-  );
-
   const handleOpenSettings = useCallback(() => {
     navigation.navigate("SettingsSheet", {
       screen: "SettingsContent",
@@ -568,6 +547,10 @@ function AdaptiveWorkspaceLayoutContent(
   const contentSettledWidth = layout.usesSplitView
     ? Math.max(0, panes.contentPaneWidth - inspectorColumnTargetWidth)
     : null;
+  const renderedInspectorWidth = useSharedValue(inspectorColumnTargetWidth);
+  const renderedContentWidth = useDerivedValue(() =>
+    Math.max(0, width - renderedSidebarWidth.value - renderedInspectorWidth.value),
+  );
 
   const handleSelectThread = useCallback(
     (thread: EnvironmentThreadShell) => {
@@ -579,6 +562,17 @@ function AdaptiveWorkspaceLayoutContent(
         usesSplitView: layout.usesSplitView,
         pathname,
       });
+      const overlayState = resolveThreadSelectionOverlayState({
+        state: navigation.getState(),
+        workspaceRouteKey: props.workspaceRouteKey,
+        action: navigationAction,
+        params,
+      });
+      if (overlayState !== null) {
+        setFileInspectorPreferredVisible(false);
+        navigation.dispatch(CommonActions.reset(overlayState));
+        return;
+      }
       if (navigationAction === "set-params") {
         const nextThreadKey = scopedThreadKey(thread.environmentId, thread.id);
         if (nextThreadKey === selectedThreadKey) {
@@ -595,7 +589,44 @@ function AdaptiveWorkspaceLayoutContent(
       }
       navigation.navigate("Thread", params);
     },
-    [layout.usesSplitView, pathname, navigation, selectedThreadKey],
+    [layout.usesSplitView, pathname, navigation, selectedThreadKey, props.workspaceRouteKey],
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      layout,
+      panes,
+      fileInspector,
+      primarySidebarSearchQuery,
+      dock,
+      registerWorkspaceDock,
+      setDockPaneHeight,
+      selectThread: handleSelectThread,
+      activateAuxiliaryPaneRole,
+      registerWorkspaceInspector,
+      setPrimarySidebarSearchQuery,
+      showAuxiliaryPane,
+      toggleAuxiliaryPane,
+      togglePrimarySidebar,
+      setAuxiliaryPaneWidth,
+    }),
+    [
+      activateAuxiliaryPaneRole,
+      fileInspector,
+      handleSelectThread,
+      dock,
+      registerWorkspaceDock,
+      setDockPaneHeight,
+      layout,
+      panes,
+      primarySidebarSearchQuery,
+      registerWorkspaceInspector,
+      showAuxiliaryPane,
+      setPrimarySidebarSearchQuery,
+      setAuxiliaryPaneWidth,
+      toggleAuxiliaryPane,
+      togglePrimarySidebar,
+    ],
   );
 
   return (
@@ -646,20 +677,25 @@ function AdaptiveWorkspaceLayoutContent(
                 contentSettledWidth !== null ? { flex: 1, width: contentSettledWidth } : { flex: 1 }
               }
             >
-              <View className="flex-1" collapsable={false}>
-                {props.children}
-              </View>
-              <WorkspaceDockPane
-                active={workspaceDock?.active ?? false}
-                dock={dock}
-                renderDock={workspaceDock?.render}
-                setDockPaneHeight={setDockPaneHeight}
-                viewportHeight={height}
-                onClosed={handleWorkspaceDockClosed}
-              />
+              <WorkspaceContentWidthContext
+                value={layout.usesSplitView ? renderedContentWidth : null}
+              >
+                <View className="flex-1" collapsable={false}>
+                  {props.children}
+                </View>
+                <WorkspaceDockPane
+                  active={workspaceDock?.active ?? false}
+                  dock={dock}
+                  renderDock={workspaceDock?.render}
+                  setDockPaneHeight={setDockPaneHeight}
+                  viewportHeight={height}
+                  onClosed={handleWorkspaceDockClosed}
+                />
+              </WorkspaceContentWidthContext>
             </View>
           </View>
           <WorkspaceInspectorPane
+            renderedInspectorWidth={renderedInspectorWidth}
             active={workspaceInspector?.active ?? false}
             panes={panes}
             renderInspector={workspaceInspector?.render}

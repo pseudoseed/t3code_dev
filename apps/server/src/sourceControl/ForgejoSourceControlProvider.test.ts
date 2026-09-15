@@ -1,33 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { discovery, parseForgejoAuthHosts } from "./ForgejoSourceControlProvider.ts";
+import { discovery } from "./ForgejoSourceControlProvider.ts";
 
-const authOutput = ["pat-s@codeberg.org", "pat-s@git.example.org"].join("\n");
+const login = (url: string) => ({ name: url, url, user: "pat-s", valid: "true", default: "false" });
+const authOutput = JSON.stringify([
+  login("https://codeberg.org"),
+  login("https://git.example.org"),
+]);
 
 describe("Forgejo discovery", () => {
-  it("parses `fj auth list` user@host lines", () => {
-    assert.deepStrictEqual(parseForgejoAuthHosts(authOutput), [
-      { account: "pat-s", host: "codeberg.org" },
-      { account: "pat-s", host: "git.example.org" },
-    ]);
-  });
-
-  it("parses a bare host, which is what a token login lists", () => {
-    // `fj auth add-token` stores no account name, so `fj auth list` prints the instance alone.
-    assert.deepStrictEqual(parseForgejoAuthHosts("git.example.org"), [
-      { account: null, host: "git.example.org" },
-    ]);
-  });
-
-  it("ignores the sentences `fj` prints when nothing is logged in", () => {
-    assert.deepStrictEqual(parseForgejoAuthHosts("No logins."), []);
-    assert.deepStrictEqual(
-      parseForgejoAuthHosts("Could not find keys file. Creating a new file.\nNo logins."),
-      [],
-    );
-  });
-
   it("refines an unknown remote logged in with a token and no account", () => {
     const refined = discovery.refineUnknownRemote!({
       cwd: "/repo",
@@ -37,14 +19,14 @@ describe("Forgejo discovery", () => {
         remoteUrl: "https://git.example.org/owner/repo",
       },
       auth: {
-        stdout: "git.example.org\n",
+        stdout: JSON.stringify([login("https://git.example.org")]),
         stderr: "",
         exitCode: ChildProcessSpawner.ExitCode(0),
       },
     });
     assert.deepStrictEqual(refined, {
       kind: "forgejo",
-      name: "Forgejo",
+      name: "Forgejo / Gitea",
       baseUrl: "https://git.example.org",
     });
   });
@@ -61,7 +43,7 @@ describe("Forgejo discovery", () => {
     });
     assert.deepStrictEqual(refined, {
       kind: "forgejo",
-      name: "Forgejo",
+      name: "Forgejo / Gitea",
       baseUrl: "https://git.example.org",
     });
   });
@@ -78,12 +60,12 @@ describe("Forgejo discovery", () => {
     });
     assert.deepStrictEqual(refined, {
       kind: "forgejo",
-      name: "Forgejo",
-      baseUrl: "https://Git.Example.Org",
+      name: "Forgejo / Gitea",
+      baseUrl: "https://git.example.org",
     });
   });
 
-  it("refines a remote whose host carries a port not present in the login store", () => {
+  it("refines a remote whose port matches its configured login", () => {
     const refined = discovery.refineUnknownRemote!({
       cwd: "/repo",
       context: {
@@ -95,11 +77,15 @@ describe("Forgejo discovery", () => {
         remoteName: "origin",
         remoteUrl: "https://git.example.org:3000/owner/repo.git",
       },
-      auth: { stdout: authOutput, stderr: "", exitCode: ChildProcessSpawner.ExitCode(0) },
+      auth: {
+        stdout: JSON.stringify([login("https://git.example.org:3000")]),
+        stderr: "",
+        exitCode: ChildProcessSpawner.ExitCode(0),
+      },
     });
     assert.deepStrictEqual(refined, {
       kind: "forgejo",
-      name: "Forgejo",
+      name: "Forgejo / Gitea",
       baseUrl: "https://git.example.org:3000",
     });
   });

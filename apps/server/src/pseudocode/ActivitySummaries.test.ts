@@ -30,6 +30,7 @@ function fixture() {
     id: ThreadId.make("t"),
     projectId: project.id,
     title: "Fix notification routing",
+    pullRequests: [],
     modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
     runtimeMode: "full-access",
     interactionMode: "default",

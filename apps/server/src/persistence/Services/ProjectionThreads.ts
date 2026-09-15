@@ -15,6 +15,7 @@ import {
   ProviderInteractionMode,
   RuntimeMode,
   ThreadLinkedPullRequest,
+  ThreadTitleState,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -29,6 +30,7 @@ export const ProjectionThread = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   title: Schema.String,
+  titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   modelSelection: ModelSelection,
   /** Null means subagents inherit the thread's model. */
   subagentModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),

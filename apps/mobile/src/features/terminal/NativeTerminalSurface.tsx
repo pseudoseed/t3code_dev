@@ -47,6 +47,8 @@ interface TerminalSurfaceProps extends ViewProps {
   readonly isRunning: boolean;
   readonly autoFocus?: boolean;
   readonly keyboardFocusRequest?: number;
+  readonly captureRequest?: number;
+  readonly onCapture?: (text: string) => void;
   readonly theme?: TerminalTheme;
   readonly onInput: (data: string) => void;
   readonly onResize: (size: { readonly cols: number; readonly rows: number }) => void;
@@ -282,6 +284,8 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
           onInput={handleNativeInput}
           onResize={handleNativeResize}
           onSurfaceReady={handleSurfaceReady}
+          captureRequest={props.captureRequest}
+          onCapture={(event) => props.onCapture?.(event.nativeEvent.text)}
         />
       </View>
     );

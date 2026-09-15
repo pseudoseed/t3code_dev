@@ -2,8 +2,12 @@ import { DEFAULT_TERMINAL_ID, EnvironmentId } from "@t3tools/contracts";
 import type { MenuAction } from "@react-native-menu/menu";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Platform, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Platform, Pressable, View } from "react-native";
+import { AppText as Text } from "../../components/AppText";
+import { TerminalContextSheet } from "./TerminalContextSheet";
+import { hasNativeTerminalSurface } from "./nativeTerminalModule";
+import { KeyboardController } from "react-native-keyboard-controller";
 
 import { AndroidHeaderIconButton, AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { ControlPillMenu } from "../../components/ControlPill";
@@ -78,6 +82,8 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
   const requestedTerminalId = firstRouteParam(params.terminalId);
   const terminalId = requestedTerminalId ?? DEFAULT_TERMINAL_ID;
+  const [captureRequest, setCaptureRequest] = useState(0);
+  const [capturedOutput, setCapturedOutput] = useState<string | null>(null);
   const {
     isReady: hasResolvedFontPreference,
     appearance,
@@ -386,6 +392,20 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
 
   return (
     <>
+      {capturedOutput !== null && selectedThread ? (
+        <TerminalContextSheet
+          text={capturedOutput}
+          environmentId={selectedThread.environmentId}
+          threadId={selectedThread.id}
+          terminalId={terminalId}
+          terminalLabel={resolveTerminalSessionLabel(terminalId, terminal.summary)}
+          onClose={() => setCapturedOutput(null)}
+          onAttach={() => {
+            setCapturedOutput(null);
+            returnToThread();
+          }}
+        />
+      ) : null}
       <NativeStackScreenOptions
         options={{
           // Static header config lives in Stack.tsx (SOLID_HEADER_OPTIONS — the pty
@@ -530,19 +550,38 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
             onRetry={handleRetryEnvironment}
           />
         ) : (
-          <TerminalSurfacePanel
-            content={session.surfaceContent}
-            environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
-            fontSize={fontSize}
-            isRunning={session.isRunning}
-            onClear={session.clearTerminal}
-            onInput={session.sendInput}
-            onResize={session.handleResize}
-            onToggleModifier={session.togglePendingModifier}
-            pendingModifier={session.pendingModifier}
-            terminalKey={terminalKey}
-            theme={terminalTheme}
-          />
+          <>
+            <TerminalSurfacePanel
+              captureRequest={captureRequest}
+              onCapture={(text) => {
+                if (text.trim()) setCapturedOutput(text);
+                else Alert.alert("No terminal output", "There is no visible output to attach.");
+              }}
+              content={session.surfaceContent}
+              environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
+              fontSize={fontSize}
+              isRunning={session.isRunning}
+              onClear={session.clearTerminal}
+              onInput={session.sendInput}
+              onResize={session.handleResize}
+              onToggleModifier={session.togglePendingModifier}
+              pendingModifier={session.pendingModifier}
+              terminalKey={terminalKey}
+              theme={terminalTheme}
+            />
+            {hasNativeTerminalSurface() ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  KeyboardController.dismiss();
+                  setCaptureRequest((value) => value + 1);
+                }}
+                className="px-4 py-2"
+              >
+                <Text style={{ color: terminalTheme.foreground }}>Attach visible output</Text>
+              </Pressable>
+            ) : null}
+          </>
         )}
       </View>
     </>

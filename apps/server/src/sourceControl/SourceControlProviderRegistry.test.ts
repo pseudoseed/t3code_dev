@@ -13,9 +13,9 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as BitbucketApi from "./BitbucketApi.ts";
-import * as ForgejoApi from "./ForgejoApi.ts";
 import * as GitHubCli from "./GitHubCli.ts";
 import * as GitLabCli from "./GitLabCli.ts";
+import * as ForgejoCli from "./ForgejoCli.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
@@ -40,6 +40,9 @@ function makeRegistry(input: {
     readonly url: string;
   }>;
   readonly process?: Partial<VcsProcess.VcsProcess["Service"]>;
+  readonly github?: Partial<GitHubCli.GitHubCli["Service"]>;
+  readonly forgejo?: Partial<ForgejoCli.ForgejoCli["Service"]>;
+  readonly gitlab?: Partial<GitLabCli.GitLabCli["Service"]>;
   readonly resolve?: VcsDriverRegistry.VcsDriverRegistry["Service"]["resolve"];
 }) {
   const driver = {
@@ -87,13 +90,17 @@ function makeRegistry(input: {
   return SourceControlProviderRegistry.make.pipe(
     Effect.provide(
       Layer.mergeAll(
+        NodeServices.layer,
         registryLayer,
         processLayer,
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)({}),
-        Layer.mock(ForgejoApi.ForgejoApi)({}),
-        Layer.mock(GitHubCli.GitHubCli)({}),
-        Layer.mock(GitLabCli.GitLabCli)({}),
+        Layer.mock(GitHubCli.GitHubCli)(input.github ?? {}),
+        Layer.mock(GitLabCli.GitLabCli)(input.gitlab ?? {}),
+        Layer.mock(ForgejoCli.ForgejoCli)({
+          listLogins: () => Effect.succeed([]),
+          ...input.forgejo,
+        }),
         ServerConfig.layerTest(process.cwd(), {
           prefix: "t3-source-control-registry-test-",
         }).pipe(Layer.provide(NodeServices.layer)),
@@ -300,6 +307,18 @@ it.effect("refineRemoteProvider refines a logged-in Forgejo remote on a non-orig
   Effect.gen(function* () {
     const registry = yield* makeRegistry({
       remotes: [{ name: "origin", url: "git@github.com:pingdotgg/t3code.git" }],
+      forgejo: {
+        listLogins: () =>
+          Effect.succeed([
+            {
+              name: "forgejo",
+              url: "https://git.example.org",
+              user: "pat-s",
+              default: "false",
+              valid: "true",
+            },
+          ]),
+      },
       process: {
         run: (input) =>
           input.command === "fj"
@@ -330,4 +349,51 @@ it.effect("refineRemoteProvider leaves a host with no matching login unrefined",
 
     assert.strictEqual(provider?.kind, "unknown");
   }),
+);
+
+it.effect(
+  "routes linked subjects by URL independently of the checkout and skips unsupported links",
+  () =>
+    Effect.gen(function* () {
+      const registry = yield* makeRegistry({
+        remotes: [{ name: "origin", url: "https://github.com/unrelated/checkout.git" }],
+        github: {
+          execute: () =>
+            Effect.succeed(processOutput(JSON.stringify({ title: "GitHub issue", body: null }))),
+        },
+        gitlab: {
+          execute: () =>
+            Effect.succeed(
+              processOutput(JSON.stringify({ title: "GitLab MR", description: "Nested project" })),
+            ),
+        },
+      });
+      for (const [url, expected] of [
+        ["https://github.com/team/project/issues/1", { title: "GitHub issue", body: null }],
+        [
+          "https://gitlab.com/team/sub/project/-/merge_requests/2",
+          { title: "GitLab MR", body: "Nested project" },
+        ],
+      ] as const) {
+        const lookup = registry.resolveLink({ cwd: "/unrelated", url: new URL(url) });
+        assert.ok(lookup);
+        assert.deepStrictEqual(yield* lookup, expected);
+      }
+      for (const url of [
+        "https://example.test/team/project/issues/1",
+        "https://github.attacker.test/team/project/issues/1",
+        "https://gitlab.attacker.test/team/project/-/issues/1",
+        "https://github.com/team/project",
+        "https://codeberg.org/team/project/issues/1",
+        "https://bitbucket.org/team/project/pull-requests/1",
+        "https://dev.azure.com/org/project/_git/repo/pullrequest/1",
+        "http://github.com/team/project/issues/1",
+        "https://user:secret@github.com/team/project/issues/1",
+      ]) {
+        assert.strictEqual(
+          registry.resolveLink({ cwd: "/unrelated", url: new URL(url) }),
+          undefined,
+        );
+      }
+    }).pipe(Effect.scoped),
 );

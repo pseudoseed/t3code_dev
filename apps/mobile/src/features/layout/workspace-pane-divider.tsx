@@ -22,8 +22,8 @@ interface WorkspacePaneDividerProps {
 export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
   const latestProps = useRef(props);
   latestProps.current = props;
-  const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const handleResizeStart = useCallback(() => {
     setDragging(true);
     latestProps.current.onResizeStart?.();
@@ -88,9 +88,9 @@ export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
           now: Math.round(props.currentWidth),
           text: `${Math.round(props.currentWidth)} points ${axis === "x" ? "wide" : "tall"}`,
         }}
-        onAccessibilityAction={handleAccessibilityAction}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
+        onAccessibilityAction={handleAccessibilityAction}
       >
         <View
           className={cn(

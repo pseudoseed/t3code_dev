@@ -13,6 +13,7 @@ vi.mock("@expo/ui/swift-ui/modifiers", () => ({
   accessibilityLabel: (value: unknown) => value,
   background: (value: unknown) => value,
   cornerRadius: (value: unknown) => value,
+  activityBackgroundTint: (value: unknown) => value,
   font: (value: unknown) => value,
   foregroundStyle: (value: unknown) => value,
   frame: (value: unknown) => value,

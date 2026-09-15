@@ -1,7 +1,7 @@
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { PositiveInt, TrimmedNonEmptyString } from "@t3tools/contracts";
+import { PositiveInt, TrimmedNonEmptyString, type ChangeRequest } from "@t3tools/contracts";
 
 export interface NormalizedForgejoPullRequestRecord {
   readonly number: number;
@@ -32,11 +32,15 @@ export const ForgejoRepoRefSchema = Schema.Struct({
 
 export const ForgejoPullBranchSchema = Schema.Struct({
   ref: TrimmedNonEmptyString,
+  sha: Schema.optional(Schema.String),
   repo: Schema.optional(Schema.NullOr(ForgejoRepoRefSchema)),
 });
 
 export const ForgejoPullRequestSchema = Schema.Struct({
   number: PositiveInt,
+  draft: Schema.optional(Schema.Boolean),
+  closed_at: Schema.optional(Schema.NullOr(Schema.String)),
+  merged_at: Schema.optional(Schema.NullOr(Schema.String)),
   title: TrimmedNonEmptyString,
   state: Schema.optional(Schema.NullOr(Schema.String)),
   merged: Schema.optional(Schema.NullOr(Schema.Boolean)),
@@ -83,5 +87,17 @@ export function normalizeForgejoPullRequestRecord(
     ...(isCrossRepository ? { isCrossRepository: true } : {}),
     ...(isCrossRepository && headFullName ? { headRepositoryNameWithOwner: headFullName } : {}),
     ...(isCrossRepository && headOwner ? { headRepositoryOwnerLogin: headOwner } : {}),
+  };
+}
+
+export function toForgejoChangeRequest(raw: typeof ForgejoPullRequestSchema.Type): ChangeRequest {
+  return {
+    ...normalizeForgejoPullRequestRecord(raw),
+    provider: "forgejo",
+    headRepositoryNameWithOwner: raw.head.repo?.full_name ?? null,
+    headRepositoryOwnerLogin: raw.head.repo?.owner?.login ?? null,
+    isDraft: raw.draft ?? /^(?:\[WIP\]|WIP:)/i.test(raw.title),
+    closedAt: raw.closed_at ?? null,
+    mergedAt: raw.merged_at ?? null,
   };
 }

@@ -2,6 +2,7 @@ import { assert, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { ForgejoTransport } from "../sourceControl/ForgejoTransport.ts";
 import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
 import * as ForgejoIssueProvider from "./ForgejoIssueProvider.ts";
 
@@ -10,7 +11,7 @@ const resolveLocator = vi.fn<ForgejoApi.ForgejoApi["Service"]["resolveLocator"]>
   Effect.succeed({ host: "git.example.org", owner: "acme", repo: "web", scheme: "https" as const }),
 );
 
-const layer = it.layer(Layer.mock(ForgejoApi.ForgejoApi)({ request, resolveLocator }));
+const layer = it.layer(Layer.mock(ForgejoTransport)({ request, resolveLocator }));
 
 const target = { cwd: "/repo", host: "git.example.org", repository: "acme/web" };
 

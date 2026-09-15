@@ -23,6 +23,7 @@ import type {
 } from "@t3tools/contracts";
 
 import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
+import * as ForgejoTransport from "../sourceControl/ForgejoTransport.ts";
 import {
   IssueProviderError,
   type IssueProviderApi,
@@ -189,7 +190,7 @@ class ForgejoIssueProvider extends Context.Service<ForgejoIssueProvider, IssuePr
 ) {}
 
 export const make = Effect.gen(function* () {
-  const forgejo = yield* ForgejoApi.ForgejoApi;
+  const forgejo = yield* ForgejoTransport.ForgejoTransport;
 
   const fail =
     (operation: string) =>

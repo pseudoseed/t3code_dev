@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
+import { ForgejoTransport } from "../sourceControl/ForgejoTransport.ts";
 import * as ForgejoPullRequestApi from "./ForgejoPullRequestApi.ts";
 
 const mockedRequest = vi.fn<ForgejoApi.ForgejoApi["Service"]["request"]>();
@@ -13,7 +14,7 @@ const mockedResolveLocator = vi.fn<ForgejoApi.ForgejoApi["Service"]["resolveLoca
 const layer = it.layer(
   ForgejoPullRequestApi.layer.pipe(
     Layer.provide(
-      Layer.mock(ForgejoApi.ForgejoApi)({
+      Layer.mock(ForgejoTransport)({
         request: mockedRequest,
         resolveLocator: mockedResolveLocator,
       }),
@@ -522,7 +523,7 @@ it.effect("refuses a repository that is not owner/repository", () =>
     Effect.provide(
       ForgejoPullRequestApi.layer.pipe(
         Layer.provide(
-          Layer.mock(ForgejoApi.ForgejoApi)({
+          Layer.mock(ForgejoTransport)({
             request: mockedRequest,
             resolveLocator: mockedResolveLocator,
           }),

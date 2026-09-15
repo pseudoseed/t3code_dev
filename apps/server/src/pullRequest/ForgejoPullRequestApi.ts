@@ -28,7 +28,7 @@ import type {
   PullRequestViewerPermissions,
 } from "@t3tools/contracts";
 
-import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
+import { ForgejoTransport } from "../sourceControl/ForgejoTransport.ts";
 import * as Json from "./forgejoPullRequestJson.ts";
 import type {
   ProviderChangeRequest,
@@ -245,7 +245,7 @@ export class ForgejoPullRequestApi extends Context.Service<
 >()("t3/pullRequest/ForgejoPullRequestApi") {}
 
 const make = Effect.gen(function* () {
-  const forgejo = yield* ForgejoApi.ForgejoApi;
+  const forgejo = yield* ForgejoTransport;
 
   const send = (input: {
     readonly operation: string;

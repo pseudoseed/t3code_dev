@@ -40,6 +40,7 @@ import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
+import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
 import {
   hasCustomHomeListOptions,
   PROJECT_SORT_OPTIONS,
@@ -176,6 +177,7 @@ function ThreadNavigationSidebarPane(
     pinThread,
     unpinThread,
     moveThread,
+    renameThread,
     regenerateThreadTitle,
   } = useThreadListActions();
   const threadListV2Enabled = useThreadListV2Enabled();
@@ -940,6 +942,7 @@ function ThreadNavigationSidebarPane(
       threadSearchMatchByKey,
     ],
   );
+  useThreadJumpShortcuts(listItems, handleSelectThread);
   const sidebarItemsAreEqual = useCallback(
     (previous: SidebarListItem, item: SidebarListItem): boolean => {
       if (previous.type === "v2-thread" && item.type === "v2-thread") {
@@ -1107,6 +1110,7 @@ function ThreadNavigationSidebarPane(
                 pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
                 reorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
                 providerInstance={resolveThreadProviderInstance(serverConfigs, thread)}
+                onRenameThread={renameThread}
                 onNewThreadOnBranch={props.onNewThreadOnBranch}
                 canMoveUp={arrangedPinnedKeys.indexOf(`${thread.environmentId}:${thread.id}`) > 0}
                 canMoveDown={(() => {
@@ -1231,6 +1235,7 @@ function ThreadNavigationSidebarPane(
               <ThreadListRow
                 variant="sidebar"
                 thread={thread}
+                onRenameThread={renameThread}
                 onNewThreadOnBranch={props.onNewThreadOnBranch}
                 environmentLabel={
                   savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
@@ -1297,6 +1302,7 @@ function ThreadNavigationSidebarPane(
       projectByKey,
       projectTitleByProjectKey,
       regenerateThreadTitle,
+      renameThread,
       props.onNewThreadInProject,
       props.onNewThreadOnBranch,
       props.searchQuery,

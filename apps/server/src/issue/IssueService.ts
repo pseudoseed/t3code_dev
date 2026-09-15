@@ -24,7 +24,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { repositoryIdentityOf } from "../pullRequest/PullRequestService.ts";
+import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { IssueProviderRegistry } from "./IssueProviderRegistry.ts";
 import type { IssueProviderApi, IssueProviderError } from "./IssueProvider.ts";
@@ -113,7 +113,10 @@ const make = Effect.gen(function* () {
       Effect.flatMap((snapshot) => {
         const project = snapshot.projects.find((candidate) => candidate.id === projectId);
         const identity = project?.repositoryIdentity;
-        const repository = project === undefined ? null : repositoryIdentityOf(project);
+        const repository =
+          project === undefined
+            ? null
+            : sourceControlRepositorySelector(project.repositoryIdentity);
         if (project === undefined || !identity || repository === null) {
           return Effect.fail(
             new IssueUnavailableError({
