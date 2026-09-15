@@ -167,7 +167,7 @@ function stripHostPort(host: string): string {
 // `fj` keys its login store and `fj auth list` output by bare hostname, while remote URLs
 // can carry a `:port`. Match host identities port-insensitively (but keep the full host for
 // constructing API base URLs, which need the port).
-export function forgejoHostsMatch(a: string, b: string): boolean {
+function forgejoHostsMatch(a: string, b: string): boolean {
   const an = a.trim().toLowerCase();
   const bn = b.trim().toLowerCase();
   return an === bn || stripHostPort(an) === stripHostPort(bn);

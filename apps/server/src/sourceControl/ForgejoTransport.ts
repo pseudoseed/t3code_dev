@@ -10,7 +10,7 @@ export class ForgejoTransport extends Context.Service<
   Pick<ForgejoApiShape, "request" | "resolveLocator">
 >()("t3/sourceControl/ForgejoTransport") {}
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const cli = yield* ForgejoCli;
   const failure = (operation: string) => (cause: ForgejoCliError) =>
     new ForgejoApiError({

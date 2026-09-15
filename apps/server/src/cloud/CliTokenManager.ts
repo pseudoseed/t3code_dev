@@ -46,7 +46,7 @@ const DEVICE_AUTHORIZATION_DEFAULT_INTERVAL = Duration.seconds(5);
 const DEVICE_AUTHORIZATION_SLOW_DOWN_INCREMENT = Duration.seconds(5);
 const boldTerminalText = (value: string): string => `\u001b[1m${value}\u001b[22m`;
 
-export function formatLoopbackAuthorizationPrompt(authorizationUrl: string): string {
+function formatLoopbackAuthorizationPrompt(authorizationUrl: string): string {
   return [
     "Open this URL to authorize Cloud Connect:",
     `  ${authorizationUrl}`,
