@@ -8,7 +8,9 @@ between the thread’s shells, opens another one, and changes the text size. Use
 to return to the chat.
 
 On iPad, open the terminal beside chat or dock it below. Use the tabs to switch shells and the
-plus button to create another. You can expand a terminal to full screen. Closing the pane keeps
+plus button to create another. Narrower iPad windows use the bottom dock. You can expand a terminal
+to full screen, then choose **Show terminal with chat** in the terminal menu to restore the split.
+Closing the pane keeps
 its shells running; closing a tab ends that shell. Shells are shared with desktop when both
 clients connect to the same environment and thread.
 

@@ -1,3 +1,4 @@
+import { resolveTerminalDockPosition } from "../../lib/layout";
 import { AgentMailboxSheet } from "./AgentMailbox";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import {
@@ -126,6 +127,7 @@ function OpeningThreadLoadingScreen() {
 type ThreadRouteScreenRouteProps = StaticScreenProps<{
   readonly environmentId: string;
   readonly threadId: string;
+  readonly openTerminalId?: string;
 }>;
 
 interface ThreadRouteScreenProps extends ThreadRouteScreenRouteProps {
@@ -503,29 +505,51 @@ function ThreadRouteContent(
   // Regular widths host terminals in the workspace pane beside the chat;
   // compact widths keep pushing the full-screen terminal route.
   const supportsTerminalPane =
-    fileInspector.supported && Boolean(selectedThreadProject?.workspaceRoot);
+    (fileInspector.supported || dock.supported) && Boolean(selectedThreadProject?.workspaceRoot);
   const terminalPaneTerminalId =
     terminalPaneSelection.routeThreadIdentity === routeThreadIdentity
       ? terminalPaneSelection.terminalId
       : DEFAULT_TERMINAL_ID;
   const { dockPosition, toggleDockPosition } = useTerminalPaneDockPosition();
-  // A short window has no room to split vertically; keep those on the side.
-  const terminalDockPosition = dockPosition === "bottom" && dock.supported ? "bottom" : "right";
+  // Fall back to a bottom split on portrait iPads that cannot fit a side inspector.
+  const terminalDockPosition =
+    resolveTerminalDockPosition({
+      preferredPosition: dockPosition,
+      sideSupported: fileInspector.supported,
+      bottomSupported: dock.supported,
+    }) ?? "right";
   const terminalPaneOpen =
     supportsTerminalPane &&
     terminalPaneSelection.routeThreadIdentity === routeThreadIdentity &&
     terminalPaneSelection.open;
   const showTerminalInInspector = terminalPaneOpen && terminalDockPosition === "right";
+  // Moving between supported layouts must move the visible pane as well.
+  useEffect(() => {
+    if (!terminalPaneOpen) return;
+    if (terminalDockPosition === "bottom") {
+      setInspectorSelection((current) => (current?.mode === "terminal" ? null : current));
+      return;
+    }
+    setInspectorSelection({ routeThreadIdentity, mode: "terminal" });
+    showAuxiliaryPane("inspector");
+  }, [routeThreadIdentity, showAuxiliaryPane, terminalDockPosition, terminalPaneOpen]);
   const openTerminalPane = useCallback(
     (nextTerminalId: string) => {
       setTerminalPaneSelection({ routeThreadIdentity, terminalId: nextTerminalId, open: true });
-      if (terminalDockPosition === "bottom") {
-        return;
+      if (terminalDockPosition === "right") {
+        setInspectorSelection({ routeThreadIdentity, mode: "terminal" });
+        showAuxiliaryPane("inspector");
       }
-      setInspectorSelection({ routeThreadIdentity, mode: "terminal" });
-      showAuxiliaryPane("inspector");
     },
     [routeThreadIdentity, showAuxiliaryPane, terminalDockPosition],
+  );
+  useFocusEffect(
+    useCallback(() => {
+      const terminalId = props.route.params.openTerminalId;
+      if (!terminalId || !supportsTerminalPane) return;
+      openTerminalPane(terminalId);
+      navigation.setParams({ openTerminalId: undefined });
+    }, [navigation, openTerminalPane, props.route.params.openTerminalId, supportsTerminalPane]),
   );
   const observedTerminals = useRef<{ thread: string | null; ids: Set<string> }>({
     thread: null,
@@ -552,7 +576,7 @@ function ThreadRouteContent(
   ]);
 
   const handleToggleTerminalDockPosition = useCallback(() => {
-    if (!dock.supported && dockPosition === "right") {
+    if (!dock.supported || !fileInspector.supported) {
       return;
     }
     const next = toggleDockPosition();
@@ -563,7 +587,13 @@ function ThreadRouteContent(
     }
     setInspectorSelection({ routeThreadIdentity, mode: "terminal" });
     showAuxiliaryPane("inspector");
-  }, [dock.supported, dockPosition, routeThreadIdentity, showAuxiliaryPane, toggleDockPosition]);
+  }, [
+    dock.supported,
+    fileInspector.supported,
+    routeThreadIdentity,
+    showAuxiliaryPane,
+    toggleDockPosition,
+  ]);
 
   const GitInspector = useCallback(
     () => (
@@ -625,7 +655,7 @@ function ThreadRouteContent(
         <ThreadTerminalPane
           key={`${selectedThread.environmentId}:${selectedThread.id}`}
           activeTerminalId={terminalPaneTerminalId}
-          canDockBottom={dock.supported}
+          canToggleDockPosition={dock.supported && fileInspector.supported}
           dockPosition={terminalDockPosition}
           environmentId={selectedThread.environmentId}
           headerInset={terminalDockPosition === "bottom" ? 0 : terminalPaneHeaderInset}
@@ -649,6 +679,7 @@ function ThreadRouteContent(
       selectedThreadDetailWorktreePath,
       selectedThreadProject,
       dock.supported,
+      fileInspector.supported,
       terminalDockPosition,
       terminalPaneTerminalId,
     ],

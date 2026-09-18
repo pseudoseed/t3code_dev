@@ -122,8 +122,8 @@ function TerminalPaneAction(props: {
  */
 export function ThreadTerminalPane(props: {
   readonly activeTerminalId: string;
-  /** False when the window is too short to split vertically. */
-  readonly canDockBottom: boolean;
+  /** Offer switching only when both destinations fit the current window. */
+  readonly canToggleDockPosition: boolean;
   readonly dockPosition: TerminalPaneDockPosition;
   readonly environmentId: EnvironmentId;
   readonly headerInset: number;
@@ -305,7 +305,7 @@ export function ThreadTerminalPane(props: {
             onPress={handleOpenNewTerminal}
             theme={theme}
           />
-          {props.canDockBottom || props.dockPosition === "bottom" ? (
+          {props.canToggleDockPosition ? (
             <TerminalPaneAction
               accessibilityLabel={
                 props.dockPosition === "bottom"

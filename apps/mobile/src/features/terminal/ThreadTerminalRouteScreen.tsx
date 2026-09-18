@@ -69,7 +69,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const navigation = useNavigation();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, "environment retry");
   const { state: workspaceState } = useWorkspaceState();
-  const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
+  const { layout, panes, dock, fileInspector, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
   const params = props.route.params;
   const { selectedThread, selectedThreadProject, selectedEnvironmentConnection } =
     useThreadSelection();
@@ -270,6 +270,18 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     );
   }, [navigation, selectedThread, terminalId, terminalMenuSessions]);
 
+  const canShowWithChat = dock.supported || fileInspector.supported;
+  const handleShowWithChat = useCallback(() => {
+    if (!selectedThread || !canShowWithChat) return;
+    navigation.dispatch(
+      StackActions.popTo("Thread", {
+        environmentId: String(selectedThread.environmentId),
+        threadId: String(selectedThread.id),
+        openTerminalId: terminalId,
+      }),
+    );
+  }, [canShowWithChat, navigation, selectedThread, terminalId]);
+
   const handleDecreaseFontSize = useCallback(() => {
     setTerminalFontSize(stepTerminalFontSize(fontSize, -1));
   }, [fontSize, setTerminalFontSize]);
@@ -428,6 +440,13 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
           onBack={returnToThread}
           trailing={
             <>
+              {canShowWithChat ? (
+                <AndroidHeaderIconButton
+                  accessibilityLabel="Show terminal with chat"
+                  icon="rectangle.split.2x1"
+                  onPress={handleShowWithChat}
+                />
+              ) : null}
               {layout.usesSplitView ? (
                 <AndroidHeaderIconButton
                   accessibilityLabel={
@@ -482,7 +501,23 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
 
       {isEnvironmentReady ? (
         <NativeHeaderToolbar placement="right">
+          {canShowWithChat ? (
+            <NativeHeaderToolbar.Button
+              accessibilityLabel="Show terminal with chat"
+              icon="rectangle.split.2x1"
+              onPress={handleShowWithChat}
+              separateBackground
+            />
+          ) : null}
           <NativeHeaderToolbar.Menu icon="terminal" title="Terminal options" separateBackground>
+            {canShowWithChat ? (
+              <NativeHeaderToolbar.MenuAction
+                icon="rectangle.split.2x1"
+                onPress={handleShowWithChat}
+              >
+                <NativeHeaderToolbar.Label>Show terminal with chat</NativeHeaderToolbar.Label>
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
             <NativeHeaderToolbar.Label>
               {getTerminalStatusLabel({
                 status: terminal.status,
