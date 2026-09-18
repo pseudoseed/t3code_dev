@@ -75,8 +75,6 @@ export interface Preferences {
   /** Project keys whose sidebar section is folded. Only meaningful with
       `sidebarProjectSectionsEnabled`; the legacy list has its own key. */
   readonly collapsedSidebarProjectSections?: readonly string[];
-  /** Where the workspace terminal pane sits on regular-width layouts. */
-  readonly terminalPaneDockPosition?: "right" | "bottom";
   /**
    * On-device dictation, all device-scoped rather than environment-scoped: the
    * model runs on this phone no matter which environment the composer is
@@ -185,7 +183,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListSnoozedShelfExpanded?: boolean;
     sidebarProjectSectionsEnabled?: boolean;
     collapsedSidebarProjectSections?: readonly string[];
-    terminalPaneDockPosition?: "right" | "bottom";
     voiceSpeechModelId?: string;
     voiceSpeakerFilteringEnabled?: boolean;
     voiceDownloadOnCellular?: boolean;
@@ -288,9 +285,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.collapsedSidebarProjectSections = parsed.collapsedSidebarProjectSections.filter(
       (key): key is string => typeof key === "string",
     );
-  }
-  if (parsed.terminalPaneDockPosition === "right" || parsed.terminalPaneDockPosition === "bottom") {
-    preferences.terminalPaneDockPosition = parsed.terminalPaneDockPosition;
   }
   if (typeof parsed.voiceSpeechModelId === "string") {
     preferences.voiceSpeechModelId = parsed.voiceSpeechModelId;

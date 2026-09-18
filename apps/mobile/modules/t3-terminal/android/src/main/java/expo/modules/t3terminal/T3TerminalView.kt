@@ -23,7 +23,6 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
   private val inputView = EditText(context)
   private val onInput by EventDispatcher()
   private val onResize by EventDispatcher()
-  private val onSurfaceReady by EventDispatcher()
   private val onCapture by EventDispatcher()
   var captureRequest: Double = 0.0
     set(value) {
@@ -49,8 +48,7 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       onCapture(mapOf("text" to text))
     }
   private var terminalHandle = 0L
-  private var appliedCursor: Double = -1.0
-  private var appliedEpoch: Double = -1.0
+  private var fedBuffer = ""
   private var cols = 0
   private var rows = 0
   private var clearingInput = false
@@ -67,6 +65,13 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       field = value
       contentDescription = "t3-terminal-$value"
       recreateTerminal()
+    }
+
+  var initialBuffer: String = ""
+    set(value) {
+      if (field == value) return
+      field = value
+      feedPendingBuffer()
     }
 
   var fontSize: Float = 10f
@@ -321,6 +326,7 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     }
     emitResponse(response)
     onResize(mapOf("cols" to cols, "rows" to rows))
+    feedPendingBuffer()
     renderSnapshot()
   }
 
@@ -337,17 +343,14 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       cursorColorValue,
       paletteColors,
     )
-    appliedCursor = -1.0
-    appliedEpoch = -1.0
-    // A fresh terminal holds nothing. Announcing it is what makes JS resend the
-    // history, so the view never has to keep a second copy of the scrollback.
-    onSurfaceReady(emptyMap<String, Any>())
+    fedBuffer = ""
   }
 
   private fun recreateTerminal() {
     if (terminalHandle == 0L) return
     destroyTerminal()
     createTerminal()
+    feedPendingBuffer()
     renderSnapshot()
   }
 
@@ -355,39 +358,28 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     if (terminalHandle == 0L) return
     GhosttyBridge.nativeDestroy(terminalHandle)
     terminalHandle = 0L
-    appliedCursor = -1.0
-    appliedEpoch = -1.0
+    fedBuffer = ""
     terminalCanvas.resetSelectionState()
   }
 
-  fun applyAppend(append: TerminalAppend) {
-    // Nothing to write into yet. Terminal creation announces itself and JS
-    // answers with a replay, so dropping this delivery loses nothing.
-    if (terminalHandle == 0L) return
-
-    val isStale = append.epoch != appliedEpoch || append.cursor <= appliedCursor
-    if (!append.reset && isStale) return
-
-    if (append.reset) {
-      appliedEpoch = append.epoch
-      // RIS clears the modes a previous session left behind; the screen and
-      // scrollback have to go with them before the replay lands.
-      feedBytes("\u001Bc\u001B[3J")
+  private fun feedPendingBuffer() {
+    if (terminalHandle == 0L || initialBuffer == fedBuffer) return
+    if (!initialBuffer.startsWith(fedBuffer)) {
+      recreateTerminal()
+      if (terminalHandle == 0L) return
     }
-    appliedCursor = append.cursor
-    feedBytes(append.chunk)
+    val suffix = initialBuffer.substring(fedBuffer.length)
+    if (suffix.isNotEmpty()) {
+      emitResponse(GhosttyBridge.nativeFeed(terminalHandle, suffix.toByteArray(Charsets.UTF_8)))
+      // New output invalidates an active selection (matches the web drawer);
+      // otherwise the copy toolbar drifts out of sync with the grid.
+      if (terminalCanvas.hasActiveSelection()) {
+        GhosttyBridge.nativeClearSelection(terminalHandle)
+        terminalCanvas.resetSelectionState()
+      }
+    }
+    fedBuffer = initialBuffer
     renderSnapshot()
-  }
-
-  private fun feedBytes(data: String) {
-    if (data.isEmpty()) return
-    emitResponse(GhosttyBridge.nativeFeed(terminalHandle, data.toByteArray(Charsets.UTF_8)))
-    // New output invalidates an active selection (matches the web drawer);
-    // otherwise the copy toolbar drifts out of sync with the grid.
-    if (terminalCanvas.hasActiveSelection()) {
-      GhosttyBridge.nativeClearSelection(terminalHandle)
-      terminalCanvas.resetSelectionState()
-    }
   }
 
   private fun renderSnapshot() {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import {
   Pressable,
   ScrollView,
@@ -9,13 +9,6 @@ import {
   type ViewProps,
 } from "react-native";
 
-import {
-  INITIAL_TERMINAL_OUTPUT_CURSOR,
-  readTerminalOutputUpdate,
-  terminalOutputText,
-  type TerminalOutputCursor,
-} from "@t3tools/client-runtime/state/terminal";
-
 import { AppText as Text } from "../../components/AppText";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -23,7 +16,6 @@ import {
   getNativeTerminalHardwareKeyRevision,
   resolveNativeTerminalSurfaceView,
 } from "./nativeTerminalModule";
-import type { TerminalSurfaceContent } from "./terminalBufferReplay";
 import {
   buildGhosttyThemeConfig,
   getMobileTerminalTheme,
@@ -42,7 +34,7 @@ interface TerminalResizeEvent {
 
 interface TerminalSurfaceProps extends ViewProps {
   readonly terminalKey: string;
-  readonly content: TerminalSurfaceContent;
+  readonly buffer: string;
   readonly fontSize?: number;
   readonly isRunning: boolean;
   readonly autoFocus?: boolean;
@@ -127,7 +119,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: Ter
               lineHeight: Math.round(fontSize * 1.35),
             }}
           >
-            {terminalOutputText(props.content.output) || "$ "}
+            {props.buffer || "$ "}
           </Text>
         </ScrollView>
       </View>
@@ -188,51 +180,6 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
   const { onInput, onResize } = props;
   const NativeTerminalSurfaceView = resolveNativeTerminalSurfaceView();
   const hasNativeSurface = Boolean(NativeTerminalSurfaceView);
-  const content = props.content;
-
-  // What the native surface has already been handed. A native surface is
-  // recreated on font, theme and identity changes, and announces each new one
-  // through onSurfaceReady; parking the cursor at the initial one replays into it.
-  const deliveredRef = useRef<TerminalOutputCursor>(INITIAL_TERMINAL_OUTPUT_CURSOR);
-  // The native surface keys replays off a single monotonic epoch, so track one
-  // here that ticks whenever the output's generation or reset version moves.
-  const epochRef = useRef(0);
-  const epochSourceRef = useRef<{ generation: number; resetVersion: number } | null>(null);
-  const [replayRequest, setReplayRequest] = useState(0);
-  const handleSurfaceReady = useCallback(() => {
-    deliveredRef.current = INITIAL_TERMINAL_OUTPUT_CURSOR;
-    setReplayRequest((request) => request + 1);
-  }, []);
-  const append = useMemo(() => {
-    const update = readTerminalOutputUpdate(content.output, deliveredRef.current);
-    const source = epochSourceRef.current;
-    if (
-      source === null ||
-      source.generation !== update.cursor.generation ||
-      source.resetVersion !== update.cursor.resetVersion
-    ) {
-      epochSourceRef.current = {
-        generation: update.cursor.generation,
-        resetVersion: update.cursor.resetVersion,
-      };
-      epochRef.current += 1;
-    }
-    return {
-      reset: update.type === "reset",
-      chunk: update.type === "none" ? "" : update.data,
-      cursor: update.cursor.offset,
-      epoch: epochRef.current,
-    };
-    // deliveredRef advances after commit, so replayRequest is what re-runs this
-    // when the surface asked for a replay but the content itself did not change.
-  }, [content, replayRequest]);
-  useEffect(() => {
-    deliveredRef.current = {
-      generation: epochSourceRef.current?.generation ?? 0,
-      resetVersion: epochSourceRef.current?.resetVersion ?? 0,
-      offset: append.cursor,
-    };
-  });
 
   useEffect(() => {
     terminalDebugLog("native:surface", {
@@ -240,10 +187,10 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
       native: hasNativeSurface,
       // null = installed binary predates native hardware-key handling (rebuild needed).
       hardwareKeyRevision: getNativeTerminalHardwareKeyRevision(),
-      retainedBytes: content.output.retainedBytes,
+      bufferLen: props.buffer.length,
       isRunning: props.isRunning,
     });
-  }, [content.output.retainedBytes, hasNativeSurface, props.isRunning, props.terminalKey]);
+  }, [hasNativeSurface, props.buffer.length, props.isRunning, props.terminalKey]);
   const handleNativeInput = useCallback(
     (event: NativeSyntheticEvent<TerminalInputEvent>) => {
       if (!props.isRunning) {
@@ -277,13 +224,12 @@ export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurf
           foregroundColor={theme.foreground}
           mutedForegroundColor={theme.mutedForeground}
           terminalKey={props.terminalKey}
-          append={append}
+          initialBuffer={props.buffer}
           fontSize={fontSize}
           style={{ flex: 1 }}
           themeConfig={buildGhosttyThemeConfig(theme)}
           onInput={handleNativeInput}
           onResize={handleNativeResize}
-          onSurfaceReady={handleSurfaceReady}
           captureRequest={props.captureRequest}
           onCapture={(event) => props.onCapture?.(event.nativeEvent.text)}
         />

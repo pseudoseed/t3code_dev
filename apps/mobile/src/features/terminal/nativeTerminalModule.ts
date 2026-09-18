@@ -21,19 +21,6 @@ interface TerminalResizeEvent {
   readonly rows: number;
 }
 
-/**
- * One delivery to the native surface: either the slice appended since `cursor`
- * last advanced, or a full replay that replaces whatever the surface holds.
- * Surfaces ignore an append whose cursor they already passed, so a prop resend
- * is harmless.
- */
-export interface NativeTerminalAppend {
-  readonly reset: boolean;
-  readonly chunk: string;
-  readonly cursor: number;
-  readonly epoch: number;
-}
-
 export interface NativeTerminalSurfaceProps extends ViewProps {
   readonly appearanceScheme?: "light" | "dark";
   readonly autoFocus?: boolean;
@@ -45,12 +32,10 @@ export interface NativeTerminalSurfaceProps extends ViewProps {
   readonly foregroundColor?: string;
   readonly mutedForegroundColor?: string;
   readonly terminalKey: string;
-  readonly append: NativeTerminalAppend;
+  readonly initialBuffer: string;
   readonly fontSize: number;
   readonly onInput?: (event: NativeSyntheticEvent<TerminalInputEvent>) => void;
   readonly onResize?: (event: NativeSyntheticEvent<TerminalResizeEvent>) => void;
-  /** A newly created surface holds nothing, so the next delivery must be a replay. */
-  readonly onSurfaceReady?: (event: NativeSyntheticEvent<object>) => void;
 }
 
 let cachedNativeTerminalSurfaceView: ComponentType<NativeTerminalSurfaceProps> | undefined;
