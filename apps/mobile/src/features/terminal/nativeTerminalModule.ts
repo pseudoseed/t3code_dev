@@ -32,7 +32,7 @@ export interface NativeTerminalSurfaceProps extends ViewProps {
   readonly foregroundColor?: string;
   readonly mutedForegroundColor?: string;
   readonly terminalKey: string;
-  readonly initialBuffer: string;
+  readonly bufferWrite: import("./terminalBufferWrite").TerminalBufferWrite;
   readonly fontSize: number;
   readonly onInput?: (event: NativeSyntheticEvent<TerminalInputEvent>) => void;
   readonly onResize?: (event: NativeSyntheticEvent<TerminalResizeEvent>) => void;
@@ -99,4 +99,16 @@ export function getNativeTerminalHardwareKeyRevision(): number | null {
 
 export function hasNativeTerminalSurface() {
   return resolveNativeTerminalSurfaceView() !== null;
+}
+
+export function getNativeTerminalBufferStreamRevision(): number | null {
+  try {
+    return (
+      requireOptionalNativeModule<{ readonly bufferStreamRevision?: number }>(
+        NATIVE_TERMINAL_MODULE_NAME,
+      )?.bufferStreamRevision ?? null
+    );
+  } catch {
+    return null;
+  }
 }

@@ -48,7 +48,17 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       onCapture(mapOf("text" to text))
     }
   private var terminalHandle = 0L
-  private var fedBuffer = ""
+
+  /**
+   * Everything fed to the current terminal, replayed whenever the terminal is
+   * recreated (key change, resize-driven creation). Bounded to the same
+   * retention window the JS side keeps.
+   *
+   */
+  private val replayBuffer = StringBuilder()
+  private var replayBufferBytes = 0
+  private var appliedWriteSeq = 0
+  private var hasReplayedIntoTerminal = false
   private var cols = 0
   private var rows = 0
   private var clearingInput = false
@@ -64,14 +74,19 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       if (field == value) return
       field = value
       contentDescription = "t3-terminal-$value"
+      // A different terminal shares none of this one's history or write
+      // sequence. JS remounts on identity, so this only backstops reuse.
+      //
+      replayBuffer.setLength(0)
+      replayBufferBytes = 0
+      appliedWriteSeq = 0
       recreateTerminal()
     }
 
-  var initialBuffer: String = ""
+  var bufferWrite: TerminalBufferWriteRecord = TerminalBufferWriteRecord()
     set(value) {
-      if (field == value) return
       field = value
-      feedPendingBuffer()
+      applyBufferWrite(value)
     }
 
   var fontSize: Float = 10f
@@ -326,7 +341,7 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     }
     emitResponse(response)
     onResize(mapOf("cols" to cols, "rows" to rows))
-    feedPendingBuffer()
+    replayIntoTerminal()
     renderSnapshot()
   }
 
@@ -343,14 +358,14 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       cursorColorValue,
       paletteColors,
     )
-    fedBuffer = ""
+    hasReplayedIntoTerminal = false
   }
 
   private fun recreateTerminal() {
     if (terminalHandle == 0L) return
     destroyTerminal()
     createTerminal()
-    feedPendingBuffer()
+    replayIntoTerminal()
     renderSnapshot()
   }
 
@@ -358,28 +373,91 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     if (terminalHandle == 0L) return
     GhosttyBridge.nativeDestroy(terminalHandle)
     terminalHandle = 0L
-    fedBuffer = ""
+    hasReplayedIntoTerminal = false
     terminalCanvas.resetSelectionState()
   }
 
-  private fun feedPendingBuffer() {
-    if (terminalHandle == 0L || initialBuffer == fedBuffer) return
-    if (!initialBuffer.startsWith(fedBuffer)) {
-      recreateTerminal()
-      if (terminalHandle == 0L) return
-    }
-    val suffix = initialBuffer.substring(fedBuffer.length)
-    if (suffix.isNotEmpty()) {
-      emitResponse(GhosttyBridge.nativeFeed(terminalHandle, suffix.toByteArray(Charsets.UTF_8)))
-      // New output invalidates an active selection (matches the web drawer);
-      // otherwise the copy toolbar drifts out of sync with the grid.
-      if (terminalCanvas.hasActiveSelection()) {
-        GhosttyBridge.nativeClearSelection(terminalHandle)
-        terminalCanvas.resetSelectionState()
+  /**
+   * Apply one incremental write from JS. Sequence numbers are monotonic, so a
+   * prop update the view has already consumed is ignored rather than replayed.
+   *
+   */
+  private fun applyBufferWrite(write: TerminalBufferWriteRecord) {
+    if (write.seq <= appliedWriteSeq) return
+    appliedWriteSeq = write.seq
+
+    if (write.reset) {
+      replayBuffer.setLength(0)
+      replayBufferBytes = 0
+      // Clearing the live terminal is cheaper than recreating it, and it keeps
+      // the keyboard and scroll position intact.
+      //
+      if (terminalHandle != 0L) {
+        feedIntoTerminal(CLEAR_SCREEN_SEQUENCE)
       }
     }
-    fedBuffer = initialBuffer
+
+    appendToReplayBuffer(write.data)
+
+    // No terminal yet (still unmeasured): the replay buffer carries the write
+    // into the terminal once a resize creates it.
+    //
+    if (terminalHandle == 0L) return
+
+    // A reset carries retained history, not live output: its device-query
+    // replies must not reach the shell either.
+    //
+    feedIntoTerminal(write.data, emitReplies = !write.reset)
     renderSnapshot()
+  }
+
+  /**
+   * Rebuild the visible grid from retained output. Device queries inside the
+   * replayed bytes must not reach the live shell — they would land at the
+   * prompt as junk — so the terminal's replies are dropped for the replay.
+   *
+   */
+  private fun replayIntoTerminal() {
+    if (terminalHandle == 0L || hasReplayedIntoTerminal) return
+    hasReplayedIntoTerminal = true
+    feedIntoTerminal(replayBuffer.toString(), emitReplies = false)
+    renderSnapshot()
+  }
+
+  private fun feedIntoTerminal(data: String, emitReplies: Boolean = true) {
+    if (terminalHandle == 0L || data.isEmpty()) return
+    val response = GhosttyBridge.nativeFeed(terminalHandle, data.toByteArray(Charsets.UTF_8))
+    if (emitReplies) emitResponse(response)
+    // New output invalidates an active selection (matches the web drawer);
+    // otherwise the copy toolbar drifts out of sync with the grid.
+    if (terminalCanvas.hasActiveSelection()) {
+      GhosttyBridge.nativeClearSelection(terminalHandle)
+      terminalCanvas.resetSelectionState()
+    }
+  }
+
+  private fun appendToReplayBuffer(data: String) {
+    if (data.isEmpty()) return
+    // StringBuilder, not `replayBuffer += data`: the latter copies the whole
+    // retained window on every write, putting the cost this change removed
+    // from JS straight back onto the UI thread.
+    //
+    replayBuffer.append(data)
+    replayBufferBytes += data.toByteArray(Charsets.UTF_8).size
+
+    if (replayBufferBytes <= MAX_REPLAY_BUFFER_BYTES + REPLAY_BUFFER_TRIM_SLACK_BYTES) return
+
+    // Drop from the front on a UTF-8 boundary. Only replay depth is lost; the
+    // scrollback the user sees lives in the terminal itself.
+    //
+    val bytes = replayBuffer.toString().toByteArray(Charsets.UTF_8)
+    var start = bytes.size - MAX_REPLAY_BUFFER_BYTES
+    while (start < bytes.size && (bytes[start].toInt() and 0xC0) == 0x80) {
+      start += 1
+    }
+    replayBuffer.setLength(0)
+    replayBuffer.append(String(bytes, start, bytes.size - start, Charsets.UTF_8))
+    replayBufferBytes = bytes.size - start
   }
 
   private fun renderSnapshot() {
@@ -458,4 +536,26 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
     } catch (_: IllegalArgumentException) {
       fallback
     }
+
+  private companion object {
+    /**
+     * Matches `DEFAULT_MAX_TERMINAL_BUFFER_BYTES` on the client runtime, so a
+     * replay never holds more history than JS would have sent.
+     *
+     */
+    const val MAX_REPLAY_BUFFER_BYTES = 512 * 1024
+
+    /**
+     * Trim only once the buffer runs this far past the cap, so a rolling window
+     * costs one copy per slack window instead of one per write.
+     *
+     */
+    const val REPLAY_BUFFER_TRIM_SLACK_BYTES = 64 * 1024
+
+    /**
+     * Erase scrollback, home the cursor, erase the screen.
+     *
+     */
+    const val CLEAR_SCREEN_SEQUENCE = "\u001B[3J\u001B[H\u001B[2J"
+  }
 }

@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import {
   ComposerContextId,
   COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
@@ -35,9 +36,9 @@ export function TerminalContextSheet(props: {
       version: 1 as const,
       kind: "terminal" as const,
       contextId: ComposerContextId.make(uuidv4()),
-      label: `${props.terminalLabel} · visible lines ${range.start + 1}–${range.end + 1}`,
+      label: `${props.terminalLabel} · captured lines ${range.start + 1}–${range.end + 1}`,
       terminalId: props.terminalId,
-      terminalLabel: `${props.terminalLabel} (visible output)`,
+      terminalLabel: `${props.terminalLabel} (captured output)`,
       lineStart: range.start + 1,
       lineEnd: range.end + 1,
       text: selectedText,
@@ -64,7 +65,7 @@ export function TerminalContextSheet(props: {
         }
       >
         <View className="flex-row items-center justify-between p-4">
-          <Text className="text-lg text-foreground">Visible terminal output</Text>
+          <Text className="text-lg text-foreground">Captured terminal output</Text>
           <Pressable accessibilityRole="button" onPress={props.onClose} className="p-3">
             <Text className="text-foreground">Cancel</Text>
           </Pressable>
@@ -104,6 +105,18 @@ export function TerminalContextSheet(props: {
             Select fewer lines to fit the context limit.
           </Text>
         ) : null}
+        <Pressable
+          accessibilityRole="button"
+          disabled={!selectedText.trim()}
+          onPress={() =>
+            void Clipboard.setStringAsync(selectedText).catch(() =>
+              Alert.alert("Could not copy output"),
+            )
+          }
+          className="mx-4 rounded-xl bg-subtle p-4"
+        >
+          <Text className="text-center text-foreground">Copy selected output</Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           disabled={!selectedText.trim() || tooLarge}

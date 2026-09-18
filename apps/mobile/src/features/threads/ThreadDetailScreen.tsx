@@ -110,6 +110,8 @@ import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
 
 export interface ThreadDetailScreenProps {
+  /** The bottom dock already reserves space above the keyboard. */
+  readonly keyboardHandledByDock?: boolean;
   readonly selectedThread: OrchestrationThreadShell;
   readonly contentPresentation: ThreadContentPresentation;
   readonly screenTone: StatusTone;
@@ -918,7 +920,10 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
           // iOS emits a native animated height target on both will-show and
           // will-hide, so stay subscribed for the full transition. Android
           // retains its background/resume stale-state quarantine.
-          enabled={Platform.OS === "ios" || (isKeyboardVisible && !keyboardStateSuspect)}
+          enabled={
+            !props.keyboardHandledByDock &&
+            (Platform.OS === "ios" || (isKeyboardVisible && !keyboardStateSuspect))
+          }
           pointerEvents="box-none"
           style={{ position: "absolute", bottom: 0, left: 0, right: 0, top: 0 }}
           offset={{ closed: 0, opened: 0 }}

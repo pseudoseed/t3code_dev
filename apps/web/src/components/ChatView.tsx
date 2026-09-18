@@ -1998,6 +1998,25 @@ export default function ChatView(props: ChatViewProps) {
       ),
     [rightPanelState.surfaces],
   );
+  // Discover remote shells even before a drawer has ever mounted on this client.
+  useEffect(() => {
+    if (!activeThreadRef) return;
+    const remoteIds = activeThreadKnownSessions
+      .filter(
+        (session) =>
+          (session.state.status === "running" || session.state.status === "starting") &&
+          !panelTerminalIds.has(session.target.terminalId),
+      )
+      .map((session) => session.target.terminalId);
+    const store = useTerminalUiStateStore.getState();
+    const current = selectThreadTerminalUiState(store.terminalUiStateByThreadKey, activeThreadRef);
+    if (remoteIds.some((id) => !current.terminalIds.includes(id))) {
+      store.reconcileTerminalIds(activeThreadRef, [
+        ...new Set([...current.terminalIds, ...remoteIds]),
+      ]);
+    }
+  }, [activeThreadKnownSessions, activeThreadRef, panelTerminalIds]);
+
   const allocatableActiveTerminalIds = useMemo(
     () => [...new Set([...activeKnownTerminalIds, ...panelTerminalIds])],
     [activeKnownTerminalIds, panelTerminalIds],

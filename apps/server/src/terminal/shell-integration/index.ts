@@ -2,10 +2,9 @@
  * Wires OSC 133 shell integration into terminal spawns.
  *
  * The terminal renders whatever the shell sends, and a default zsh or bash
- * prompt sends no styling at all, so prompt, typed input, and command output
- * arrive as one undifferentiated stream. Rather than override the user's
- * prompt, we ask the shell to emit OSC 133 boundary markers; libghostty-vt
- * records them per row and the client draws the separation.
+ * prompt sends no styling at all. We give stock zsh prompts a compact colored
+ * layout and preserve custom prompts. OSC 133 markers identify prompt, input,
+ * and output boundaries for libghostty-vt.
  *
  * Supported for zsh and bash on POSIX platforms. Every other shell spawns
  * untouched.

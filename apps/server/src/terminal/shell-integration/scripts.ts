@@ -6,8 +6,8 @@
  * source-relative path does not survive packaging.
  *
  * Each script sources the user's real configuration first and only then emits
- * OSC 133 markers, so a terminal session behaves exactly as it would outside
- * PseudoCode. The markers let the client tell prompt, typed input, and command
+ * OSC 133 markers and styles stock zsh prompts. Custom prompt themes stay in
+ * control. The markers let the client tell prompt, typed input, and command
  * output apart; libghostty-vt parses them natively.
  */
 
@@ -35,12 +35,20 @@ if [[ -z "\${__t3code_integration_loaded:-}" ]]; then
   __t3code_integration_loaded=1
   builtin autoload -Uz add-zsh-hook
 
+  # Only replace stock zsh/macOS prompts. User themes still own their prompt.
+  # Native zsh color escapes have zero display width, so ZLE wraps correctly.
+  case "$PS1" in
+    '%n@%m %1~ %# ' | '%m%# ')
+      PS1=$'\\n%F{cyan}%n@%m%f %F{blue}%B%~%b%f\\n%F{blue}%#%f '
+      ;;
+  esac
+
   __t3code_prompt_marker=$'%{\\033]133;B\\007%}'
 
   __t3code_mark_prompt() {
     # Prompt frameworks (starship, powerlevel10k) rebuild PS1 on every precmd.
     # Re-appending keeps the input marker present without owning the prompt.
-    if [[ "$PS1" != *"\\033]133;B"* ]]; then
+    if [[ "$PS1" != *"$__t3code_prompt_marker"* ]]; then
       PS1="\${PS1}\${__t3code_prompt_marker}"
     fi
   }

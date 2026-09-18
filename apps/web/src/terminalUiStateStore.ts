@@ -471,6 +471,8 @@ function reconcileThreadTerminalSessionIds(
   return normalizeThreadTerminalUiState({
     ...normalized,
     terminalIds: nextIds,
+    terminalOpen:
+      normalized.terminalOpen || nextIds.some((id) => !normalized.terminalIds.includes(id)),
     activeTerminalId: nextActiveTerminalId,
     terminalGroups,
     activeTerminalGroupId: activeGroupIdFromTerminal ?? terminalGroups[0]?.id ?? "",

@@ -262,6 +262,24 @@ describe("terminalUiStateStore actions", () => {
     ]);
   });
 
+  it("reveals terminals discovered on another device without reopening a manually hidden drawer", () => {
+    const store = useTerminalUiStateStore.getState();
+    store.reconcileTerminalIds(THREAD_REF, ["ipad-terminal"]);
+    const read = () =>
+      selectThreadTerminalUiState(
+        useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+        THREAD_REF,
+      );
+    expect(read().terminalOpen).toBe(true);
+    expect(read().activeTerminalId).toBe("ipad-terminal");
+    store.setTerminalOpen(THREAD_REF, false);
+    store.reconcileTerminalIds(THREAD_REF, ["ipad-terminal"]);
+    expect(read().terminalOpen).toBe(false);
+    store.reconcileTerminalIds(THREAD_REF, ["ipad-terminal", "ipad-second"]);
+    expect(read().terminalOpen).toBe(true);
+    expect(read().activeTerminalId).toBe("ipad-terminal");
+  });
+
   it("does not import a closed panel terminal from stale metadata", () => {
     const store = useTerminalUiStateStore.getState();
     store.newTerminal(THREAD_REF, "term-2");

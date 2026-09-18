@@ -5,10 +5,12 @@ import {
 } from "@t3tools/shared/themePalettes";
 
 import {
-  getMobileThemeVariables,
   themeColorToNativeColor,
   type MobileThemeId,
+  type MobileThemeVariables,
 } from "../../lib/mobileTheme";
+
+import { getMobileThemeRuntimeVariables } from "../../lib/mobileThemeVariables";
 
 export type TerminalAppearanceScheme = "light" | "dark";
 
@@ -105,16 +107,23 @@ function getPierreTerminalTheme(scheme: TerminalAppearanceScheme): TerminalTheme
 export function getMobileTerminalTheme(
   themeId: MobileThemeId,
   scheme: TerminalAppearanceScheme,
+  resolvedColors?: MobileThemeVariables,
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
-  if (themeId === "t3-code" || themeId === "material-you") return base;
+  const colors = resolvedColors ?? getMobileThemeRuntimeVariables(themeId, scheme);
+  const themedPalette: [...TerminalPalette] = [...base.palette];
+  // Match the shell's blue (path/input) and cyan (host) slots to app roles.
+  // Keep red, green, and yellow available for programs' status output.
+  themedPalette[4] = themedPalette[12] = colors["--color-primary"];
+  themedPalette[6] = themedPalette[14] = colors["--color-foreground-muted"];
+  const themedBase = { ...base, palette: themedPalette };
+  if (themeId === "t3-code" || themeId === "material-you") return themedBase;
 
   const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? T3_CHAT_THEME;
   const palette = getThemeColorsForAppearance(theme, scheme) ?? theme.colors;
-  const colors = getMobileThemeVariables(themeId, scheme);
   const background = themeColorToNativeColor(palette.terminalBackground);
   return {
-    ...base,
+    ...themedBase,
     background,
     foreground: themeColorToNativeColor(palette.terminalForeground),
     mutedForeground: colors["--color-foreground-muted"],

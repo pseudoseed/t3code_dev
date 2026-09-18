@@ -22,144 +22,15 @@ private enum GhosttyRuntime {
   }
 }
 
-/// Encodes hardware-keyboard combos that UITextField never surfaces through its
-/// text-editing delegate (control combos, Escape, Tab, arrow keys) into the byte
-/// sequences a terminal expects.
+/// One incremental terminal write from JS: `seq` orders and deduplicates the
+/// writes, `reset` clears the grid before `data` is fed.
 ///
-/// Capture uses UIKeyCommand with `wantsPriorityOverSystemBehavior` rather than
-/// `pressesBegan`: while a text field is first responder, iPadOS routes hardware key
-/// events through the text-input system, which can consume presses before they reach
-/// responder press callbacks. Registered key commands are matched deterministically
-/// before that happens.
-private enum TerminalHardwareKeyEncoder {
-  /// Characters that produce a control byte when combined with Ctrl.
-  private static let controlInputs = "abcdefghijklmnopqrstuvwxyz@[\\]^_-? "
+public struct TerminalBufferWriteRecord: Record {
+  public init() {}
 
-  static func makeKeyCommands(action: Selector) -> [UIKeyCommand] {
-    var commands: [UIKeyCommand] = []
-
-    let specialInputs = [
-      UIKeyCommand.inputEscape,
-      UIKeyCommand.inputUpArrow,
-      UIKeyCommand.inputDownArrow,
-      UIKeyCommand.inputLeftArrow,
-      UIKeyCommand.inputRightArrow,
-      "\t",
-    ]
-    for input in specialInputs {
-      commands.append(makeCommand(input: input, modifierFlags: [], action: action))
-    }
-    commands.append(makeCommand(input: "\t", modifierFlags: .shift, action: action))
-
-    for character in controlInputs {
-      commands.append(makeCommand(input: String(character), modifierFlags: .control, action: action))
-      commands.append(
-        makeCommand(input: String(character), modifierFlags: [.control, .shift], action: action)
-      )
-    }
-
-    return commands
-  }
-
-  private static func makeCommand(
-    input: String,
-    modifierFlags: UIKeyModifierFlags,
-    action: Selector
-  ) -> UIKeyCommand {
-    let command = UIKeyCommand(input: input, modifierFlags: modifierFlags, action: action)
-    command.wantsPriorityOverSystemBehavior = true
-    return command
-  }
-
-  static func sequence(input: String, modifiers: UIKeyModifierFlags) -> String? {
-    switch input {
-    case UIKeyCommand.inputEscape:
-      return "\u{1B}"
-    case UIKeyCommand.inputUpArrow:
-      return "\u{1B}[A"
-    case UIKeyCommand.inputDownArrow:
-      return "\u{1B}[B"
-    case UIKeyCommand.inputRightArrow:
-      return "\u{1B}[C"
-    case UIKeyCommand.inputLeftArrow:
-      return "\u{1B}[D"
-    case "\t":
-      return modifiers.contains(.shift) ? "\u{1B}[Z" : "\t"
-    default:
-      break
-    }
-
-    guard modifiers.contains(.control) else { return nil }
-    guard let scalar = input.lowercased().unicodeScalars.first else { return nil }
-    return controlSequence(for: scalar)
-  }
-
-  private static func controlSequence(for scalar: Unicode.Scalar) -> String? {
-    switch scalar {
-    case "a"..."z":
-      // Ctrl+A..Z -> 0x01..0x1A (Ctrl+C = ETX, Ctrl+Z = SUB, ...).
-      return UnicodeScalar(scalar.value - 96).map(String.init)
-    case " ", "@":
-      return "\u{00}"
-    case "[":
-      return "\u{1B}"
-    case "\\":
-      return "\u{1C}"
-    case "]":
-      return "\u{1D}"
-    case "^":
-      return "\u{1E}"
-    case "_", "-":
-      return "\u{1F}"
-    case "?":
-      return "\u{7F}"
-    default:
-      return nil
-    }
-  }
-}
-
-private enum TerminalInputSequence {
-  /// Terminal Enter is carriage return. Sending line feed instead is Ctrl+J,
-  /// which raw-mode TUIs may interpret as the literal J key.
-  static let carriageReturn = "\r"
-
-  static func normalizingReturn(_ input: String) -> String {
-    switch input {
-    case "\n", "\r\n":
-      return carriageReturn
-    default:
-      return input
-    }
-  }
-}
-
-private final class TerminalInputField: UITextField {
-  var onDeleteBackward: (() -> Void)?
-  var onInsert: ((String) -> Void)?
-
-  private static let hardwareKeyCommands = TerminalHardwareKeyEncoder.makeKeyCommands(
-    action: #selector(handleHardwareKeyCommand(_:))
-  )
-
-  override var keyCommands: [UIKeyCommand]? {
-    Self.hardwareKeyCommands
-  }
-
-  override func deleteBackward() {
-    onDeleteBackward?()
-    super.deleteBackward()
-  }
-
-  @objc
-  private func handleHardwareKeyCommand(_ command: UIKeyCommand) {
-    guard let input = command.input else { return }
-    guard let sequence = TerminalHardwareKeyEncoder.sequence(
-      input: input,
-      modifiers: command.modifierFlags
-    ) else { return }
-    onInsert?(sequence)
-  }
+  @Field public var seq: Int = 0
+  @Field public var reset: Bool = false
+  @Field public var data: String = ""
 }
 
 private enum TerminalAppearanceScheme: String {
@@ -193,18 +64,34 @@ private extension UIColor {
   }
 }
 
-public final class T3TerminalView: ExpoView, UITextFieldDelegate {
+public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInteractionDelegate {
+  private static let maxReplayBufferBytes = 512 * 1024
+  private static let replayBufferTrimSlackBytes = 64 * 1024
+  private static let clearScreenSequence = "\u{1B}c\u{1B}[3J"
+
   private static let minimumVerticalScrollStepPoints: CGFloat = 18
   private static let verticalScrollStepMultiplier: CGFloat = 1.15
 
   private let terminalViewport = UIView()
+  private let clipboardBar = UIStackView()
+  private let copyButton = UIButton(type: .system)
+  private let attachButton = UIButton(type: .system)
   private let inputField = TerminalInputField()
   private let focusTapGesture = UITapGestureRecognizer()
   private let scrollPanGesture = UIPanGestureRecognizer()
+  private let pointerSelectionPan = UIPanGestureRecognizer()
+  private let selectionLongPress = UILongPressGestureRecognizer()
+  private lazy var selectionMenu = UIEditMenuInteraction(delegate: self)
+  private var lastSelectionPoint: CGPoint = .zero
   private var lastViewportSize: CGSize = .zero
   private var lastContentScale: CGFloat = 0
   private var lastReportedGrid: (cols: Int, rows: Int)?
-  private var lastAppliedBuffer = ""
+  private var replayBuffer = ""
+  private var replayBufferBytes = 0
+  private var appliedWriteSeq = 0
+  private var isReplayingBuffer = false
+  private var isSelecting = false
+  private var selectionMouseReportingDisabled = false
   private var pendingVerticalScrollPoints: CGFloat = 0
   private var app: ghostty_app_t?
   private var surface: ghostty_surface_t?
@@ -246,15 +133,16 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     didSet {
       accessibilityIdentifier = "t3-terminal-\(terminalKey)"
       if oldValue != terminalKey {
+        replayBuffer = ""
+        replayBufferBytes = 0
+        appliedWriteSeq = 0
         resetSurface()
       }
     }
   }
 
-  var initialBuffer: String = "" {
-    didSet {
-      applyRemoteBuffer(initialBuffer)
-    }
+  var bufferWrite = TerminalBufferWriteRecord() {
+    didSet { applyBufferWrite(bufferWrite) }
   }
 
   var fontSize: CGFloat = 10 {
@@ -307,7 +195,9 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     }
   }
 
-  var foregroundColorHex: String = "#d1d5da"
+  var foregroundColorHex: String = "#d1d5da" {
+    didSet { applyTheme() }
+  }
   var mutedForegroundColorHex: String = "#959da5"
 
   public required init(appContext: AppContext? = nil) {
@@ -342,26 +232,54 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     inputField.accessibilityElementsHidden = true
     inputField.addTarget(self, action: #selector(handleInputEditingDidBegin), for: .editingDidBegin)
     inputField.onDeleteBackward = { [weak self] in
-      self?.emitInput("\u{7F}")
+      self?.handleHardwareKey(input: TerminalHardwareKeyEncoder.backspace, modifiers: [])
     }
-    inputField.onInsert = { [weak self] data in
-      self?.emitInput(data)
+    inputField.onCopy = { [weak self] in self?.copySelectionToPasteboard() }
+    inputField.onPaste = { [weak self] in self?.pasteFromPasteboard() }
+    inputField.onSelectAll = { [weak self] in self?.selectAll() }
+    inputField.hasTerminalSelection = { [weak self] in
+      guard let surface = self?.surface else { return false }
+      return ghostty_surface_has_selection(surface)
+    }
+    inputField.onHardwareKey = { [weak self] input, modifiers in
+      self?.handleHardwareKey(input: input, modifiers: modifiers)
     }
 
     focusTapGesture.addTarget(self, action: #selector(handleViewportTap))
     terminalViewport.addGestureRecognizer(focusTapGesture)
     scrollPanGesture.addTarget(self, action: #selector(handleViewportPan(_:)))
     scrollPanGesture.maximumNumberOfTouches = 1
+    scrollPanGesture.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+    scrollPanGesture.allowedScrollTypesMask = .all
     scrollPanGesture.cancelsTouchesInView = false
     terminalViewport.addGestureRecognizer(scrollPanGesture)
+    selectionLongPress.addTarget(self, action: #selector(handleSelectionLongPress(_:)))
+    selectionLongPress.minimumPressDuration = 0.35
+    selectionLongPress.allowableMovement = 12
+    selectionLongPress.cancelsTouchesInView = false
+    terminalViewport.addGestureRecognizer(selectionLongPress)
+    selectionLongPress.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+    scrollPanGesture.require(toFail: selectionLongPress)
+    focusTapGesture.require(toFail: selectionLongPress)
+    pointerSelectionPan.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+    pointerSelectionPan.addTarget(self, action: #selector(handlePointerSelection(_:)))
+    terminalViewport.addGestureRecognizer(pointerSelectionPan)
+    focusTapGesture.require(toFail: pointerSelectionPan)
+    terminalViewport.addInteraction(selectionMenu)
 
+    configureClipboardBar()
+    addSubview(clipboardBar)
     addSubview(terminalViewport)
     addSubview(inputField)
 
     NSLayoutConstraint.activate([
       terminalViewport.leadingAnchor.constraint(equalTo: leadingAnchor),
       terminalViewport.trailingAnchor.constraint(equalTo: trailingAnchor),
-      terminalViewport.topAnchor.constraint(equalTo: topAnchor),
+      clipboardBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+      clipboardBar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+      clipboardBar.topAnchor.constraint(equalTo: topAnchor),
+      clipboardBar.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+      terminalViewport.topAnchor.constraint(equalTo: clipboardBar.bottomAnchor),
       terminalViewport.bottomAnchor.constraint(equalTo: bottomAnchor),
 
       inputField.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -422,18 +340,29 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
 
   @objc
   private func handleViewportTap() {
+    selectionMenu.dismissMenu()
+    if let surface, ghostty_surface_has_selection(surface) {
+      let mouseReporting = ghostty_surface_mouse_captured(surface)
+      if mouseReporting { performBinding("toggle_mouse_reporting") }
+      let location = focusTapGesture.location(in: terminalViewport)
+      ghostty_surface_mouse_pos(surface, Double(location.x), Double(location.y), GHOSTTY_MODS_NONE)
+      _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+      _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+      if mouseReporting { performBinding("toggle_mouse_reporting") }
+      redrawSurface()
+    }
     requestKeyboardFocus()
   }
 
   @objc
   private func handleViewportPan(_ gesture: UIPanGestureRecognizer) {
-    guard let surface else { return }
+    guard let surface, !isSelecting else { return }
 
     let location = gesture.location(in: terminalViewport)
     ghostty_surface_mouse_pos(
       surface,
-      Double(location.x * contentScaleFactor),
-      Double(location.y * contentScaleFactor),
+      Double(location.x),
+      Double(location.y),
       GHOSTTY_MODS_NONE
     )
 
@@ -467,7 +396,12 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
 
   @objc
   private func handleInputEditingDidBegin() {
+    if let surface { ghostty_surface_set_focus(surface, true) }
     textInputModeDidChange()
+  }
+
+  public func textFieldDidEndEditing(_ textField: UITextField) {
+    if let surface { ghostty_surface_set_focus(surface, false) }
   }
 
   private func createSurfaceIfPossible() {
@@ -486,9 +420,17 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
       supports_selection_clipboard: false,
       wakeup_cb: { _ in },
       action_cb: { _, _, _ in false },
-      read_clipboard_cb: { _, _, _, _, _, _ in GHOSTTY_CLIPBOARD_READ_UNSUPPORTED },
+      read_clipboard_cb: { userdata, _, state, _, _, _ in
+        guard let userdata else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
+        let view = Unmanaged<T3TerminalView>.fromOpaque(userdata).takeUnretainedValue()
+        return view.completeClipboardRead(state: state)
+      },
       confirm_read_clipboard_cb: { _, _, _, _ in },
-      write_clipboard_cb: { _, _, _, _, _ in },
+      write_clipboard_cb: { userdata, _, contents, contentsLen, _ in
+        guard let userdata else { return }
+        let view = Unmanaged<T3TerminalView>.fromOpaque(userdata).takeUnretainedValue()
+        view.writeClipboard(contents: contents, count: contentsLen)
+      },
       close_surface_cb: { _, _ in }
     )
 
@@ -522,16 +464,19 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
 
     app = createdApp
     surface = createdSurface
+    ghostty_surface_set_focus(createdSurface, inputField.isFirstResponder)
     ghostty_app_set_color_scheme(createdApp, appearance.ghosttyColorScheme)
     ghostty_surface_set_color_scheme(createdSurface, appearance.ghosttyColorScheme)
     setupWriteCallback()
     resizeSurface()
-    feedBuffer(initialBuffer)
+
+    isReplayingBuffer = true
+    feedData(Data(replayBuffer.utf8))
+    isReplayingBuffer = false
   }
 
   private func resetSurface() {
     destroySurface()
-    lastAppliedBuffer = ""
     lastViewportSize = .zero
     lastContentScale = 0
     lastReportedGrid = nil
@@ -545,6 +490,11 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   }
 
   private func destroySurface() {
+    selectionMenu.dismissMenu()
+    copyButton.isEnabled = false
+    isSelecting = false
+    selectionMouseReportingDisabled = false
+    pendingVerticalScrollPoints = 0
     if let surface {
       ghostty_surface_set_write_callback(surface, nil, nil)
       ghostty_surface_free(surface)
@@ -556,33 +506,56 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     app = nil
   }
 
-  private func applyRemoteBuffer(_ buffer: String) {
+  private func applyBufferWrite(_ write: TerminalBufferWriteRecord) {
+    guard write.seq > appliedWriteSeq else { return }
+    appliedWriteSeq = write.seq
+
+    if write.reset {
+      replayBuffer = ""
+      replayBufferBytes = 0
+      // Clearing the live surface is cheaper than rebuilding it, and it keeps
+      // the keyboard, selection, and scroll position intact.
+      //
+      feedData(Data(Self.clearScreenSequence.utf8))
+    }
+
+    appendToReplayBuffer(write.data)
+
     guard surface != nil else {
+      // No surface yet (still unmeasured): the replay buffer carries the write
+      // into the surface once layout creates it.
+      //
       createSurfaceIfPossible()
       return
     }
 
-    if buffer.isEmpty {
-      feedData(Data("\u{1B}[3J\u{1B}[H\u{1B}[2J".utf8))
-      lastAppliedBuffer = ""
-      return
-    }
-
-    if buffer.hasPrefix(lastAppliedBuffer) {
-      let suffix = String(buffer.dropFirst(lastAppliedBuffer.count))
-      feedData(Data(suffix.utf8))
-      lastAppliedBuffer = buffer
-      return
-    }
-
-    resetSurface()
-    createSurfaceIfPossible()
+    // A reset carries retained history, not live output: its device-query
+    // replies must not reach the shell either.
+    //
+    isReplayingBuffer = write.reset
+    defer { isReplayingBuffer = false }
+    feedData(Data(write.data.utf8))
   }
 
-  private func feedBuffer(_ buffer: String) {
-    guard !buffer.isEmpty else { return }
-    feedData(Data(buffer.utf8))
-    lastAppliedBuffer = buffer
+  private func appendToReplayBuffer(_ data: String) {
+    guard !data.isEmpty else { return }
+    replayBuffer += data
+    replayBufferBytes += data.utf8.count
+
+    guard replayBufferBytes > Self.maxReplayBufferBytes + Self.replayBufferTrimSlackBytes else {
+      return
+    }
+
+    // Drop from the front on a UTF-8 boundary. Only replay depth is lost; the
+    // scrollback the user sees lives in the terminal itself.
+    //
+    let utf8 = Array(replayBuffer.utf8)
+    var start = utf8.count - Self.maxReplayBufferBytes
+    while start < utf8.count, utf8[start] & 0b1100_0000 == 0b1000_0000 {
+      start += 1
+    }
+    replayBuffer = String(decoding: utf8[start...], as: UTF8.self)
+    replayBufferBytes = utf8.count - start
   }
 
   private func feedData(_ data: Data) {
@@ -605,6 +578,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     ghostty_surface_set_write_callback(surface, { userdata, data, len in
       guard let userdata, let data, len > 0 else { return }
       let view = Unmanaged<T3TerminalView>.fromOpaque(userdata).takeUnretainedValue()
+      guard !view.isReplayingBuffer else { return }
       let bytes = Data(bytes: data, count: len)
       guard let input = String(data: bytes, encoding: .utf8), !input.isEmpty else { return }
 
@@ -634,6 +608,8 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   }
 
   private func redrawSurface() {
+    copyButton.isEnabled = surface.map { ghostty_surface_has_selection($0) } ?? false
+    attachButton.isEnabled = copyButton.isEnabled
     guard let surface else { return }
     ghostty_surface_refresh(surface)
     ghostty_surface_draw(surface)
@@ -694,6 +670,273 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     onInput(["data": data])
   }
 
+  // MARK: - Hardware keys
+
+  private func handleHardwareKey(input: String, modifiers: UIKeyModifierFlags) {
+    if TerminalHardwareKeyEncoder.isCopy(input: input, modifiers: modifiers) {
+      copySelectionToPasteboard()
+      return
+    }
+    if TerminalHardwareKeyEncoder.isPaste(input: input, modifiers: modifiers) {
+      pasteFromPasteboard()
+      return
+    }
+    if let editing = TerminalHardwareKeyEncoder.editingSequence(
+      input: input,
+      modifiers: modifiers
+    ) {
+      emitInput(editing)
+      return
+    }
+    // Ghostty owns encoding whenever it can: it knows the modes the running
+    // program set, and its output reaches JS through the surface write callback.
+    // Falling back after handing it the key would risk sending the key twice,
+    // so the fallback only covers what Ghostty was never given.
+    if sendKeyThroughGhostty(input: input, modifiers: modifiers) {
+      return
+    }
+    if let fallback = TerminalHardwareKeyEncoder.fallbackSequence(
+      input: input,
+      modifiers: modifiers
+    ) {
+      emitInput(fallback)
+    }
+  }
+
+  /// Returns whether the key was handed to Ghostty, which happens whenever a
+  /// surface exists and the key has a physical keycode.
+  private func sendKeyThroughGhostty(input: String, modifiers: UIKeyModifierFlags) -> Bool {
+    guard let surface, let keycode = TerminalHardwareKeyEncoder.nativeKeycode(for: input) else {
+      return false
+    }
+
+    var event = ghostty_input_key_s()
+    event.action = GHOSTTY_ACTION_PRESS
+    event.mods = TerminalHardwareKeyEncoder.ghosttyMods(modifiers)
+    event.consumed_mods = GHOSTTY_MODS_NONE
+    event.keycode = keycode
+    event.text = nil
+    event.unshifted_codepoint = TerminalHardwareKeyEncoder.unshiftedCodepoint(for: input)
+    event.composing = false
+
+    _ = ghostty_surface_key(surface, event)
+    return true
+  }
+
+  // MARK: - Selection and clipboard
+
+  /// Clipboard actions stay reachable without a software keyboard or a gesture.
+  private func configureClipboardBar() {
+    clipboardBar.translatesAutoresizingMaskIntoConstraints = false
+    clipboardBar.distribution = .fillEqually
+    clipboardBar.tintColor = UIColor(hexString: foregroundColorHex)
+
+    let pasteButton = UIButton(type: .system)
+    pasteButton.setImage(UIImage(systemName: "doc.on.clipboard"), for: .normal)
+    pasteButton.accessibilityLabel = "Paste"
+    pasteButton.accessibilityHint = "Paste clipboard text into the terminal"
+    pasteButton.addAction(UIAction { [weak self] _ in
+      self?.pasteFromPasteboard()
+    }, for: .touchUpInside)
+
+    let selectButton = UIButton(type: .system)
+    selectButton.setImage(UIImage(systemName: "selection.pin.in.out"), for: .normal)
+    selectButton.accessibilityLabel = "Select All"
+    selectButton.accessibilityHint = "Select terminal output for copying"
+    selectButton.addAction(UIAction { [weak self] _ in
+      guard let self else { return }
+      self.lastSelectionPoint = CGPoint(x: self.terminalViewport.bounds.midX, y: 0)
+      self.selectAll()
+    }, for: .touchUpInside)
+
+    copyButton.setImage(UIImage(systemName: "doc.on.doc"), for: .normal)
+    copyButton.accessibilityLabel = "Copy"
+    copyButton.isEnabled = false
+    copyButton.accessibilityHint = "Copy selected terminal text"
+    copyButton.addAction(UIAction { [weak self] _ in
+      self?.copySelectionToPasteboard()
+    }, for: .touchUpInside)
+
+    attachButton.setImage(UIImage(systemName: "text.bubble"), for: .normal)
+    attachButton.accessibilityLabel = "Add to chat"
+    attachButton.isEnabled = false
+    attachButton.addAction(UIAction { [weak self] _ in
+      self?.captureSelection()
+    }, for: .touchUpInside)
+
+    for button in [pasteButton, selectButton, copyButton, attachButton] {
+      button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+      button.titleLabel?.adjustsFontForContentSizeCategory = true
+      clipboardBar.addArrangedSubview(button)
+    }
+  }
+
+  @objc
+  private func handleSelectionLongPress(_ gesture: UILongPressGestureRecognizer) {
+    updateSelection(gesture, selectWord: true)
+  }
+
+  @objc
+  private func handlePointerSelection(_ gesture: UIPanGestureRecognizer) {
+    updateSelection(gesture, selectWord: false)
+  }
+
+  private func updateSelection(_ gesture: UIGestureRecognizer, selectWord: Bool) {
+    guard let surface else { return }
+    let location = gesture.location(in: terminalViewport)
+    lastSelectionPoint = location
+    // The embedded ABI accepts points and applies content scale itself.
+    // Suspend application mouse reporting for this selection gesture. Using
+    // Shift instead would extend an old selection instead of starting a new one.
+    let mods = GHOSTTY_MODS_NONE
+    if gesture.state == .began {
+      selectionMenu.dismissMenu()
+      isSelecting = true
+      if ghostty_surface_mouse_captured(surface) {
+        performBinding("toggle_mouse_reporting")
+        selectionMouseReportingDisabled = true
+      }
+      // A pan recognizes after movement; start at the original pointer position.
+      let translation = (gesture as? UIPanGestureRecognizer)?.translation(in: terminalViewport) ?? .zero
+      ghostty_surface_mouse_pos(surface, Double(location.x - translation.x), Double(location.y - translation.y), mods)
+      _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods)
+      if selectWord {
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods)
+        _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods)
+      }
+    }
+    ghostty_surface_mouse_pos(surface, Double(location.x), Double(location.y), mods)
+    switch gesture.state {
+    case .ended, .cancelled, .failed:
+      guard isSelecting else { return }
+      _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods)
+      isSelecting = false
+      if selectionMouseReportingDisabled {
+        performBinding("toggle_mouse_reporting")
+        selectionMouseReportingDisabled = false
+      }
+      if gesture.state == .ended && (selectWord || ghostty_surface_has_selection(surface)) {
+        selectionMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: location))
+      }
+    default: break
+    }
+    redrawSurface()
+  }
+
+  public func editMenuInteraction(
+    _ interaction: UIEditMenuInteraction,
+    menuFor configuration: UIEditMenuConfiguration,
+    suggestedActions: [UIMenuElement]
+  ) -> UIMenu? {
+    var actions: [UIMenuElement] = []
+    if let surface, ghostty_surface_has_selection(surface) {
+      actions.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
+        self?.copySelectionToPasteboard()
+      })
+    }
+    if let surface, ghostty_surface_has_selection(surface) {
+      actions.append(UIAction(title: "Add to chat", image: UIImage(systemName: "text.bubble")) { [weak self] _ in
+        self?.captureSelection()
+      })
+    }
+    actions.append(UIAction(title: "Select All") { [weak self] _ in self?.selectAll() })
+    actions.append(UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
+      self?.pasteFromPasteboard()
+    })
+    return UIMenu(children: actions)
+  }
+
+  private func selectAll() {
+    performBinding("select_all")
+    selectionMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: lastSelectionPoint))
+  }
+
+  private func performBinding(_ action: String) {
+    guard let surface else { return }
+    _ = action.withCString { ghostty_surface_binding_action(surface, $0, UInt(action.utf8.count)) }
+    redrawSurface()
+  }
+
+  private func selectedText() -> String? {
+    guard let surface, ghostty_surface_has_selection(surface) else { return nil }
+    var text = ghostty_text_s()
+    guard ghostty_surface_read_selection(surface, &text) else { return nil }
+    defer { ghostty_surface_free_text(surface, &text) }
+    guard let pointer = text.text, text.text_len > 0 else { return nil }
+    return String(data: Data(bytes: pointer, count: Int(text.text_len)), encoding: .utf8)
+  }
+
+  private func copySelectionToPasteboard() {
+    guard let text = selectedText(), !text.isEmpty else { return }
+    UIPasteboard.general.string = text
+  }
+
+  private func captureSelection() {
+    guard let text = selectedText(), !text.isEmpty else { return }
+    selectionMenu.dismissMenu()
+    inputField.resignFirstResponder()
+    onCapture(["text": text])
+  }
+
+  private func pasteFromPasteboard() {
+    guard let surface else { return }
+    // Route through Ghostty so the paste is bracketed when the program asked for
+    // it; the read callback below is what hands over the pasteboard contents.
+    let action = "paste_from_clipboard"
+    _ = action.withCString { pointer in
+      ghostty_surface_binding_action(surface, pointer, UInt(action.utf8.count))
+    }
+  }
+
+  fileprivate func completeClipboardRead(state: UnsafeMutableRawPointer?) -> ghostty_clipboard_read_result_e {
+    guard let surface else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
+    guard let pasted = UIPasteboard.general.string, !pasted.isEmpty else {
+      ghostty_surface_deny_clipboard_request(surface, state)
+      return GHOSTTY_CLIPBOARD_READ_STARTED
+    }
+
+    var bytes = Array(pasted.utf8)
+    let mime = "text/plain;charset=utf-8"
+    mime.withCString { mimePointer in
+      bytes.withUnsafeMutableBufferPointer { buffer in
+        var content = ghostty_clipboard_content_s(
+          mime: mimePointer,
+          data: buffer.baseAddress.map { UnsafeRawPointer($0).assumingMemoryBound(to: CChar.self) },
+          len: buffer.count
+        )
+        withUnsafePointer(to: &content) { contentPointer in
+          var complete = ghostty_clipboard_complete_s(
+            contents: contentPointer,
+            contents_len: 1,
+            available: nil,
+            available_len: 0,
+            confirmed: true,
+            remember: false
+          )
+          ghostty_surface_complete_clipboard_request(surface, &complete, state)
+        }
+      }
+    }
+
+    return GHOSTTY_CLIPBOARD_READ_STARTED
+  }
+
+  fileprivate func writeClipboard(
+    contents: UnsafePointer<ghostty_clipboard_content_s>?,
+    count: Int
+  ) {
+    guard let contents, count > 0 else { return }
+
+    for index in 0..<count {
+      let content = contents[index]
+      guard let data = content.data, content.len > 0 else { continue }
+      let bytes = Data(bytes: data, count: content.len)
+      guard let text = String(data: bytes, encoding: .utf8), !text.isEmpty else { continue }
+      UIPasteboard.general.string = text
+      return
+    }
+  }
+
   private func textInputModeDidChange() {
     guard let app else { return }
     ghostty_app_keyboard_changed(app)
@@ -720,6 +963,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   private func applyTheme() {
     backgroundColor = backgroundColorValue
     terminalViewport.backgroundColor = backgroundColorValue
+    clipboardBar.tintColor = UIColor(hexString: foregroundColorHex)
   }
 
   private func loadThemeConfig(into config: ghostty_config_t) {
