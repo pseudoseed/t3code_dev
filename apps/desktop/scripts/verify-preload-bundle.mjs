@@ -9,6 +9,7 @@ import { parse } from "acorn";
 const expectedDesktopBridgeApis = [
   "getClientPlatform",
   "getLocalEnvironmentBootstraps",
+  "getPathForFile",
   "pickFolder",
 ];
 const clerkPasskeysGlobal = "__clerk_internal_electron_passkeys";
@@ -68,6 +69,12 @@ const createSandboxModules = (exposedGlobals) => {
       exposeInMainWorld: (name, api) => exposedGlobals.set(name, api),
     },
     ipcRenderer,
+    webUtils: {
+      getPathForFile: () => "",
+    },
+    webFrame: {
+      getZoomFactor: () => 1,
+    },
   };
 
   return new Map([
@@ -104,6 +111,12 @@ const executeBundle = (source, sandboxModules) => {
     {
       process: sandboxProcess,
       require: requireSandboxModule,
+      window: {
+        addEventListener: (_type, listener) => listener(),
+      },
+      document: {
+        documentElement: { style: { setProperty: () => undefined } },
+      },
     },
     {
       filename: "desktop-preload.cjs",

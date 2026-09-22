@@ -15,7 +15,7 @@ import {
 } from "../../components/ComposerToolbar";
 import { GlassSurface } from "../../components/GlassSurface";
 import { TerminalSurface } from "./NativeTerminalSurface";
-import type { TerminalSurfaceContent } from "./terminalBufferReplay";
+import type { TerminalOutputState } from "@t3tools/client-runtime/state/terminal";
 import type { TerminalTheme } from "./terminalTheme";
 import type { TerminalPendingModifier } from "./useThreadTerminalSession";
 
@@ -26,6 +26,7 @@ type HostPlatform = "mac" | "linux" | "windows" | "unknown";
 
 type TerminalToolbarAction =
   | { readonly kind: "send"; readonly key: string; readonly label: string; readonly data: string }
+  | { readonly kind: "paste"; readonly key: string; readonly label: string }
   | { readonly kind: "clear"; readonly key: string; readonly label: string }
   | {
       readonly kind: "modifier";
@@ -80,7 +81,7 @@ export function TerminalSurfacePanel(props: {
   readonly autoFocus?: boolean;
   readonly captureRequest?: number;
   readonly onCapture?: (text: string) => void;
-  readonly content: TerminalSurfaceContent;
+  readonly content: { readonly output: TerminalOutputState };
   /**
    * "inset" pads the surface above the software keyboard and pins the key
    * accessory to it — the full-screen route. "hosted" leaves both to the
@@ -91,6 +92,7 @@ export function TerminalSurfacePanel(props: {
   readonly fontSize: number;
   readonly isRunning: boolean;
   readonly onClear: () => void;
+  readonly onPaste: () => void;
   readonly onInput: (data: string) => void;
   readonly onResize: (size: { readonly cols: number; readonly rows: number }) => void;
   readonly onToggleModifier: (modifier: TerminalPendingModifier) => void;
@@ -98,7 +100,7 @@ export function TerminalSurfacePanel(props: {
   readonly terminalKey: string;
   readonly theme: TerminalTheme;
 }) {
-  const { onClear, onInput, onToggleModifier, theme } = props;
+  const { onClear, onInput, onPaste, onToggleModifier, theme } = props;
   const [keyboardFocusRequest, setKeyboardFocusRequest] = useState(0);
   const [isAccessoryDismissed, setIsAccessoryDismissed] = useState(false);
   const hostPlatform = useMemo(
@@ -146,6 +148,7 @@ export function TerminalSurfacePanel(props: {
       { kind: "send", key: "esc", label: "esc", data: "\u001b" },
       ...modifierActions,
       { kind: "send", key: "tab", label: "tab", data: "\t" },
+      { kind: "paste", key: "paste", label: "Paste" },
       { kind: "clear", key: "clear", label: "clear" },
       { kind: "send", key: "up", label: "\u2191", data: "\u001b[A" },
       { kind: "send", key: "down", label: "\u2193", data: "\u001b[B" },
@@ -164,13 +167,17 @@ export function TerminalSurfacePanel(props: {
         onToggleModifier(action.modifier);
         return;
       }
+      if (action.kind === "paste") {
+        onPaste();
+        return;
+      }
       if (action.kind === "clear") {
         onClear();
         return;
       }
       onInput(action.data);
     },
-    [onClear, onInput, onToggleModifier],
+    [onClear, onInput, onPaste, onToggleModifier],
   );
 
   const handleDismissKeyboard = useCallback(() => {
@@ -187,7 +194,7 @@ export function TerminalSurfacePanel(props: {
       <View className="flex-1" style={{ paddingBottom: bottomInset }}>
         <TerminalSurface
           autoFocus={(props.autoFocus ?? true) && !SHOWCASE_ENABLED}
-          content={props.content}
+          output={props.content.output}
           captureRequest={props.captureRequest}
           onCapture={props.onCapture}
           fontSize={props.fontSize}

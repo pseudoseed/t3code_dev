@@ -16,6 +16,7 @@ import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 import { DirectPush } from "../../push/DirectPush.ts";
+import { StorageCleanup } from "../../storageCleanup.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -38,6 +39,15 @@ describe("OrchestrationReactor", () => {
               Effect.sync(() => {
                 started.push("direct-push");
               }),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.succeed(StorageCleanup, {
+            start: () => {
+              started.push("storage-cleanup");
+              return Effect.void;
+            },
+            drain: Effect.void,
           }),
         ),
         Layer.provideMerge(
@@ -130,6 +140,7 @@ describe("OrchestrationReactor", () => {
       "pull-request-sync-reactor",
       "agent-awareness-relay",
       "direct-push",
+      "storage-cleanup",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

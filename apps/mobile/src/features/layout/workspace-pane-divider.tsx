@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View, type AccessibilityActionEvent } from "react-native";
+import { Platform, Pressable, StyleSheet, View, type AccessibilityActionEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
 import { cn } from "../../lib/cn";
@@ -97,6 +97,7 @@ export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
             "self-center bg-border opacity-70",
             axis === "x" ? "h-full" : "w-full",
             hovered || dragging ? "bg-primary opacity-100" : "",
+            Platform.OS === "android" && !dragging && "opacity-0",
           )}
           style={[
             axis === "x" ? styles.line : styles.horizontalLine,

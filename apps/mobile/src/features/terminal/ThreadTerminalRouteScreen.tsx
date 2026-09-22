@@ -1,6 +1,7 @@
 import { DEFAULT_TERMINAL_ID, EnvironmentId } from "@t3tools/contracts";
-import type { MenuAction } from "@react-native-menu/menu";
-import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
+import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Pressable, View } from "react-native";
@@ -9,8 +10,6 @@ import { TerminalContextSheet } from "./TerminalContextSheet";
 import { hasNativeTerminalSurface } from "./nativeTerminalModule";
 import { KeyboardController } from "react-native-keyboard-controller";
 
-import { AndroidHeaderIconButton, AndroidScreenHeader } from "../../components/AndroidScreenHeader";
-import { ControlPillMenu } from "../../components/ControlPill";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { environmentCatalog } from "../../connection/catalog";
@@ -28,7 +27,6 @@ import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { useSelectedThreadDetail } from "../../state/use-thread-detail";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
-import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { TerminalSurfacePanel } from "./TerminalSurfacePanel";
 import { getMobileTerminalTheme } from "./terminalTheme";
 import { terminalDebugLog } from "./terminalDebugLog";
@@ -45,6 +43,111 @@ import {
   pickRunningTerminalSessionForBootstrap,
   useThreadTerminalSession,
 } from "./useThreadTerminalSession";
+
+function TerminalHeader(props: {
+  readonly subtitle: string;
+  readonly isEnvironmentReady: boolean;
+  readonly fontSize: number;
+  readonly terminalId: string;
+  readonly sessions: ReadonlyArray<TerminalMenuSession>;
+  readonly status: Parameters<typeof getTerminalStatusLabel>[0];
+  readonly workspaceRoot: string;
+  readonly onCloseTerminal: () => void;
+  readonly onShowWithChat?: (() => void) | undefined;
+  readonly onDecreaseFontSize: () => void;
+  readonly onIncreaseFontSize: () => void;
+  readonly onOpenNewTerminal: () => void;
+  readonly onSelectTerminal: (terminalId: string) => void;
+}) {
+  return (
+    <ScreenHeader
+      title="Terminal"
+      subtitle={props.subtitle}
+      onBack={props.onCloseTerminal}
+      backInSplitView={{
+        accessibilityLabel: "Back to chat",
+        icon: "chevron.left",
+      }}
+      actions={
+        props.onShowWithChat
+          ? [
+              {
+                accessibilityLabel: "Show terminal with chat",
+                icon: "square.split.2x1",
+                onPress: props.onShowWithChat,
+              },
+            ]
+          : undefined
+      }
+      menus={
+        props.isEnvironmentReady
+          ? [
+              {
+                title: "Terminal options",
+                icon: "terminal",
+                status: getTerminalStatusLabel(props.status),
+                items: [
+                  ...(props.onShowWithChat
+                    ? [
+                        {
+                          id: "terminal-show-with-chat",
+                          title: "Show terminal with chat",
+                          icon: "square.split.2x1",
+                          onPress: props.onShowWithChat,
+                        },
+                      ]
+                    : []),
+                  {
+                    id: "text-size",
+                    title: "Text size",
+                    icon: "textformat.size",
+                    inline: true,
+                    items: [
+                      {
+                        id: "font-decrease",
+                        title: `A- ${Math.max(MIN_TERMINAL_FONT_SIZE, props.fontSize - TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`,
+                        disabled: props.fontSize <= MIN_TERMINAL_FONT_SIZE,
+                        onPress: props.onDecreaseFontSize,
+                      },
+                      {
+                        id: "font-increase",
+                        title: `A+ ${Math.min(MAX_TERMINAL_FONT_SIZE, props.fontSize + TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`,
+                        disabled: props.fontSize >= MAX_TERMINAL_FONT_SIZE,
+                        onPress: props.onIncreaseFontSize,
+                      },
+                    ],
+                  },
+                  ...props.sessions.map((session) => ({
+                    id: `terminal-session:${session.terminalId}`,
+                    title: session.displayLabel,
+                    icon: "terminal",
+                    subtitle: [
+                      getTerminalStatusLabel({
+                        status: session.status,
+                        hasRunningSubprocess: session.hasRunningSubprocess,
+                      }),
+                      basename(session.cwd),
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                    selected: session.terminalId === props.terminalId,
+                    onPress: () => props.onSelectTerminal(session.terminalId),
+                  })),
+                  {
+                    id: "terminal-new",
+                    title: "Open new terminal",
+                    icon: "plus",
+                    subtitle: `Start another shell in ${basename(props.workspaceRoot) ?? "this workspace"}`,
+                    onPress: props.onOpenNewTerminal,
+                  },
+                ],
+              },
+            ]
+          : undefined
+      }
+    />
+  );
+}
 
 function firstRouteParam(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) {
@@ -69,7 +172,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const navigation = useNavigation();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, "environment retry");
   const { state: workspaceState } = useWorkspaceState();
-  const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
+  const { dock, fileInspector } = useAdaptiveWorkspaceLayout();
   const params = props.route.params;
   const { selectedThread, selectedThreadProject, selectedEnvironmentConnection } =
     useThreadSelection();
@@ -89,6 +192,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     appearance,
     themeAppearance: appearanceScheme,
     themeId,
+    themeVariables,
     setTerminalFontSize,
   } = useAppearancePreferences();
   const fontSize = appearance.terminalFontSize;
@@ -269,6 +373,18 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     );
   }, [navigation, selectedThread, terminalId, terminalMenuSessions]);
 
+  const canShowWithChat = dock.supported || fileInspector.supported;
+  const handleShowWithChat = useCallback(() => {
+    if (!selectedThread || !canShowWithChat) return;
+    navigation.dispatch(
+      StackActions.popTo("Thread", {
+        environmentId: String(selectedThread.environmentId),
+        threadId: String(selectedThread.id),
+        openTerminalId: terminalId,
+      }),
+    );
+  }, [canShowWithChat, navigation, selectedThread, terminalId]);
+
   const handleDecreaseFontSize = useCallback(() => {
     setTerminalFontSize(stepTerminalFontSize(fontSize, -1));
   }, [fontSize, setTerminalFontSize]);
@@ -280,67 +396,6 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   // Android mirror of the iOS NativeHeaderToolbar terminal menu below: text
   // size, session switching, and "Open new terminal", rendered through the
   // token-styled anchored menu (the native header items are iOS-only).
-  const androidTerminalMenuActions = useMemo<MenuAction[]>(
-    () => [
-      {
-        id: "text-size",
-        title: "Text size",
-        subactions: [
-          {
-            id: "font-decrease",
-            title: `A- ${Math.max(MIN_TERMINAL_FONT_SIZE, fontSize - TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`,
-            attributes: fontSize <= MIN_TERMINAL_FONT_SIZE ? { disabled: true } : undefined,
-          },
-          {
-            id: "font-increase",
-            title: `A+ ${Math.min(MAX_TERMINAL_FONT_SIZE, fontSize + TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`,
-            attributes: fontSize >= MAX_TERMINAL_FONT_SIZE ? { disabled: true } : undefined,
-          },
-        ],
-      },
-      ...terminalMenuSessions.map((menuSession): MenuAction => ({
-        id: `terminal-session:${menuSession.terminalId}`,
-        title: menuSession.displayLabel,
-        subtitle: [
-          getTerminalStatusLabel({ status: menuSession.status }),
-          basename(menuSession.cwd),
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        state: menuSession.terminalId === terminalId ? ("on" as const) : undefined,
-      })),
-      {
-        id: "terminal-new",
-        title: "Open new terminal",
-        image: "plus",
-        subtitle: `Start another shell in ${basename(selectedThreadProject?.workspaceRoot ?? null) ?? "this workspace"}`,
-      },
-    ],
-    [fontSize, selectedThreadProject?.workspaceRoot, terminalId, terminalMenuSessions],
-  );
-
-  const handleAndroidTerminalMenuAction = useCallback(
-    (event: { nativeEvent: { event: string } }) => {
-      const id = event.nativeEvent.event;
-      if (id === "font-decrease") {
-        handleDecreaseFontSize();
-        return;
-      }
-      if (id === "font-increase") {
-        handleIncreaseFontSize();
-        return;
-      }
-      if (id === "terminal-new") {
-        handleOpenNewTerminal();
-        return;
-      }
-      if (id.startsWith("terminal-session:")) {
-        handleSelectTerminal(id.slice("terminal-session:".length));
-      }
-    },
-    [handleDecreaseFontSize, handleIncreaseFontSize, handleOpenNewTerminal, handleSelectTerminal],
-  );
-
   const handleRetryEnvironment = useCallback(() => {
     if (routeEnvironmentId !== null) {
       void retryEnvironment(routeEnvironmentId);
@@ -356,8 +411,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     });
   }, [session.surfaceContent.output.retainedBytes, terminal.status, terminal.version, terminalKey]);
 
-  const terminalTheme = getMobileTerminalTheme(themeId, appearanceScheme);
-  const usesNativeHeaderGlass = Platform.OS === "ios";
+  const terminalTheme = getMobileTerminalTheme(themeId, appearanceScheme, themeVariables);
   const headerSubtitle = selectedThreadProject?.title ?? "";
 
   if (!selectedThread) {
@@ -406,184 +460,81 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
           }}
         />
       ) : null}
-      <NativeStackScreenOptions
-        options={{
-          // Static header config lives in Stack.tsx (SOLID_HEADER_OPTIONS — the pty
-          // scrolls internally, nothing for glass to sample). Default title/subtitle
-          // styling, like every other page.
-          // Android draws its own in-flow header (AndroidScreenHeader below);
-          // the native stack header stays iOS-only.
-          headerShown: Platform.OS !== "android",
-          title: "Terminal",
-          unstable_headerSubtitle:
-            usesNativeHeaderGlass && headerSubtitle.length > 0 ? headerSubtitle : undefined,
+      <TerminalHeader
+        subtitle={headerSubtitle}
+        isEnvironmentReady={isEnvironmentReady}
+        fontSize={fontSize}
+        terminalId={terminalId}
+        sessions={terminalMenuSessions}
+        status={{
+          status: terminal.status,
+          hasRunningSubprocess: terminal.hasRunningSubprocess,
         }}
+        workspaceRoot={selectedThreadProject.workspaceRoot}
+        onCloseTerminal={returnToThread}
+        onShowWithChat={canShowWithChat ? handleShowWithChat : undefined}
+        onDecreaseFontSize={handleDecreaseFontSize}
+        onIncreaseFontSize={handleIncreaseFontSize}
+        onOpenNewTerminal={handleOpenNewTerminal}
+        onSelectTerminal={handleSelectTerminal}
       />
 
-      {Platform.OS === "android" ? (
-        <AndroidScreenHeader
-          title="Terminal"
-          subtitle={headerSubtitle}
-          onBack={returnToThread}
-          trailing={
+      <MaterialScreenContent>
+        <View className="flex-1" style={{ backgroundColor: terminalTheme.background }}>
+          {!isEnvironmentReady ? (
+            <EnvironmentConnectionNotice
+              environmentLabel={
+                environment.presentation?.entry.target.label ??
+                selectedEnvironmentConnection?.environmentLabel ??
+                "Environment"
+              }
+              connection={
+                environment.presentation?.connection ?? {
+                  phase: "available",
+                  error: null,
+                  traceId: null,
+                }
+              }
+              resourceName="terminal"
+              onRetry={handleRetryEnvironment}
+            />
+          ) : (
             <>
-              {layout.usesSplitView ? (
-                <AndroidHeaderIconButton
-                  accessibilityLabel={
-                    panes.primarySidebarVisible ? "Maximize terminal" : "Show threads"
-                  }
-                  icon={
-                    panes.primarySidebarVisible
-                      ? "arrow.up.left.and.arrow.down.right"
-                      : "sidebar.left"
-                  }
-                  onPress={togglePrimarySidebar}
-                />
-              ) : null}
-              {isEnvironmentReady ? (
-                <ControlPillMenu
-                  actions={androidTerminalMenuActions}
-                  isAnchoredToRight
-                  title={getTerminalStatusLabel({
-                    status: terminal.status,
-                    hasRunningSubprocess: terminal.hasRunningSubprocess,
-                  })}
-                  onPressAction={handleAndroidTerminalMenuAction}
+              <TerminalSurfacePanel
+                captureRequest={captureRequest}
+                onCapture={(text) => {
+                  if (text.trim()) setCapturedOutput(text);
+                  else Alert.alert("No terminal output", "There is no visible output to attach.");
+                }}
+                content={session.surfaceContent}
+                environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
+                fontSize={fontSize}
+                isRunning={session.isRunning}
+                onClear={session.clearTerminal}
+                onPaste={() => void session.pasteFromClipboard()}
+                onInput={session.sendInput}
+                onResize={session.handleResize}
+                onToggleModifier={session.togglePendingModifier}
+                pendingModifier={session.pendingModifier}
+                terminalKey={terminalKey}
+                theme={terminalTheme}
+              />
+              {hasNativeTerminalSurface() ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    KeyboardController.dismiss();
+                    setCaptureRequest((value) => value + 1);
+                  }}
+                  className="px-4 py-2"
                 >
-                  <AndroidHeaderIconButton accessibilityLabel="Terminal options" icon="terminal" />
-                </ControlPillMenu>
+                  <Text style={{ color: terminalTheme.foreground }}>Attach visible output</Text>
+                </Pressable>
               ) : null}
             </>
-          }
-        />
-      ) : null}
-
-      {layout.usesSplitView ? (
-        // Custom left items replace the native back button, so the way back to
-        // chat has to be one of them.
-        <NativeHeaderToolbar placement="left">
-          <NativeHeaderToolbar.Button
-            accessibilityLabel="Return to chat"
-            icon="chevron.left"
-            onPress={returnToThread}
-            separateBackground
-          />
-          <NativeHeaderToolbar.Button
-            accessibilityLabel={panes.primarySidebarVisible ? "Maximize terminal" : "Show threads"}
-            icon={
-              panes.primarySidebarVisible ? "arrow.up.left.and.arrow.down.right" : "sidebar.left"
-            }
-            onPress={togglePrimarySidebar}
-            separateBackground
-          />
-        </NativeHeaderToolbar>
-      ) : null}
-
-      {isEnvironmentReady ? (
-        <NativeHeaderToolbar placement="right">
-          <NativeHeaderToolbar.Menu icon="terminal" title="Terminal options" separateBackground>
-            <NativeHeaderToolbar.Label>
-              {getTerminalStatusLabel({
-                status: terminal.status,
-                hasRunningSubprocess: terminal.hasRunningSubprocess,
-              })}
-            </NativeHeaderToolbar.Label>
-            <NativeHeaderToolbar.Menu icon="textformat.size" inline title="Text size">
-              <NativeHeaderToolbar.Label>Text size</NativeHeaderToolbar.Label>
-              <NativeHeaderToolbar.MenuAction
-                disabled={fontSize <= MIN_TERMINAL_FONT_SIZE}
-                discoverabilityLabel="Decrease terminal text size"
-                onPress={handleDecreaseFontSize}
-              >
-                <NativeHeaderToolbar.Label>{`A- ${Math.max(MIN_TERMINAL_FONT_SIZE, fontSize - TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`}</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
-              <NativeHeaderToolbar.MenuAction
-                disabled={fontSize >= MAX_TERMINAL_FONT_SIZE}
-                discoverabilityLabel="Increase terminal text size"
-                onPress={handleIncreaseFontSize}
-              >
-                <NativeHeaderToolbar.Label>{`A+ ${Math.min(MAX_TERMINAL_FONT_SIZE, fontSize + TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`}</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
-            </NativeHeaderToolbar.Menu>
-            {terminalMenuSessions.map((menuSession) => (
-              <NativeHeaderToolbar.MenuAction
-                key={menuSession.terminalId}
-                icon={menuSession.terminalId === terminalId ? "checkmark" : "terminal"}
-                onPress={() => handleSelectTerminal(menuSession.terminalId)}
-                subtitle={[
-                  getTerminalStatusLabel({ status: menuSession.status }),
-                  basename(menuSession.cwd),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                <NativeHeaderToolbar.Label>{menuSession.displayLabel}</NativeHeaderToolbar.Label>
-              </NativeHeaderToolbar.MenuAction>
-            ))}
-            <NativeHeaderToolbar.MenuAction
-              icon="plus"
-              onPress={handleOpenNewTerminal}
-              subtitle={`Start another shell in ${basename(selectedThreadProject.workspaceRoot) ?? "this workspace"}`}
-            >
-              <NativeHeaderToolbar.Label>Open new terminal</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
-          </NativeHeaderToolbar.Menu>
-        </NativeHeaderToolbar>
-      ) : null}
-
-      <View className="flex-1" style={{ backgroundColor: terminalTheme.background }}>
-        {!isEnvironmentReady ? (
-          <EnvironmentConnectionNotice
-            environmentLabel={
-              environment.presentation?.entry.target.label ??
-              selectedEnvironmentConnection?.environmentLabel ??
-              "Environment"
-            }
-            connection={
-              environment.presentation?.connection ?? {
-                phase: "available",
-                error: null,
-                traceId: null,
-              }
-            }
-            resourceName="terminal"
-            onRetry={handleRetryEnvironment}
-          />
-        ) : (
-          <>
-            <TerminalSurfacePanel
-              captureRequest={captureRequest}
-              onCapture={(text) => {
-                if (text.trim()) setCapturedOutput(text);
-                else Alert.alert("No terminal output", "There is no visible output to attach.");
-              }}
-              content={session.surfaceContent}
-              environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
-              fontSize={fontSize}
-              isRunning={session.isRunning}
-              onClear={session.clearTerminal}
-              onInput={session.sendInput}
-              onResize={session.handleResize}
-              onToggleModifier={session.togglePendingModifier}
-              pendingModifier={session.pendingModifier}
-              terminalKey={terminalKey}
-              theme={terminalTheme}
-            />
-            {hasNativeTerminalSurface() ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  KeyboardController.dismiss();
-                  setCaptureRequest((value) => value + 1);
-                }}
-                className="px-4 py-2"
-              >
-                <Text style={{ color: terminalTheme.foreground }}>Attach visible output</Text>
-              </Pressable>
-            ) : null}
-          </>
-        )}
-      </View>
+          )}
+        </View>
+      </MaterialScreenContent>
     </>
   );
 }

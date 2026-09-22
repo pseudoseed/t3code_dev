@@ -126,7 +126,7 @@ export const hashBundle = Effect.fn("hashBundle")(function* (root: string) {
           entries.push(`directory:${key}`);
           yield* visit(key);
         } else {
-          const chunks = yield* fs.stream(absolute, { chunkSize: FileSystem.Size(65536) }).pipe(
+          const chunks = yield* fs.stream(absolute, { chunkSize: 65536 }).pipe(
             Stream.mapEffect((chunk) => digest(chunk)),
             Stream.runCollect,
           );
@@ -291,9 +291,9 @@ export const installedBinary = Effect.fn("installedBinary")(function* (
 const main = Command.make(
   "mobile-native-client",
   {
-    mode: Argument.choice("mode", ["check", "ensure"]),
-    platform: Argument.choice("platform", ["ios", "android"]),
-    device: Argument.string("device"),
+    mode: Argument.Literals("mode", ["check", "ensure"]),
+    platform: Argument.Literals("platform", ["ios", "android"]),
+    device: Argument.String("device"),
   },
   Effect.fn("nativeClient.main")(function* ({ mode, platform, device }) {
     yield* validateDevice(platform, device);
@@ -346,15 +346,25 @@ const main = Command.make(
           const output = yield* fs.makeTempDirectoryScoped({ prefix: "t3-native-client-" });
           const { mobile } = yield* roots;
           yield* command("pod", ["install"], true, path.join(mobile, "ios"));
+          const workspaces = (yield* fs.readDirectory(path.join(mobile, "ios"))).filter((entry) =>
+            entry.endsWith(".xcworkspace"),
+          );
+          if (workspaces.length !== 1) {
+            return yield* new NativeClientError({
+              message: "Expected one generated iOS workspace after prebuild.",
+            });
+          }
+          const workspace = workspaces[0]!;
+          const scheme = workspace.slice(0, -".xcworkspace".length);
           // Target this simulator only, without Expo's desktop activation or log streaming.
           yield* command(
             "xcrun",
             [
               "xcodebuild",
               "-workspace",
-              path.join(mobile, "ios/T3CodeDev.xcworkspace"),
+              path.join(mobile, "ios", workspace),
               "-scheme",
-              "T3CodeDev",
+              scheme,
               "-configuration",
               "Debug",
               "-destination",
@@ -371,7 +381,7 @@ const main = Command.make(
               "simctl",
               "install",
               device,
-              path.join(output, "Build/Products/Debug-iphonesimulator/T3CodeDev.app"),
+              path.join(output, `Build/Products/Debug-iphonesimulator/${scheme}.app`),
             ],
             true,
           );

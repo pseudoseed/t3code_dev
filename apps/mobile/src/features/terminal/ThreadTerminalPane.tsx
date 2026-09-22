@@ -1,5 +1,6 @@
+import { TerminalContextSheet } from "./TerminalContextSheet";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 
 import { SymbolView, type AppSymbolName } from "../../components/AppSymbol";
@@ -121,8 +122,8 @@ function TerminalPaneAction(props: {
  */
 export function ThreadTerminalPane(props: {
   readonly activeTerminalId: string;
-  /** False when the window is too short to split vertically. */
-  readonly canDockBottom: boolean;
+  /** Offer switching only when both destinations fit the current window. */
+  readonly canToggleDockPosition: boolean;
   readonly dockPosition: TerminalPaneDockPosition;
   readonly environmentId: EnvironmentId;
   readonly headerInset: number;
@@ -137,6 +138,13 @@ export function ThreadTerminalPane(props: {
 }) {
   const { activeTerminalId, environmentId, onClose, onSelectTerminal, threadId, workspaceRoot } =
     props;
+  const tabScroller = useRef<ScrollView>(null);
+  const tabOffsets = useRef(new Map<string, number>());
+  useEffect(() => {
+    const x = tabOffsets.current.get(activeTerminalId);
+    if (x !== undefined) tabScroller.current?.scrollTo({ x, animated: false });
+  }, [activeTerminalId]);
+  const [capturedOutput, setCapturedOutput] = useState<string | null>(null);
   const closeTerminal = useAtomCommand(terminalEnvironment.close, "terminal close");
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, "environment retry");
   const environment = useEnvironmentPresentation(environmentId);
@@ -146,10 +154,11 @@ export function ThreadTerminalPane(props: {
     appearance,
     themeAppearance,
     themeId,
+    themeVariables,
     isReady: hasResolvedFontPreference,
   } = useAppearancePreferences();
   const fontSize = appearance.terminalFontSize;
-  const theme = getMobileTerminalTheme(themeId, themeAppearance);
+  const theme = getMobileTerminalTheme(themeId, themeAppearance, themeVariables);
 
   // An `exit` in the active shell falls through to a neighbouring live one;
   // the pane closes only when that was the last terminal.
@@ -246,60 +255,85 @@ export function ThreadTerminalPane(props: {
 
   return (
     <View className="flex-1" style={{ backgroundColor: theme.background }}>
+      {capturedOutput !== null ? (
+        <TerminalContextSheet
+          text={capturedOutput}
+          environmentId={environmentId}
+          threadId={threadId}
+          terminalId={activeTerminalId}
+          terminalLabel={resolveTerminalSessionLabel(activeTerminalId, session.terminal.summary)}
+          onClose={() => setCapturedOutput(null)}
+          onAttach={() => setCapturedOutput(null)}
+        />
+      ) : null}
       <View style={{ height: props.headerInset }} />
       <View
-        className="flex-row items-center gap-1 border-b px-1.5"
+        className="border-b px-1.5"
         style={{ borderBottomColor: theme.border, minHeight: TAB_STRIP_HEIGHT }}
       >
         <ScrollView
+          ref={tabScroller}
           horizontal
-          className="flex-1"
+          style={{ flexGrow: 0, minHeight: TAB_STRIP_HEIGHT }}
           contentContainerClassName="items-center gap-1 pr-1"
           showsHorizontalScrollIndicator={false}
         >
           {tabs.map((tab) => (
-            <TerminalPaneTab
+            <View
               key={tab.terminalId}
-              isActive={tab.terminalId === activeTerminalId}
-              onClose={() => handleCloseTerminal(tab.terminalId)}
-              onSelect={() => onSelectTerminal(tab.terminalId)}
-              session={tab}
-              theme={theme}
-            />
+              onLayout={(event) => {
+                const x = event.nativeEvent.layout.x;
+                tabOffsets.current.set(tab.terminalId, x);
+                if (tab.terminalId === activeTerminalId)
+                  tabScroller.current?.scrollTo({ x, animated: false });
+              }}
+            >
+              <TerminalPaneTab
+                isActive={tab.terminalId === activeTerminalId}
+                onClose={() => handleCloseTerminal(tab.terminalId)}
+                onSelect={() => onSelectTerminal(tab.terminalId)}
+                session={tab}
+                theme={theme}
+              />
+            </View>
           ))}
         </ScrollView>
-        <TerminalPaneAction
-          accessibilityLabel={`Open new terminal in ${basename(workspaceRoot) ?? "this workspace"}`}
-          icon={{ ios: "plus", android: "add" }}
-          onPress={handleOpenNewTerminal}
-          theme={theme}
-        />
-        {props.canDockBottom || props.dockPosition === "bottom" ? (
+        <View className="flex-row items-center justify-end">
           <TerminalPaneAction
-            accessibilityLabel={
-              props.dockPosition === "bottom" ? "Dock terminal to the right" : "Dock terminal below"
-            }
-            icon={
-              props.dockPosition === "bottom"
-                ? { ios: "sidebar.right", android: "view_sidebar" }
-                : { ios: "rectangle.bottomthird.inset.filled", android: "bottom_panel_open" }
-            }
-            onPress={props.onToggleDockPosition}
+            accessibilityLabel={`Open new terminal in ${basename(workspaceRoot) ?? "this workspace"}`}
+            icon={{ ios: "plus", android: "add" }}
+            onPress={handleOpenNewTerminal}
             theme={theme}
           />
-        ) : null}
-        <TerminalPaneAction
-          accessibilityLabel="Open terminal full screen"
-          icon={{ ios: "arrow.up.left.and.arrow.down.right", android: "open_in_full" }}
-          onPress={props.onMaximize}
-          theme={theme}
-        />
-        <TerminalPaneAction
-          accessibilityLabel="Close terminal pane"
-          icon={{ ios: "xmark", android: "close" }}
-          onPress={onClose}
-          theme={theme}
-        />
+          {props.canToggleDockPosition ? (
+            <TerminalPaneAction
+              accessibilityLabel={
+                props.dockPosition === "bottom"
+                  ? "Dock terminal to the right"
+                  : "Dock terminal below"
+              }
+              icon={
+                props.dockPosition === "bottom"
+                  ? { ios: "sidebar.right", android: "view_sidebar" }
+                  : { ios: "rectangle.bottomthird.inset.filled", android: "bottom_panel_open" }
+              }
+              onPress={props.onToggleDockPosition}
+              theme={theme}
+            />
+          ) : null}
+          <TerminalPaneAction
+            accessibilityLabel="Open terminal full screen"
+            icon={{ ios: "arrow.up.left.and.arrow.down.right", android: "open_in_full" }}
+            onPress={props.onMaximize}
+            theme={theme}
+          />
+          <TerminalPaneAction
+            accessibilityLabel="Close terminal pane"
+            icon={{ ios: "xmark", android: "close" }}
+            onPress={onClose}
+            theme={theme}
+          />
+        </View>
       </View>
 
       <View className="flex-1">
@@ -307,11 +341,13 @@ export function ThreadTerminalPane(props: {
           <TerminalSurfacePanel
             autoFocus={Platform.OS !== "android"}
             content={session.surfaceContent}
+            onCapture={setCapturedOutput}
             keyboardMode={props.dockPosition === "bottom" ? "hosted" : "inset"}
             environmentLabel={environmentLabel}
             fontSize={fontSize}
             isRunning={session.isRunning}
             onClear={session.clearTerminal}
+            onPaste={() => void session.pasteFromClipboard()}
             onInput={session.sendInput}
             onResize={session.handleResize}
             onToggleModifier={session.togglePendingModifier}

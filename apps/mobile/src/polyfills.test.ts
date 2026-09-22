@@ -18,10 +18,10 @@ it("loads project contracts and validates monograms without a native Intl.Segmen
   const { is } = await import("effect/Schema");
   const isMonogram = is(ProjectMonogramText);
 
-  for (const text of ["A", "T3", "É", "文書", "कि", "किखि", "e\u0301"]) {
+  for (const text of ["A", "T3", "ABC", "किखिगि", "É", "文書", "कि", "किखि", "e\u0301"]) {
     expect(isMonogram(text), text).toBe(true);
   }
-  for (const text of ["", "ABC", "किखिगि", "\u0301", "A B", "🚀"]) {
+  for (const text of ["", "A".repeat(33), "\u0301", "A B", "🚀"]) {
     expect(isMonogram(text), text).toBe(false);
   }
 });

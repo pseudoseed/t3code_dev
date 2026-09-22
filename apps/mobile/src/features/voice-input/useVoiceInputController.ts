@@ -7,10 +7,11 @@ import {
   type RecordingStatus,
 } from "expo-audio";
 import { File } from "expo-file-system";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
@@ -121,6 +122,8 @@ export function useVoiceInputController(input: {
   savePreferencesRef.current = savePreferences;
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
+  const keepAwakeId = useId();
+  const keepAwakeSessionRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
   const audioLevelsRef = useRef(Array<number>(VOICE_WAVEFORM_SAMPLE_COUNT).fill(0));
   const audioLevels = useSharedValue(audioLevelsRef.current);
@@ -242,6 +245,18 @@ export function useVoiceInputController(input: {
   }, [controller]);
 
   useEffect(() => () => controller.dispose(), [controller]);
+
+  useEffect(() => {
+    if (state.phase !== "recording") return;
+
+    const tag = `voice-input:${keepAwakeId}:${++keepAwakeSessionRef.current}`;
+    const activation = activateKeepAwakeAsync(tag);
+    void activation.catch(() => {});
+    return () => {
+      // Release after activation settles, even if the recording ends immediately.
+      void activation.then(() => deactivateKeepAwake(tag)).catch(() => {});
+    };
+  }, [keepAwakeId, state.phase]);
 
   useEffect(() => {
     if (state.phase !== "preparing" && state.phase !== "recording") return;

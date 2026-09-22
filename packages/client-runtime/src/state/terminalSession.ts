@@ -16,7 +16,6 @@ import {
 
 export {
   DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
-  EMPTY_TERMINAL_OUTPUT_STATE,
   INITIAL_TERMINAL_OUTPUT_CURSOR,
   readTerminalOutputUpdate,
   terminalOutputText,

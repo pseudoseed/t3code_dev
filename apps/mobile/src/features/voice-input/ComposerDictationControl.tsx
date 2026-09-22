@@ -306,7 +306,7 @@ export function ComposerDictationStatus(props: {
           <Text
             className={
               isError
-                ? "min-w-0 flex-1 text-sm text-red-400"
+                ? "min-w-0 flex-1 text-sm text-danger-foreground"
                 : "min-w-0 flex-1 text-sm text-foreground-muted"
             }
             numberOfLines={2}
