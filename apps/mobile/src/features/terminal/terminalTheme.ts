@@ -1,14 +1,11 @@
 import {
-  BUILT_IN_THEMES,
-  T3_CHAT_THEME,
-  getThemeColorsForAppearance,
-} from "@t3tools/shared/themePalettes";
-
-import {
-  getMobileThemeVariables,
+  getMobileThemeColors,
   themeColorToNativeColor,
   type MobileThemeId,
+  type MobileThemeVariables,
 } from "../../lib/mobileTheme";
+
+import { getMobileThemeRuntimeVariables } from "../../lib/mobileThemeVariables";
 
 export type TerminalAppearanceScheme = "light" | "dark";
 
@@ -44,12 +41,12 @@ type TerminalPalette = readonly [
 
 const PIERRE_LIGHT_THEME: TerminalTheme = {
   // Pierre terminal palette with the app's shared screen background.
-  background: "#f2f2f7",
+  background: "#fcfcfc",
   foreground: "#6C6C71",
   mutedForeground: "#8E8E95",
   border: "#eeeeef",
   cursorForeground: "#009fff",
-  cursorBackground: "#f2f2f7",
+  cursorBackground: "#fcfcfc",
   palette: [
     "#1F1F21",
     "#ff2e3f",
@@ -105,16 +102,21 @@ function getPierreTerminalTheme(scheme: TerminalAppearanceScheme): TerminalTheme
 export function getMobileTerminalTheme(
   themeId: MobileThemeId,
   scheme: TerminalAppearanceScheme,
+  resolvedColors?: MobileThemeVariables,
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
-  if (themeId === "t3-code" || themeId === "material-you") return base;
-
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? T3_CHAT_THEME;
-  const palette = getThemeColorsForAppearance(theme, scheme) ?? theme.colors;
-  const colors = getMobileThemeVariables(themeId, scheme);
+  // Platform overrides only affect header and drawer roles, which terminals do not use.
+  const colors = resolvedColors ?? getMobileThemeRuntimeVariables(themeId, scheme, "ios");
+  const themedPalette: [...TerminalPalette] = [...base.palette];
+  // Match shell path and host colors to the app while retaining status colors.
+  themedPalette[4] = themedPalette[12] = colors["--color-primary"];
+  themedPalette[6] = themedPalette[14] = colors["--color-foreground-muted"];
+  const themedBase = { ...base, palette: themedPalette };
+  const paletteId = themeId === "material-you" ? "t3-code" : themeId;
+  const palette = getMobileThemeColors(paletteId, scheme);
   const background = themeColorToNativeColor(palette.terminalBackground);
   return {
-    ...base,
+    ...themedBase,
     background,
     foreground: themeColorToNativeColor(palette.terminalForeground),
     mutedForeground: colors["--color-foreground-muted"],

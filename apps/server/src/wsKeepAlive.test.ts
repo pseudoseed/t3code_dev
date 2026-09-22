@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import * as NodeWS from "ws";
 
 import { makeKeepAliveWebSocket } from "./wsKeepAlive.ts";
@@ -25,11 +25,9 @@ function closed(socket: NodeWS.WebSocket): Promise<number> {
   return new Promise((resolve) => socket.once("close", (code) => resolve(code)));
 }
 
-// @effect-diagnostics-next-line globalTimers:off - exercises the raw ws object, outside any fiber.
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 describe("makeKeepAliveWebSocket", () => {
   it("keeps a responsive client and terminates one that stops answering", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const server = new NodeWS.WebSocketServer({
       port: 0,
       WebSocket: makeKeepAliveWebSocket(NodeWS.WebSocket, {
@@ -42,28 +40,31 @@ describe("makeKeepAliveWebSocket", () => {
       server.once("connection", resolve),
     );
     const client = new NodeWS.WebSocket(`ws://127.0.0.1:${port}`);
-    await open(client);
-    const socket = await serverSide;
-    const serverClosed = closed(socket);
-    let pongs = 0;
-    socket.on("pong", () => {
-      pongs += 1;
-    });
+    try {
+      await open(client);
+      const socket = await serverSide;
+      const serverClosed = closed(socket);
+      // Advance the heartbeat clock only after the actual network pong arrives,
+      // so CPU load cannot make a responsive client miss the assertion window.
+      for (let interval = 0; interval < 5; interval += 1) {
+        const pong = new Promise<void>((resolve) => socket.once("pong", () => resolve()));
+        vi.advanceTimersByTime(INTERVAL_MS);
+        await pong;
+        expect(socket.readyState).toBe(NodeWS.WebSocket.OPEN);
+      }
 
-    // A client that answers pings (ws does so at the protocol level) stays up
-    // well past the reaping threshold.
-    await sleep(INTERVAL_MS * 5);
-    expect(socket.readyState).toBe(NodeWS.WebSocket.OPEN);
-    expect(pongs).toBeGreaterThanOrEqual(2);
-
-    // Pausing the client's TCP stream is the closest stand-in for a suspended
-    // phone: the connection stays open, nothing is read, nothing is answered.
-    const stream = (client as unknown as { _socket: { pause: () => void } })._socket;
-    stream.pause();
-    const code = await serverClosed;
-    expect(code).toBe(1006);
-
-    client.terminate();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+      // Pausing the client's TCP stream is the closest stand-in for a suspended
+      // phone: the connection stays open, nothing is read, nothing is answered.
+      const stream = (client as unknown as { _socket: { pause: () => void } })._socket;
+      stream.pause();
+      vi.advanceTimersByTime(INTERVAL_MS * 3);
+      const code = await serverClosed;
+      expect(code).toBe(1006);
+    } finally {
+      client.terminate();
+      for (const connection of server.clients) connection.terminate();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      vi.useRealTimers();
+    }
   });
 });

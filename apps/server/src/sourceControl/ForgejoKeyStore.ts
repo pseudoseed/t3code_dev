@@ -85,7 +85,7 @@ function parseKeysFile(content: string): Map<string, ForgejoCredential> {
 
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
-  const overridePath = yield* Config.string("T3CODE_FORGEJO_KEYS_PATH").pipe(Config.option);
+  const overridePath = yield* Config.String("T3CODE_FORGEJO_KEYS_PATH").pipe(Config.option);
   const searchPaths = Option.isSome(overridePath)
     ? ([overridePath.value] as const)
     : yield* candidateKeysPaths();

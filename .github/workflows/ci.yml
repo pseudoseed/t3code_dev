@@ -52,6 +52,9 @@ jobs:
       - name: Check
         run: vp check
 
+      - name: Check className overrides on components/ui do not grow
+        run: vp run lint:restyle-ceiling
+
       - name: Typecheck
         run: vpr typecheck
 
@@ -280,7 +283,7 @@ jobs:
           # Sources scripts/mobile-native-static-check.ts lints, plus the tool
           # and rule configuration that decides how it lints them, plus the
           # root package.json that defines the lint:mobile command.
-          pattern='^apps/mobile/.*\.(swift|kt|kts)$|^apps/mobile/(\.swiftlint\.yml|detekt\.yml|\.editorconfig|Brewfile)$|^scripts/mobile-native-static-check\.ts$|^package\.json$|^\.github/workflows/ci\.yml$'
+          pattern='^apps/mobile/.*\.(swift|kt|kts)$|^apps/mobile/scripts/(expo-fabric-context|permissions-service|notification-center-manager)\.test\.ts$|^patches/(expo|expo-modules-core|expo-notifications)@|^apps/mobile/(\.swiftlint\.yml|detekt\.yml|\.editorconfig|Brewfile)$|^scripts/mobile-native-static-check\.ts$|^package\.json$|^\.github/workflows/ci\.yml$'
 
           if grep -qE "$pattern" <<< "$paths"; then
             echo "Native sources or lint configuration changed:"
@@ -322,6 +325,12 @@ jobs:
 
       - name: Lint mobile native sources
         run: vp run lint:mobile
+
+      - name: Install mobile regression dependencies
+        run: vp install --filter=@t3tools/mobile...
+
+      - name: Test iOS runtime regressions
+        run: vp test run apps/mobile/scripts/expo-fabric-context.test.ts apps/mobile/scripts/permissions-service.test.ts apps/mobile/scripts/notification-center-manager.test.ts
 
   release_smoke:
     name: Release Smoke

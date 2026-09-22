@@ -9,11 +9,26 @@ const validPreload = `
   electron.contextBridge.exposeInMainWorld("desktopBridge", {
     getClientPlatform: () => process.platform,
     getLocalEnvironmentBootstraps: () => [],
+    getPathForFile: () => "",
     pickFolder: (options) => electron.ipcRenderer.invoke(PICK_FOLDER_CHANNEL, options),
   });
 `;
 
 describe("desktop preload bundle verifier", () => {
+  it("executes window-control initialization with browser and Electron globals", () => {
+    assert.doesNotThrow(() =>
+      verifyPreloadBundle(`
+        ${validPreload}
+        window.addEventListener("DOMContentLoaded", () => {
+          document.documentElement.style.setProperty(
+            "--desktop-window-controls-inset",
+            String(90 / electron.webFrame.getZoomFactor()) + "px",
+          );
+        }, { once: true });
+      `),
+    );
+  });
+
   it("rejects required API names that only appear in strings", () => {
     assert.throws(
       () =>

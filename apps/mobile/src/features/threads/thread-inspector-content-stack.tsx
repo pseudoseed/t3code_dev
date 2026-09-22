@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
 
 export type ThreadInspectorMode = "route" | "git" | "files" | "terminal";
@@ -33,11 +33,11 @@ function InspectorContentPane(props: {
 }
 
 export function ThreadInspectorContentStack(props: {
-  readonly Files: ComponentType;
-  readonly Git: ComponentType;
+  readonly Files: () => ReactNode;
+  readonly Git: () => ReactNode;
   readonly mode: ThreadInspectorMode;
-  readonly Route?: ComponentType;
-  readonly Terminal?: ComponentType;
+  readonly Route?: () => ReactNode;
+  readonly Terminal?: () => ReactNode;
 }) {
   const [mountedModes, setMountedModes] = useState<ReadonlySet<ThreadInspectorMode>>(
     () => new Set([props.mode]),
@@ -85,20 +85,20 @@ export function ThreadInspectorContentStack(props: {
         mounted={mountedModes.has("files") || props.mode === "files"}
         visible={props.mode === "files"}
       >
-        <Files />
+        {Files()}
       </InspectorContentPane>
       <InspectorContentPane
         mounted={mountedModes.has("git") || props.mode === "git"}
         visible={props.mode === "git"}
       >
-        <Git />
+        {Git()}
       </InspectorContentPane>
       {Route ? (
         <InspectorContentPane
           mounted={mountedModes.has("route") || props.mode === "route"}
           visible={props.mode === "route"}
         >
-          <Route />
+          {Route()}
         </InspectorContentPane>
       ) : null}
       {Terminal ? (
@@ -106,7 +106,7 @@ export function ThreadInspectorContentStack(props: {
           mounted={mountedModes.has("terminal") || props.mode === "terminal"}
           visible={props.mode === "terminal"}
         >
-          <Terminal />
+          {Terminal()}
         </InspectorContentPane>
       ) : null}
     </View>

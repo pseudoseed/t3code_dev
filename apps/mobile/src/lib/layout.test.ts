@@ -6,6 +6,7 @@ import {
   deriveCenteredContentHorizontalPadding,
   deriveFileInspectorPaneLayout,
   deriveLayout,
+  resolveTerminalDockPosition,
   deriveThreadFeedInitialContentInset,
   deriveThreadWorkLogSizing,
   deriveWorkspaceDockPaneLayout,
@@ -417,5 +418,47 @@ describe("deriveWorkspacePaneLayout", () => {
       auxiliaryPaneVisible: false,
       auxiliaryPaneWidth: null,
     });
+  });
+});
+
+describe("terminal split layouts", () => {
+  it.each([744, 768, 810])(
+    "keeps chat and terminal visible on a %i-point portrait iPad",
+    (width) => {
+      const layout = deriveLayout({ width, height: 1080 });
+      const side = deriveFileInspectorPaneLayout({ layout, viewportWidth: width });
+      const bottom = deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 1080 });
+      expect(
+        resolveTerminalDockPosition({
+          preferredPosition: "right",
+          sideSupported: side.supported,
+          bottomSupported: bottom.supported,
+        }),
+      ).toBe("bottom");
+    },
+  );
+
+  it("restores the side preference when a narrow iPad rotates to landscape", () => {
+    const layout = deriveLayout({ width: 1080, height: 810 });
+    const side = deriveFileInspectorPaneLayout({ layout, viewportWidth: 1080 });
+    const bottom = deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 810 });
+    expect(
+      resolveTerminalDockPosition({
+        preferredPosition: "right",
+        sideSupported: side.supported,
+        bottomSupported: bottom.supported,
+      }),
+    ).toBe("right");
+  });
+
+  it("keeps phone terminals full screen", () => {
+    const layout = deriveLayout({ width: 390, height: 844 });
+    expect(
+      resolveTerminalDockPosition({
+        preferredPosition: "bottom",
+        sideSupported: deriveFileInspectorPaneLayout({ layout, viewportWidth: 390 }).supported,
+        bottomSupported: deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 844 }).supported,
+      }),
+    ).toBeNull();
   });
 });

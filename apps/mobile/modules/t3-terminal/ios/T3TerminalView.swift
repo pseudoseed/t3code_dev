@@ -22,15 +22,15 @@ private enum GhosttyRuntime {
   }
 }
 
-/// One delivery from JS: the slice appended since `cursor` last advanced, or a
-/// full replay that replaces whatever the surface currently holds.
-public struct TerminalAppend: Record {
-  @Field public var reset: Bool = false
-  @Field public var chunk: String = ""
-  @Field public var cursor: Double = -1
-  @Field public var epoch: Double = -1
-
+/// One incremental terminal write from JS: `seq` orders and deduplicates the
+/// writes, `reset` clears the grid before `data` is fed.
+///
+public struct TerminalBufferWriteRecord: Record {
   public init() {}
+
+  @Field public var seq: Int = 0
+  @Field public var reset: Bool = false
+  @Field public var data: String = ""
 }
 
 private enum TerminalAppearanceScheme: String {
@@ -65,12 +65,17 @@ private extension UIColor {
 }
 
 public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInteractionDelegate {
+  private static let maxReplayBufferBytes = 512 * 1024
+  private static let replayBufferTrimSlackBytes = 64 * 1024
+  private static let clearScreenSequence = "\u{1B}c\u{1B}[3J"
+
   private static let minimumVerticalScrollStepPoints: CGFloat = 18
   private static let verticalScrollStepMultiplier: CGFloat = 1.15
 
   private let terminalViewport = UIView()
   private let clipboardBar = UIStackView()
   private let copyButton = UIButton(type: .system)
+  private let attachButton = UIButton(type: .system)
   private let inputField = TerminalInputField()
   private let focusTapGesture = UITapGestureRecognizer()
   private let scrollPanGesture = UIPanGestureRecognizer()
@@ -81,8 +86,10 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
   private var lastViewportSize: CGSize = .zero
   private var lastContentScale: CGFloat = 0
   private var lastReportedGrid: (cols: Int, rows: Int)?
-  private var appliedCursor: Double = -1
-  private var appliedEpoch: Double = -1
+  private var replayBuffer = ""
+  private var replayBufferBytes = 0
+  private var appliedWriteSeq = 0
+  private var isReplayingBuffer = false
   private var isSelecting = false
   private var selectionMouseReportingDisabled = false
   private var pendingVerticalScrollPoints: CGFloat = 0
@@ -95,7 +102,6 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
 
   let onInput = EventDispatcher()
   let onResize = EventDispatcher()
-  let onSurfaceReady = EventDispatcher()
   let onCapture = EventDispatcher()
   var captureRequest: Double = 0 {
     didSet {
@@ -127,9 +133,16 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
     didSet {
       accessibilityIdentifier = "t3-terminal-\(terminalKey)"
       if oldValue != terminalKey {
+        replayBuffer = ""
+        replayBufferBytes = 0
+        appliedWriteSeq = 0
         resetSurface()
       }
     }
+  }
+
+  var bufferWrite = TerminalBufferWriteRecord() {
+    didSet { applyBufferWrite(bufferWrite) }
   }
 
   var fontSize: CGFloat = 10 {
@@ -457,19 +470,13 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
     setupWriteCallback()
     resizeSurface()
 
-    // A fresh surface holds nothing. Announcing it is what makes JS resend the
-    // history, so the view never has to keep a second copy of the scrollback.
-    appliedCursor = -1
-    appliedEpoch = -1
-    DispatchQueue.main.async { [weak self] in
-      self?.onSurfaceReady([:])
-    }
+    isReplayingBuffer = true
+    feedData(Data(replayBuffer.utf8))
+    isReplayingBuffer = false
   }
 
   private func resetSurface() {
     destroySurface()
-    appliedCursor = -1
-    appliedEpoch = -1
     lastViewportSize = .zero
     lastContentScale = 0
     lastReportedGrid = nil
@@ -499,27 +506,58 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
     app = nil
   }
 
-  func applyAppend(_ append: TerminalAppend) {
+  private func applyBufferWrite(_ write: TerminalBufferWriteRecord) {
+    guard write.seq > appliedWriteSeq else { return }
+    appliedWriteSeq = write.seq
+
+    if write.reset {
+      replayBuffer = ""
+      replayBufferBytes = 0
+      // Clearing the live surface is cheaper than rebuilding it, and it keeps
+      // the keyboard, selection, and scroll position intact.
+      //
+      feedData(Data(Self.clearScreenSequence.utf8))
+    }
+
+    appendToReplayBuffer(write.data)
+
     guard surface != nil else {
-      // Nothing to write into yet. Surface creation announces itself and JS
-      // answers with a replay, so dropping this delivery loses nothing.
+      // No surface yet (still unmeasured): the replay buffer carries the write
+      // into the surface once layout creates it.
+      //
       createSurfaceIfPossible()
       return
     }
 
-    if append.reset {
-      appliedEpoch = append.epoch
-      appliedCursor = append.cursor
-      // RIS clears the modes a previous session left behind; the screen and
-      // scrollback have to go with them before the replay lands.
-      feedData(Data("\u{1B}c\u{1B}[3J".utf8))
-      feedData(Data(append.chunk.utf8))
+    // A reset carries retained history, not live output: its device-query
+    // replies must not reach the shell either.
+    //
+    isReplayingBuffer = write.reset
+    defer { isReplayingBuffer = false }
+    feedData(Data(write.data.utf8))
+  }
+
+  private func appendToReplayBuffer(_ data: String) {
+    guard !data.isEmpty else { return }
+    replayBuffer += data
+    replayBufferBytes += data.utf8.count
+
+    guard replayBufferBytes > Self.maxReplayBufferBytes + Self.replayBufferTrimSlackBytes else {
       return
     }
 
-    guard append.epoch == appliedEpoch, append.cursor > appliedCursor else { return }
-    appliedCursor = append.cursor
-    feedData(Data(append.chunk.utf8))
+    // Drop from the front on a UTF-8 boundary. Only replay depth is lost; the
+    // scrollback the user sees lives in the terminal itself.
+    //
+    let utf8 = Array(replayBuffer.utf8)
+    var start = utf8.count - Self.maxReplayBufferBytes
+    while start < utf8.count, utf8[start] & 0b1100_0000 == 0b1000_0000 {
+      start += 1
+    }
+    // This is a valid UTF-8 array slice at a character boundary, not arbitrary Data.
+    // swiftlint:disable:next optional_data_string_conversion
+    replayBuffer = String(decoding: utf8[start...], as: UTF8.self)
+    replayBufferBytes = utf8.count - start
   }
 
   private func feedData(_ data: Data) {
@@ -542,6 +580,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
     ghostty_surface_set_write_callback(surface, { userdata, data, len in
       guard let userdata, let data, len > 0 else { return }
       let view = Unmanaged<T3TerminalView>.fromOpaque(userdata).takeUnretainedValue()
+      guard !view.isReplayingBuffer else { return }
       let bytes = Data(bytes: data, count: len)
       guard let input = String(data: bytes, encoding: .utf8), !input.isEmpty else { return }
 
@@ -572,6 +611,7 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
 
   private func redrawSurface() {
     copyButton.isEnabled = surface.map { ghostty_surface_has_selection($0) } ?? false
+    attachButton.isEnabled = copyButton.isEnabled
     guard let surface else { return }
     ghostty_surface_refresh(surface)
     ghostty_surface_draw(surface)
@@ -694,14 +734,16 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
     clipboardBar.tintColor = UIColor(hexString: foregroundColorHex)
 
     let pasteButton = UIButton(type: .system)
-    pasteButton.setTitle("Paste", for: .normal)
+    pasteButton.setImage(UIImage(systemName: "doc.on.clipboard"), for: .normal)
+    pasteButton.accessibilityLabel = "Paste"
     pasteButton.accessibilityHint = "Paste clipboard text into the terminal"
     pasteButton.addAction(UIAction { [weak self] _ in
       self?.pasteFromPasteboard()
     }, for: .touchUpInside)
 
     let selectButton = UIButton(type: .system)
-    selectButton.setTitle("Select All", for: .normal)
+    selectButton.setImage(UIImage(systemName: "selection.pin.in.out"), for: .normal)
+    selectButton.accessibilityLabel = "Select All"
     selectButton.accessibilityHint = "Select terminal output for copying"
     selectButton.addAction(UIAction { [weak self] _ in
       guard let self else { return }
@@ -709,14 +751,22 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
       self.selectAll()
     }, for: .touchUpInside)
 
-    copyButton.setTitle("Copy", for: .normal)
+    copyButton.setImage(UIImage(systemName: "doc.on.doc"), for: .normal)
+    copyButton.accessibilityLabel = "Copy"
     copyButton.isEnabled = false
     copyButton.accessibilityHint = "Copy selected terminal text"
     copyButton.addAction(UIAction { [weak self] _ in
       self?.copySelectionToPasteboard()
     }, for: .touchUpInside)
 
-    for button in [pasteButton, selectButton, copyButton] {
+    attachButton.setImage(UIImage(systemName: "text.bubble"), for: .normal)
+    attachButton.accessibilityLabel = "Add to chat"
+    attachButton.isEnabled = false
+    attachButton.addAction(UIAction { [weak self] _ in
+      self?.captureSelection()
+    }, for: .touchUpInside)
+
+    for button in [pasteButton, selectButton, copyButton, attachButton] {
       button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
       button.titleLabel?.adjustsFontForContentSizeCategory = true
       clipboardBar.addArrangedSubview(button)
@@ -786,6 +836,11 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
         self?.copySelectionToPasteboard()
       })
     }
+    if let surface, ghostty_surface_has_selection(surface) {
+      actions.append(UIAction(title: "Add to chat", image: UIImage(systemName: "text.bubble")) { [weak self] _ in
+        self?.captureSelection()
+      })
+    }
     actions.append(UIAction(title: "Select All") { [weak self] _ in self?.selectAll() })
     actions.append(UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
       self?.pasteFromPasteboard()
@@ -804,17 +859,25 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate, UIEditMenuInte
     redrawSurface()
   }
 
-  private func copySelectionToPasteboard() {
-    guard let surface, ghostty_surface_has_selection(surface) else { return }
-
+  private func selectedText() -> String? {
+    guard let surface, ghostty_surface_has_selection(surface) else { return nil }
     var text = ghostty_text_s()
-    guard ghostty_surface_read_selection(surface, &text) else { return }
+    guard ghostty_surface_read_selection(surface, &text) else { return nil }
     defer { ghostty_surface_free_text(surface, &text) }
+    guard let pointer = text.text, text.text_len > 0 else { return nil }
+    return String(data: Data(bytes: pointer, count: Int(text.text_len)), encoding: .utf8)
+  }
 
-    guard let pointer = text.text, text.text_len > 0 else { return }
-    let data = Data(bytes: pointer, count: Int(text.text_len))
-    guard let selection = String(data: data, encoding: .utf8), !selection.isEmpty else { return }
-    UIPasteboard.general.string = selection
+  private func copySelectionToPasteboard() {
+    guard let text = selectedText(), !text.isEmpty else { return }
+    UIPasteboard.general.string = text
+  }
+
+  private func captureSelection() {
+    guard let text = selectedText(), !text.isEmpty else { return }
+    selectionMenu.dismissMenu()
+    inputField.resignFirstResponder()
+    onCapture(["text": text])
   }
 
   private func pasteFromPasteboard() {

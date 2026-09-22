@@ -81,6 +81,17 @@ export interface FileInspectorPaneLayout {
   readonly width: number | null;
 }
 
+/** A narrow tablet can still split vertically without supporting a side inspector. */
+export function resolveTerminalDockPosition(input: {
+  readonly preferredPosition: "right" | "bottom";
+  readonly sideSupported: boolean;
+  readonly bottomSupported: boolean;
+}): "right" | "bottom" | null {
+  if (input.preferredPosition === "bottom" && input.bottomSupported) return "bottom";
+  if (input.sideSupported) return "right";
+  return input.bottomSupported ? "bottom" : null;
+}
+
 export interface WorkspaceDockPaneLayout {
   readonly supported: boolean;
   readonly height: number | null;

@@ -1,3 +1,7 @@
+import * as Clipboard from "expo-clipboard";
+import { Alert } from "react-native";
+import { chunkTerminalWrite } from "./terminalInput";
+import { createTerminalPasteSession } from "./terminalPaste";
 import {
   terminalOutputText,
   type KnownTerminalSession,
@@ -11,11 +15,6 @@ import {
   useAttachedTerminalSession,
   useKnownTerminalSessions,
 } from "../../state/use-terminal-session";
-import {
-  getTerminalBufferReplayKey,
-  getTerminalSurfaceReplayContent,
-  TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS,
-} from "./terminalBufferReplay";
 import { terminalDebugLog } from "./terminalDebugLog";
 import {
   resolveTerminalOpenLocation,
@@ -103,7 +102,6 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   const {
     enabled,
     environmentId,
-    fontSize,
     hasResolvedFontPreference,
     isEnvironmentReady,
     terminalId,
@@ -155,14 +153,11 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   const [lastGridSize, setLastGridSize] = useState(
     cachedGridSize ?? { cols: DEFAULT_TERMINAL_COLS, rows: DEFAULT_TERMINAL_ROWS },
   );
-  const [readyBufferReplayKey, setReadyBufferReplayKey] = useState<string | null>(null);
   const [pendingModifierState, setPendingModifierState] = useState<{
     readonly terminalId: string;
     readonly value: TerminalPendingModifier | null;
   }>({ terminalId, value: null });
-  const bufferReplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstNonEmptyBufferLoggedRef = useRef(false);
-  const lastBufferReplayKeyRef = useRef<string | null>(null);
   const sentInitialInputKeyRef = useRef<string | null>(null);
   /** Default grid is always valid for attach; onResize refines cols/rows. */
   const [hasMeasuredSurface, setHasMeasuredSurface] = useState(true);
@@ -232,24 +227,7 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   const terminal = useAttachedTerminalSession({ environmentId, terminal: terminalAttachInput });
   const terminalKey =
     environmentId && threadId ? `${environmentId}:${threadId}:${terminalId}` : terminalId;
-  const bufferReplayKey = useMemo(
-    () => getTerminalBufferReplayKey({ terminalKey, fontSize }),
-    [fontSize, terminalKey],
-  );
-  if (lastBufferReplayKeyRef.current === null) {
-    lastBufferReplayKeyRef.current = bufferReplayKey;
-  }
-  // Identity has to stay stable while nothing streams: the native surface prop
-  // is diffed by reference, and a fresh object every render re-crosses the bridge.
-  const surfaceContent = useMemo(
-    () =>
-      getTerminalSurfaceReplayContent({
-        terminal,
-        replayKey: bufferReplayKey,
-        readyReplayKey: readyBufferReplayKey,
-      }),
-    [bufferReplayKey, readyBufferReplayKey, terminal],
-  );
+  const surfaceContent = useMemo(() => ({ output: terminal.output }), [terminal.output]);
   const isRunning = terminal.status === "running" || terminal.status === "starting";
   const runningTerminalKeyRef = useRef<string | null>(null);
   const reopenedStaleTerminalKeyRef = useRef<string | null>(null);
@@ -405,38 +383,6 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     sentInitialInputKeyRef.current = null;
   }, [terminalKey]);
 
-  const clearBufferReplayTimer = useCallback(() => {
-    if (bufferReplayTimerRef.current !== null) {
-      clearTimeout(bufferReplayTimerRef.current);
-      bufferReplayTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleBufferReplayReady = useCallback(() => {
-    clearBufferReplayTimer();
-    const replayKey = bufferReplayKey;
-    terminalDebugLog("replay:schedule-ready", {
-      replayKey,
-      delayMs: TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS,
-    });
-    bufferReplayTimerRef.current = setTimeout(() => {
-      bufferReplayTimerRef.current = null;
-      setReadyBufferReplayKey(replayKey);
-      terminalDebugLog("replay:ready", { replayKey });
-    }, TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS);
-  }, [bufferReplayKey, clearBufferReplayTimer]);
-
-  useEffect(() => {
-    if (lastBufferReplayKeyRef.current === bufferReplayKey) {
-      return;
-    }
-    lastBufferReplayKeyRef.current = bufferReplayKey;
-    clearBufferReplayTimer();
-    setReadyBufferReplayKey(null);
-  }, [bufferReplayKey, clearBufferReplayTimer]);
-
-  useEffect(() => clearBufferReplayTimer, [clearBufferReplayTimer]);
-
   useEffect(() => {
     if (!environmentId || !threadId) {
       setLastGridSize({ cols: DEFAULT_TERMINAL_COLS, rows: DEFAULT_TERMINAL_ROWS });
@@ -451,17 +397,44 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     setHasMeasuredSurface(true);
   }, [environmentId, terminalId, threadId]);
 
+  const inputGeneration = useRef(0);
+  useEffect(() => {
+    inputGeneration.current += 1;
+    return () => {
+      inputGeneration.current += 1;
+    };
+  }, [enabled, isRunning, terminal.lifecycleVersion, terminalKey]);
+
   const writeInput = useCallback(
-    (data: string) => {
-      if (environmentId === null || threadId === null || !isRunning) {
-        return;
+    async (data: string) => {
+      if (environmentId === null || threadId === null || !isRunning || !enabled) return false;
+      const generation = inputGeneration.current;
+      for (const chunk of chunkTerminalWrite(data)) {
+        if (generation !== inputGeneration.current) return false;
+        const result = await writeTerminal({
+          environmentId,
+          input: { threadId, terminalId, data: chunk },
+        });
+        if (result._tag === "Failure") return false;
       }
-      void writeTerminal({
-        environmentId,
-        input: { threadId, terminalId, data },
-      });
+      return true;
     },
-    [environmentId, isRunning, terminalId, threadId, writeTerminal],
+    [enabled, environmentId, isRunning, terminalId, threadId, writeTerminal],
+  );
+
+  const [pasteSession] = useState(createTerminalPasteSession);
+  useEffect(() => {
+    pasteSession.reset(isRunning && enabled);
+    return () => pasteSession.reset(false);
+  }, [enabled, isRunning, pasteSession, terminal.lifecycleVersion, terminalKey]);
+  const pasteFromClipboard = useCallback(
+    () =>
+      pasteSession.paste({
+        readText: Clipboard.getStringAsync,
+        write: writeInput,
+        onReadError: () => Alert.alert("Could not read clipboard"),
+      }),
+    [pasteSession, writeInput],
   );
 
   const pendingModifier =
@@ -507,13 +480,29 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     });
   }, [clearTerminalCommand, environmentId, terminalId, threadId]);
 
+  // Layout can arrive before attach finishes. Send that measurement once the
+  // shell is ready rather than leaving it at the initial 80-column fallback.
+  useEffect(() => {
+    if (!enabled || !isRunning || environmentId === null || threadId === null) return;
+    void resizeTerminal({
+      environmentId,
+      input: { threadId, terminalId, cols: lastGridSize.cols, rows: lastGridSize.rows },
+    });
+  }, [
+    enabled,
+    environmentId,
+    isRunning,
+    lastGridSize.cols,
+    lastGridSize.rows,
+    resizeTerminal,
+    terminalId,
+    threadId,
+  ]);
+
   const handleResize = useCallback(
     (size: { readonly cols: number; readonly rows: number }) => {
       terminalDebugLog("native:onResize", { cols: size.cols, rows: size.rows, terminalKey });
       setHasMeasuredSurface(true);
-      if (readyBufferReplayKey !== bufferReplayKey) {
-        scheduleBufferReplayReady();
-      }
       if (environmentId && threadId) {
         cacheTerminalGridSize({ environmentId, threadId, terminalId }, size);
       }
@@ -521,27 +510,8 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
         return;
       }
       setLastGridSize(size);
-      if (environmentId === null || threadId === null || !isRunning) {
-        return;
-      }
-      void resizeTerminal({
-        environmentId,
-        input: { threadId, terminalId, cols: size.cols, rows: size.rows },
-      });
     },
-    [
-      bufferReplayKey,
-      environmentId,
-      isRunning,
-      lastGridSize.cols,
-      lastGridSize.rows,
-      readyBufferReplayKey,
-      resizeTerminal,
-      scheduleBufferReplayReady,
-      terminalId,
-      terminalKey,
-      threadId,
-    ],
+    [environmentId, lastGridSize.cols, lastGridSize.rows, terminalId, terminalKey, threadId],
   );
 
   // When the process ends while attached (e.g. typing `exit`), close the
@@ -595,6 +565,7 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     isRunning,
     knownSessions,
     pendingModifier,
+    pasteFromClipboard,
     sendInput,
     surfaceContent,
     terminal,

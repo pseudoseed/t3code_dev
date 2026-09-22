@@ -18,8 +18,4 @@ Pod::Spec.new do |s|
   s.libraries = 'c++', 'z'
   s.swift_version = '5.9'
   s.dependency 'ExpoModulesCore'
-
-  s.test_spec 'InputTests' do |tests|
-    tests.source_files = 'Tests/**/*.swift'
-  end
 end

@@ -70,7 +70,7 @@ describe("Codex follow-up delivery", () => {
         const followUps = [
           {
             input: "include tests",
-            attachments: [{ type: "image" as const, url: "data:image/png;base64,abc" }],
+            attachments: [{ type: "localImage" as const, path: "/tmp/follow-up.png" }],
           },
           { input: "preserve the existing API" },
         ];

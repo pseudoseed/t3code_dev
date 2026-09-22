@@ -164,7 +164,13 @@ export function terminalAnsiPaletteFromApp(background: GhosttyColor): readonly G
   if (typeof document === "undefined") return terminalAnsiPalette(background);
   const styles = getComputedStyle(document.documentElement);
   const overrides: (GhosttyColor | null)[] = Array.from({ length: 16 }, () => null);
-  let hasOverride = false;
+  const accent =
+    probeColor(styles.getPropertyValue("--app-theme-accent")) ??
+    probeColor(styles.getPropertyValue("--primary"));
+  const muted = probeColor(styles.getPropertyValue("--muted-foreground"));
+  overrides[4] = overrides[12] = accent;
+  overrides[6] = overrides[14] = muted;
+  let hasOverride = accent !== null || muted !== null;
   for (let index = 0; index < 16; index += 1) {
     const parsed = probeColor(styles.getPropertyValue(`--terminal-ansi-${index}`));
     if (parsed) {
@@ -193,10 +199,17 @@ export function terminalPromptColors(background: GhosttyColor): {
     return { promptBackground: fallbackBand, promptAccent: fallbackAccent };
   }
   const styles = getComputedStyle(document.documentElement);
+  const themeAccent =
+    probeColor(styles.getPropertyValue("--app-theme-accent")) ??
+    probeColor(styles.getPropertyValue("--primary"));
+  const rgba = (alpha: number) =>
+    themeAccent === null
+      ? null
+      : `rgba(${themeAccent.r}, ${themeAccent.g}, ${themeAccent.b}, ${alpha})`;
   const band = styles.getPropertyValue("--terminal-prompt-background").trim();
   const accent = styles.getPropertyValue("--terminal-prompt-accent").trim();
   return {
-    promptBackground: band.length > 0 ? band : fallbackBand,
-    promptAccent: accent.length > 0 ? accent : fallbackAccent,
+    promptBackground: band.length > 0 ? band : (rgba(light ? 0.05 : 0.07) ?? fallbackBand),
+    promptAccent: accent.length > 0 ? accent : (rgba(0.55) ?? fallbackAccent),
   };
 }
