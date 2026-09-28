@@ -213,7 +213,7 @@ export function StorageSettingsPanel() {
             <SettingsRow
               title="Delete inactive worktrees"
               status={ruleStatus("worktreeAfterDays")}
-              description="Remove worktrees after their threads have been inactive for this many days. Branches and thread history are kept."
+              description="Remove worktrees after their threads have been inactive for this many days. Settled and archived threads are removed even with uncommitted changes. Branches and thread history are kept."
               serverScoped={!isProjectScope}
               control={
                 <RetentionControl

@@ -1418,6 +1418,9 @@ describe("storage cleanup", () => {
     "unchanged-two-worktrees",
     "diverged",
     "head-moved",
+    "settled-leftovers",
+    "archived-leftovers",
+    "settled-recent-leftovers",
     "deleted",
     "deleted-event",
     "deleted-dirty",
@@ -1480,7 +1483,14 @@ describe("storage cleanup", () => {
             branch: "feature",
             worktreePath,
             latestUserMessageAt:
-              protection === "recent" ? "2026-08-26T00:00:00.000Z" : "2026-08-01T00:00:00.000Z",
+              protection === "recent" || protection === "settled-recent-leftovers"
+                ? "2026-08-26T00:00:00.000Z"
+                : "2026-08-01T00:00:00.000Z",
+            ...(protection === "settled-leftovers" || protection === "settled-recent-leftovers"
+              ? { settledOverride: "settled" as const, settledAt: NOW }
+              : protection === "archived-leftovers"
+                ? { archivedAt: NOW }
+                : {}),
             ...(protection === "session"
               ? {
                   session: {
@@ -1504,6 +1514,8 @@ describe("storage cleanup", () => {
           let tombstoned = deleteRule && protection !== "deleted-event";
           const removals: string[] = [];
           const mergeRule = protection === "merged" || protection === "unmerged";
+          // Uncommitted changes, ignored files and a detached HEAD at once.
+          const leftovers = protection.endsWith("-leftovers");
           const unchangedRule =
             protection === "unchanged" ||
             protection === "unchanged-two-worktrees" ||
@@ -1725,10 +1737,14 @@ describe("storage cleanup", () => {
                       isRepo: true,
                       hasOriginRemote: false,
                       isDefaultBranch: false,
-                      branch: cwd === secondWorktreePath ? "feature-two" : "feature",
+                      branch: leftovers
+                        ? null
+                        : cwd === secondWorktreePath
+                          ? "feature-two"
+                          : "feature",
                       upstreamRef: null,
                       hasWorkingTreeChanges:
-                        protection === "dirty" || protection === "deleted-dirty",
+                        protection === "dirty" || protection === "deleted-dirty" || leftovers,
                       workingTree: { files: [], insertions: 0, deletions: 0 },
                       hasUpstream: false,
                       aheadCount: 0,
@@ -1744,7 +1760,7 @@ describe("storage cleanup", () => {
                           : 0,
                       ),
                       stdout:
-                        protection === "ignored" || protection === "deleted-ignored"
+                        protection === "ignored" || protection === "deleted-ignored" || leftovers
                           ? ".env\0"
                           : protection === "ignored-directory"
                             ? ".cache/\0"
@@ -1780,7 +1796,10 @@ describe("storage cleanup", () => {
                       ),
                     ),
                   removeWorktree: (input) => {
-                    assert.strictEqual(input.force, false);
+                    assert.strictEqual(
+                      input.force,
+                      protection === "settled-leftovers" || protection === "archived-leftovers",
+                    );
                     removals.push(input.path);
                     return fs.remove(input.path, { recursive: true }).pipe(Effect.orDie);
                   },
@@ -1846,6 +1865,8 @@ describe("storage cleanup", () => {
             protection === "project-custom" ||
             protection === "deleted-project-custom" ||
             protection === "none" ||
+            protection === "settled-leftovers" ||
+            protection === "archived-leftovers" ||
             protection === "deleted" ||
             protection === "deleted-event" ||
             protection === "deleted-owner" ||
