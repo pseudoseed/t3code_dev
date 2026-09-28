@@ -75,7 +75,10 @@ captures and log retention remain machine-wide.
 Worktrees can be removed after a chosen number of inactive days, after merging, or when they
 have no commits beyond the default branch. Only T3-managed worktrees are eligible. Active
 sessions, shared worktrees, uncommitted changes, and ignored files other than `node_modules`
-prevent removal. Branches and thread history stay; starting another turn recreates the checkout.
+prevent removal. Settled and archived threads are the exception: once inactive for the chosen
+number of days, their worktrees are removed even with uncommitted changes or ignored files, so
+commit anything you want to keep before settling. Branches and thread history stay; starting
+another turn recreates the checkout.
 Merge cleanup requires the commits to be included in the remote default branch, so squash merges
 may need the inactivity rule instead.
 

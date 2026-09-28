@@ -92,6 +92,14 @@ function storageCleanupThreadIdle(thread: OrchestrationThreadShell, now: number)
   );
 }
 
+/**
+ * Settling or archiving marks the work as done: anything not committed to the
+ * branch by then is disposable once the inactivity window passes.
+ */
+function storageCleanupThreadFinished(thread: OrchestrationThreadShell): boolean {
+  return thread.settledOverride === "settled" || thread.archivedAt !== null;
+}
+
 /** PR metadata refreshes must not reset the inactivity clock. */
 function storageCleanupActivityAt(thread: OrchestrationThreadShell): number {
   return Math.max(
@@ -170,6 +178,25 @@ export const make = Effect.gen(function* () {
     return false;
   });
 
+  // Ignored files can contain secrets or local datasets. Dependency installs
+  // are reproducible; every other ignored path prevents a non-forced removal.
+  const hasKeptIgnoredFiles = Effect.fn("StorageCleanup.hasKeptIgnoredFiles")(function* (
+    worktreePath: string,
+  ) {
+    const ignored = yield* git.execute({
+      operation: "StorageCleanup.ignoredFiles",
+      cwd: worktreePath,
+      args: ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
+      maxOutputBytes: 64 * 1024,
+    });
+    return (
+      ignored.stdoutTruncated ||
+      ignored.stdout
+        .split("\0")
+        .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
+    );
+  });
+
   const cleanWorktrees = Effect.fn("StorageCleanup.cleanWorktrees")(function* (
     serverSettings: ServerSettings,
     now: number,
@@ -219,29 +246,20 @@ export const make = Effect.gen(function* () {
         if (yield* containsProjectRoot(worktreePath, [project, ...snapshot.projects])) return;
         // A linked worktree has a .git file. Never remove a main checkout.
         if ((yield* fs.stat(path.join(worktreePath, ".git"))).type !== "File") return;
-        const status = yield* git.statusDetailsLocal(worktreePath);
-        if (!status.isRepo || status.branch !== thread.branch || status.hasWorkingTreeChanges)
-          return;
-        const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
-        const ignored = yield* git.execute({
-          operation: "StorageCleanup.ignoredFiles",
-          cwd: worktreePath,
-          args: ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
-          maxOutputBytes: 64 * 1024,
-        });
-        // Ignored files can contain secrets or local datasets. Dependency installs
-        // are reproducible; every other ignored path prevents automatic removal.
-        if (
-          ignored.stdoutTruncated ||
-          ignored.stdout
-            .split("\0")
-            .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
-        )
-          return;
         const old =
           !deleted &&
           settings.worktreeAfterDays !== null &&
           storageCleanupActivityAt(thread) < now - settings.worktreeAfterDays * DAY_MS;
+        // Finished threads drop local leftovers; everything else must be clean.
+        const force = old && storageCleanupThreadFinished(thread);
+        const status = yield* git.statusDetailsLocal(worktreePath);
+        if (
+          !status.isRepo ||
+          (!force && (status.branch !== thread.branch || status.hasWorkingTreeChanges))
+        )
+          return;
+        const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
+        if (!force && (yield* hasKeptIgnoredFiles(worktreePath))) return;
         let eligible = deleted || old;
         if (!eligible && (settings.worktreeUnchanged || settings.worktreeOnMerge)) {
           const repositoryCwd = path.resolve(project.workspaceRoot);
@@ -313,14 +331,14 @@ export const make = Effect.gen(function* () {
           latest.length !== 1 ||
           latest[0]!.id !== thread.id ||
           !storageCleanupThreadIdle(latest[0]!, now) ||
-          storageCleanupActivityAt(latest[0]!) !== storageCleanupActivityAt(thread)
+          storageCleanupActivityAt(latest[0]!) !== storageCleanupActivityAt(thread) ||
+          (force && !storageCleanupThreadFinished(latest[0]!))
         )
           return;
         const finalStatus = yield* git.statusDetailsLocal(worktreePath);
         if (
           !finalStatus.isRepo ||
-          finalStatus.branch !== thread.branch ||
-          finalStatus.hasWorkingTreeChanges
+          (!force && (finalStatus.branch !== thread.branch || finalStatus.hasWorkingTreeChanges))
         )
           return;
         if (
@@ -328,19 +346,7 @@ export const make = Effect.gen(function* () {
           head.commitSha
         )
           return;
-        const finalIgnored = yield* git.execute({
-          operation: "StorageCleanup.ignoredFiles",
-          cwd: worktreePath,
-          args: ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
-          maxOutputBytes: 64 * 1024,
-        });
-        if (
-          finalIgnored.stdoutTruncated ||
-          finalIgnored.stdout
-            .split("\0")
-            .some((entry) => entry !== "" && !/(^|\/)node_modules\/$/.test(entry))
-        )
-          return;
+        if (!force && (yield* hasKeptIgnoredFiles(worktreePath))) return;
         const current = resolveWorktreeCleanup(
           yield* settingsService.getSettings,
           thread.projectId,
@@ -352,7 +358,7 @@ export const make = Effect.gen(function* () {
           )
         )
           return;
-        yield* git.removeWorktree({ cwd: project.workspaceRoot, path: worktreePath, force: false });
+        yield* git.removeWorktree({ cwd: project.workspaceRoot, path: worktreePath, force });
         yield* gitManager.invalidateStatus(project.workspaceRoot);
         // Preserve branch and path: ProviderCommandReactor recreates the checkout
         // from that branch when the thread is resumed.
