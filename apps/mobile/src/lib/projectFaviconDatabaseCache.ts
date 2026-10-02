@@ -40,10 +40,12 @@ export async function downscaleProjectFavicon(
 ) {
   // Loaded lazily with the other native modules so the cache stays importable
   // in tests, where react-native's Flow entry point cannot be parsed.
-  const [{ Image }, { File }, { Platform }] = await Promise.all([
+  // Expo inlines EXPO_OS at build time. A dynamic import of react-native would
+  // copy its exports, and React Native 0.88 throws on the removed
+  // InteractionManager getter.
+  const [{ Image }, { File }] = await Promise.all([
     import("expo-image"),
     import("expo-file-system"),
-    import("react-native"),
   ]);
   for (const size of [PROJECT_FAVICON_THUMBNAIL_SIZE, PROJECT_FAVICON_THUMBNAIL_SIZE / 2]) {
     if (signal.aborted) throw new Error("Project icon request aborted.");
@@ -51,7 +53,7 @@ export async function downscaleProjectFavicon(
     const cacheKey = `t3-favicon-thumbnail:${size}:${image.url}`;
     try {
       if (signal.aborted) throw new Error("Project icon request aborted.");
-      if (Platform.OS === "ios") {
+      if (process.env.EXPO_OS === "ios") {
         const { requireNativeModule } = await import("expo-modules-core");
         const native = requireNativeModule<{
           projectIconPng: (

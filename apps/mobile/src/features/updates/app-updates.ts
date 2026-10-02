@@ -445,8 +445,18 @@ async function applyDeferredAppUpdateInstall(
   }
 }
 
+/**
+ * React Native, loaded on first use so tests never parse its Flow entry point.
+ * A dynamic import copies every export into a namespace object, and React
+ * Native 0.88 throws when that copy reads the removed InteractionManager, so
+ * the module object is read directly.
+ */
+async function loadReactNative(): Promise<typeof import("react-native")> {
+  return require("react-native") as typeof import("react-native");
+}
+
 async function defaultConfirmInstallNow(): Promise<boolean> {
-  const { Alert } = await import("react-native");
+  const { Alert } = await loadReactNative();
   return new Promise<boolean>((resolve) => {
     Alert.alert(
       "Update ready",
@@ -476,12 +486,12 @@ async function defaultFlushPendingWrites(): Promise<void> {
 async function defaultIsSafeToRestartInBackground(): Promise<boolean> {
   const { isForegroundHandoffActive } = await import("../../lib/foreground-handoff");
   if (isForegroundHandoffActive()) return false;
-  const { AppState } = await import("react-native");
+  const { AppState } = await loadReactNative();
   return AppState.currentState === "background";
 }
 
 function defaultOnNextBackground(apply: () => void, includeCurrent: boolean): void {
-  void import("react-native").then(({ AppState }) => {
+  void loadReactNative().then(({ AppState }) => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "background") return;
       subscription.remove();
@@ -509,7 +519,7 @@ export const DEFERRED_INSTALL_PROMPT_AFTER_MS = 30 * 60 * 1000;
  * pulled-down notification shade) leave the timer running.
  */
 function defaultOnForegroundStay(apply: () => void): void {
-  void import("react-native").then(({ AppState }) => {
+  void loadReactNative().then(({ AppState }) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const arm = () => {
       timer ??= setTimeout(() => {
@@ -599,7 +609,7 @@ export function createAppUpdateForegroundRecheck(
   return () => {
     if (started || !isAppUpdateCheckAvailable(client)) return;
     started = true;
-    void import("react-native").then(({ AppState }) => {
+    void loadReactNative().then(({ AppState }) => {
       let backgroundedAtMs: number | null = null;
       AppState.addEventListener("change", (state) => {
         if (state === "background") {
