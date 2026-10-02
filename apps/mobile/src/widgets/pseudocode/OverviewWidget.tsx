@@ -23,7 +23,7 @@ export function OverviewWidget(
   // The server heartbeats only while agents are active; idle results are not late.
   const delayed =
     props.updatedAt != null &&
-    environment.date.getTime() - Date.parse(props.updatedAt) > 25 * 60_000 &&
+    (environment.date ?? new Date()).getTime() - Date.parse(props.updatedAt) > 25 * 60_000 &&
     (props.activities ?? []).some(
       (row) =>
         row.phase === "running" || row.phase === "starting" || row.phase.startsWith("waiting"),

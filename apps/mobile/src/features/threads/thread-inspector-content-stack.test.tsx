@@ -3,6 +3,11 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { expect, it, vi } from "vite-plus/test";
 
 vi.mock("react-native", () => ({ View: "view" }));
+// The boundary's fallback UI pulls in Expo modules this renderer cannot load.
+vi.mock("../../components/RenderErrorBoundary", () => ({
+  RenderErrorBoundary: ({ children }: { children: unknown }) => children,
+  RenderFailureView: () => null,
+}));
 
 import { ThreadInspectorContentStack } from "./thread-inspector-content-stack";
 
@@ -26,6 +31,7 @@ it("keeps a terminal mounted and its local state when chat changes its render ca
     return (
       <ThreadInspectorContentStack
         mode="terminal"
+        resetKeys={["thread", null]}
         Files={empty}
         Git={empty}
         Terminal={() => <Terminal turn={turn} />}

@@ -126,6 +126,25 @@ describe("AgentActivity content and navigation", () => {
     expect(banner).toContain("more active in PseudoCode");
   });
 
+  it("degrades in-flight rows once the system marks the activity stale", () => {
+    const layout = AgentActivity(
+      {
+        ...props,
+        activeCount: 2,
+        activities: [
+          makeRow({ threadTitle: "Build thread" }),
+          makeRow({ threadId: "thread-2", phase: "completed", threadTitle: "Finished thread" }),
+        ],
+      },
+      { ...environment, isStale: true } as never,
+    );
+    const banner = JSON.stringify(layout.banner);
+    expect(banner).toContain("Update delayed");
+    expect(banner).not.toContain('"Working"');
+    expect(banner).not.toContain("#5eead4"); // running teal
+    expect(banner).toContain('"Done"');
+  });
+
   it("never places untrusted external URLs in a widget link", () => {
     const layout = AgentActivity(
       { ...props, activities: [makeRow({ deepLink: "//evil.example" })] },

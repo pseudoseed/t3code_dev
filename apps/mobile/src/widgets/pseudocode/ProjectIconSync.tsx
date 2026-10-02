@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import { useEffect } from "react";
 import { projectFaviconUrlAtom } from "../../state/assets";
-import { downscaleProjectFavicon } from "../../lib/projectFaviconCache";
+import { downscaleProjectFavicon } from "../../lib/projectFaviconDatabaseCache";
 
 /** Resolve small, self-contained thumbnails while the authenticated app is connected. */
 export function ProjectIconSync({
