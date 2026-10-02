@@ -57,10 +57,10 @@ function RemoteEnvironmentRowsSkeleton() {
     <div className={ITEM_ROW_CLASSNAME}>
       <div className={ITEM_ROW_INNER_CLASSNAME}>
         <div className="min-w-0 flex-1 space-y-2">
-          <Skeleton className="h-4 w-32 rounded-full" />
-          <Skeleton className="h-3 w-20 rounded-full" />
+          <Skeleton shape="pill" className="h-4 w-32" />
+          <Skeleton shape="pill" className="h-3 w-20" />
         </div>
-        <Skeleton className="h-7 w-16 rounded-md" />
+        <Skeleton className="h-7 w-16" />
       </div>
     </div>
   );
@@ -339,17 +339,17 @@ export function CloudEnvironmentConnectRows({
             : "bg-muted-foreground/35";
     const statusText =
       unsupported && !savedEnvironment
-        ? "T3 Connect · Not added · Client not supported"
+        ? "Cloud Connect · Not added · Client not supported"
         : savedConnection
           ? savedConnection.statusText
           : availability === "online"
-            ? "T3 Connect · Not added · Relay online"
+            ? "Cloud Connect · Not added · Relay online"
             : availability === "offline"
-              ? "T3 Connect · Not added · Relay offline"
+              ? "Cloud Connect · Not added · Relay offline"
               : availability === "checking"
-                ? "T3 Connect · Not added · Checking relay status…"
+                ? "Cloud Connect · Not added · Checking relay status…"
                 : (Option.getOrNull(error)?.message ??
-                  "T3 Connect · Not added · Relay status unavailable");
+                  "Cloud Connect · Not added · Relay status unavailable");
     if (selection) {
       return (
         <label
@@ -393,9 +393,7 @@ export function CloudEnvironmentConnectRows({
                         ? "Unavailable"
                         : "Checking…"))}
             </TooltipTrigger>
-            <TooltipPopup className="max-w-80 break-words">
-              {unsupportedDetail ?? statusText}
-            </TooltipPopup>
+            <TooltipPopup>{unsupportedDetail ?? statusText}</TooltipPopup>
           </Tooltip>
         </label>
       );
@@ -454,9 +452,7 @@ export function CloudEnvironmentConnectRows({
                   Add
                 </Button>
               </TooltipTrigger>
-              <TooltipPopup className="max-w-80 break-words">
-                {unsupportedDetail ?? "Client not supported"}
-              </TooltipPopup>
+              <TooltipPopup>{unsupportedDetail ?? "Client not supported"}</TooltipPopup>
             </Tooltip>
           ) : savedConnection ? (
             <Button size="sm" variant="outline" disabled>

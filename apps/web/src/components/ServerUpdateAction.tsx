@@ -16,6 +16,7 @@ import { manualServerUpdateCommand } from "~/versionSkew";
 import { Button } from "./ui/button";
 import { toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { APP_BASE_NAME } from "~/branding";
 
 // The wire "installing" stage is a sub-second launcher handoff, so the UI
 // folds it into the download phase; everything after the handoff is the
@@ -121,7 +122,7 @@ export function ServerUpdatesAction({
       if (desktopTargets.length > 0) {
         const confirmed =
           (await requestConfirmDialog(
-            `Update the T3 Code desktop apps on ${desktopTargets.map((target) => target.serverLabel).join(", ")}? They will close and relaunch on those machines.`,
+            `Update the ${APP_BASE_NAME} desktop apps on ${desktopTargets.map((target) => target.serverLabel).join(", ")}? They will close and relaunch on those machines.`,
           )) ?? true;
         if (!confirmed) return;
       }
@@ -163,9 +164,7 @@ export function ServerUpdateProgress({
         <span className="size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true" />
         <Tooltip>
           <TooltipTrigger render={<span className="min-w-0 truncate">{state.message}</span>} />
-          <TooltipPopup side="top" className="max-w-80">
-            {state.message}
-          </TooltipPopup>
+          <TooltipPopup side="top">{state.message}</TooltipPopup>
         </Tooltip>
       </div>
     );
@@ -272,8 +271,8 @@ export function ServerUpdateAction({
           render={
             <Button
               size="icon-xs"
-              variant="ghost"
-              className={className ?? "text-muted-foreground hover:text-foreground"}
+              variant="ghost-muted"
+              className={className}
               aria-label={`${actionLabel} for ${serverLabel}`}
               onClick={onClick}
             />

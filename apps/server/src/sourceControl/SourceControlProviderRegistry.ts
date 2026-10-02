@@ -307,14 +307,14 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
           context: { provider, remoteName: input.remoteName, remoteUrl: input.remoteUrl },
         }).pipe(Effect.map((context) => context?.provider ?? provider));
       },
-      discover: Effect.all(
-        discoverySpecs.map((spec) =>
+      discover: Effect.forEach(
+        discoverySpecs,
+        (spec) =>
           probeSourceControlProvider({
             spec,
             process,
             cwd: config.cwd,
           }),
-        ),
         { concurrency: "unbounded" },
       ),
     });

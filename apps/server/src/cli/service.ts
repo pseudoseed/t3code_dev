@@ -177,8 +177,8 @@ const serviceRestartCommand = Command.make("restart", projectLocationFlags).pipe
         const restarted = yield* service.restart;
         yield* Console.log(
           restarted
-            ? `Restarted the T3 Code service${status.installedVersion === undefined ? "" : ` on t3@${status.installedVersion}`}.`
-            : "T3 Code service is not installed.",
+            ? `Restarted the PseudoCode service${status.installedVersion === undefined ? "" : ` on t3@${status.installedVersion}`}.`
+            : "PseudoCode service is not installed.",
         );
       }),
     ),

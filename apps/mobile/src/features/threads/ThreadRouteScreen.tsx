@@ -793,6 +793,7 @@ function ThreadRouteContent(
           Files={FilesInspector}
           Git={GitInspector}
           mode={inspectorMode}
+          resetKeys={[routeThreadIdentity, selectedThreadCwd]}
           Route={props.renderInspector ? RouteInspector : undefined}
           Terminal={showTerminalInInspector ? TerminalInspector : undefined}
         />
@@ -804,6 +805,8 @@ function ThreadRouteContent(
       TerminalInspector,
       inspectorMode,
       props.renderInspector,
+      routeThreadIdentity,
+      selectedThreadCwd,
       showTerminalInInspector,
     ],
   );
@@ -1198,18 +1201,7 @@ function ThreadRouteContent(
     <>
       <GitActionProgressOverlay progress={gitActionProgress} onDismiss={dismissGitActionResult} />
 
-      <View
-        className={Platform.OS === "android" ? "flex-1 bg-thread-canvas" : "flex-1 bg-screen"}
-        style={
-          Platform.OS === "android"
-            ? {
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
-                overflow: "hidden",
-              }
-            : undefined
-        }
-      >
+      <View className="flex-1 bg-screen android:overflow-hidden android:rounded-t-[28px] android:bg-thread-canvas">
         <ThreadDetailScreen
           keyboardHandledByDock={terminalPaneOpen && terminalDockPosition === "bottom"}
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}

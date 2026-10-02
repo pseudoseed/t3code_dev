@@ -144,19 +144,19 @@ function Dial({
         className="relative flex min-w-0 flex-col items-center gap-0.5 text-center"
         style={{ maxWidth: SAFE, maxHeight: SAFE }}
       >
-        <span className="text-[30px] leading-8 font-semibold tabular-nums text-foreground">
+        <span className="text-3xl leading-8 font-semibold tabular-nums text-foreground">
           {percent}
           <span className="ml-px align-super text-sm text-muted-foreground">%</span>
         </span>
         {resetsAt === null ? null : (
-          <span className="text-[11px] leading-[14px] whitespace-nowrap text-muted-foreground">
+          <span className="text-2xs leading-3.5 whitespace-nowrap text-muted-foreground">
             resets{" "}
             <span className="font-medium tabular-nums" style={{ color }}>
               {formatDuration(resetsAt - now)}
             </span>
           </span>
         )}
-        <span className="max-w-full truncate text-[9px] leading-3 tracking-wide text-muted-foreground">
+        <span className="max-w-full truncate text-3xs leading-3 tracking-wide text-muted-foreground">
           {windowCaption(current)}
         </span>
       </div>
@@ -177,7 +177,7 @@ function WindowBar({
   const resetsAt = resetMillis(window);
   return (
     <div className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3">
-      <span className="truncate text-[10px] tracking-wider text-muted-foreground uppercase">
+      <span className="truncate text-3xs tracking-wider text-muted-foreground uppercase">
         {window.label}
       </span>
       <span className="h-1.5 overflow-hidden rounded-full bg-muted">

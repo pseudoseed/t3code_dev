@@ -1,7 +1,5 @@
 import { memo } from "react";
-import type { VariantProps } from "class-variance-authority";
 import { UsersIcon } from "lucide-react";
-import { buttonVariants } from "../ui/button";
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { cn } from "~/lib/utils";
 import {
@@ -92,7 +90,6 @@ export const SubagentModelPicker = memo(function SubagentModelPicker(
      * an open menu closes when its trigger hides.
      */
     hidden?: boolean;
-    triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
     triggerClassName?: string;
   },
 ) {
@@ -109,7 +106,6 @@ export const SubagentModelPicker = memo(function SubagentModelPicker(
         render={
           <ComposerControl
             size={size}
-            variant={props.triggerVariant ?? "ghost"}
             aria-label="Subagent model"
             data-chat-subagent-model-picker="true"
             className={cn(

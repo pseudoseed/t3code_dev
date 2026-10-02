@@ -23,7 +23,7 @@ for (const startingMigration of [53, 56]) {
         const upgraded = yield* runMigrations();
         assert.deepStrictEqual(
           upgraded.map(([id]) => id),
-          [54, 55, 56, 57].filter((id) => id > startingMigration),
+          [54, 55, 56, 57, 58].filter((id) => id > startingMigration),
         );
         assert.deepStrictEqual(yield* sql`SELECT * FROM auth_sessions`, sessions);
         assert.deepStrictEqual(yield* sql`SELECT * FROM projection_mailbox_messages`, messages);
@@ -37,6 +37,7 @@ for (const startingMigration of [53, 56]) {
           "last_viewed_at",
           "mailbox_revision",
           "title_state_json",
+          "auto_settle_disabled_at",
         ]) {
           assert.ok(
             columns.some((column) => column.name === name),

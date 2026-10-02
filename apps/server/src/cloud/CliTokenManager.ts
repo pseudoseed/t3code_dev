@@ -230,7 +230,7 @@ export class CloudCliAuthorizationDeniedError extends Schema.TaggedError<CloudCl
   {},
 ) {
   override get message(): string {
-    return "T3 Connect authorization was denied in the browser.";
+    return "Cloud Connect authorization was denied in the browser.";
   }
 }
 
@@ -341,7 +341,7 @@ const pollDeviceToken = Effect.fn("cloud.cli_token.poll_device_token")(function*
     const response = yield* HttpClientRequest.post(metadata.tokenEndpoint).pipe(
       HttpClientRequest.bodyUrlParams(params),
       httpClient.execute,
-      Effect.map(Option.some),
+      Effect.asSome,
       Effect.catchIf(isTransportError, () => Effect.succeedNone),
     );
     // Transport failures and upstream 5xx are transient while the device code

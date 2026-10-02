@@ -55,8 +55,11 @@ export function AgentActivity(
   "widget";
   // The Island and our banner have dark backgrounds even when iOS reports light mode.
   const muted = environment.isLuminanceReduced;
+  // Past the stale date the system stops vouching for the content, so
+  // in-flight rows read as delayed instead of claiming an agent is working.
+  const stale = environment.isStale;
   const tint = (phase?: AgentActivityPhase) => {
-    if (muted) return "secondary";
+    if (muted || (stale && !phase?.startsWith("waiting"))) return "secondary";
     if (phase === "waiting_for_approval") return "#fcd34d";
     if (phase === "waiting_for_input") return "#c4b5fd";
     if (phase === "failed") return "#fca5a5";
@@ -64,6 +67,7 @@ export function AgentActivity(
     return "#5eead4";
   };
   const label = (phase: AgentActivityPhase) => {
+    if (stale && (phase === "running" || phase === "starting")) return "Update delayed";
     switch (phase) {
       case "starting":
         return "Starting";

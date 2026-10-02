@@ -22,6 +22,8 @@ import { issueEnvironment } from "~/state/issues";
 import ChatMarkdown from "../ChatMarkdown";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { PULL_REQUEST_STATE_PRESENTATION } from "../pullRequest/pullRequestIcons";
 import {
   ISSUE_SORTS,
   appendIssueContext,
@@ -132,9 +134,11 @@ export function IssuesPanel(props: IssuesPanelProps) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 px-3 py-2">
         <div className="flex items-center gap-1.5">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup className="flex-1">
+            <InputGroupAddon>
+              <Search aria-hidden className="size-3.5" />
+            </InputGroupAddon>
+            <InputGroupInput
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               onKeyDown={(event) => {
@@ -142,20 +146,22 @@ export function IssuesPanel(props: IssuesPanelProps) {
                 if (event.key === "Escape" && search.length > 0) clearSearch();
               }}
               placeholder={searchesOnHost ? "Search issues" : "Filter loaded issues"}
-              className="h-7 pl-7 pr-7 text-xs"
+              size="compact"
               aria-label="Search issues"
             />
             {search.length > 0 ? (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label="Clear search"
-              >
-                <X className="size-3.5" />
-              </button>
+              <InputGroupAddon align="inline-end">
+                <Button
+                  variant="ghost-muted"
+                  size="icon-micro"
+                  onClick={clearSearch}
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </InputGroupAddon>
             ) : null}
-          </div>
+          </InputGroup>
           <Button
             variant="ghost"
             size="icon"
@@ -182,7 +188,7 @@ export function IssuesPanel(props: IssuesPanelProps) {
               type="button"
               onClick={() => setState(filter.value)}
               className={cn(
-                "rounded px-1.5 py-0.5 text-[11px] transition-colors",
+                "rounded px-1.5 py-0.5 text-2xs transition-colors",
                 state === filter.value
                   ? "bg-muted font-medium text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -198,7 +204,7 @@ export function IssuesPanel(props: IssuesPanelProps) {
               type="button"
               onClick={() => setSort(option.value)}
               className={cn(
-                "rounded px-1.5 py-0.5 text-[11px] transition-colors",
+                "rounded px-1.5 py-0.5 text-2xs transition-colors",
                 sort === option.value
                   ? "bg-muted font-medium text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -263,7 +269,7 @@ function IssueRow(props: { readonly entry: IssueListEntry; readonly onOpen: () =
           <StateIcon state={entry.state} />
           <span className="min-w-0 flex-1 text-xs leading-snug text-foreground">{entry.title}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-5 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-5 text-2xs text-muted-foreground">
           <span>#{entry.number}</span>
           {entry.author ? <span>{entry.author.login}</span> : null}
           {comments ? <span>{comments}</span> : null}
@@ -287,10 +293,18 @@ function IssueRow(props: { readonly entry: IssueListEntry; readonly onOpen: () =
 }
 
 function StateIcon(props: { readonly state: IssueDetail["state"] }) {
+  // Issue states wear the pull request tones: open matches an open PR, closed (done) a merged one.
   return props.state === "closed" ? (
-    <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-purple-500 dark:text-purple-300/90" />
+    <CircleCheck
+      className={cn(
+        "mt-0.5 size-3.5 shrink-0",
+        PULL_REQUEST_STATE_PRESENTATION.merged.toneClassName,
+      )}
+    />
   ) : (
-    <CircleDot className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300/90" />
+    <CircleDot
+      className={cn("mt-0.5 size-3.5 shrink-0", PULL_REQUEST_STATE_PRESENTATION.open.toneClassName)}
+    />
   );
 }
 
@@ -299,7 +313,7 @@ function PanelMessage(props: { readonly title: string; readonly detail: string |
     <div className="px-3 py-6 text-center">
       <p className="text-xs text-foreground">{props.title}</p>
       {props.detail === null ? null : (
-        <p className="mt-1 text-[11px] text-muted-foreground">{props.detail}</p>
+        <p className="mt-1 text-2xs text-muted-foreground">{props.detail}</p>
       )}
     </div>
   );
@@ -394,27 +408,20 @@ function IssueDetailView(props: {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/60 px-3 py-2">
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={props.onBack}>
+        <Button variant="ghost" size="xs" onClick={props.onBack}>
           Back
         </Button>
-        <span className="text-[11px] text-muted-foreground">#{props.number}</span>
+        <span className="text-2xs text-muted-foreground">#{props.number}</span>
         <div className="flex-1" />
         {detail !== null ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs"
-            disabled={starting}
-            onClick={() => void startWork()}
-          >
+          <Button variant="ghost" size="xs" disabled={starting} onClick={() => void startWork()}>
             {starting ? <Loader2 className="size-3 animate-spin" /> : "Start work"}
           </Button>
         ) : null}
         {detail !== null && props.composerDraftTarget !== undefined ? (
           <Button
             variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs"
+            size="xs"
             onClick={() => {
               const store = useComposerDraftStore.getState();
               const target = props.composerDraftTarget;
@@ -429,8 +436,7 @@ function IssueDetailView(props: {
         {detail?.capabilities.close && detail.viewerCanWrite ? (
           <Button
             variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs"
+            size="xs"
             onClick={() => void toggleState()}
             disabled={pending !== null}
           >
@@ -451,7 +457,7 @@ function IssueDetailView(props: {
                 <StateIcon state={detail.state} />
                 <h2 className="min-w-0 flex-1 text-sm font-medium leading-snug">{detail.title}</h2>
               </div>
-              <p className="pl-5 text-[11px] text-muted-foreground">
+              <p className="pl-5 text-2xs text-muted-foreground">
                 {detail.author?.login ?? "unknown"} opened this in {detail.repository}
               </p>
             </div>
@@ -463,12 +469,12 @@ function IssueDetailView(props: {
                 environmentId={props.environmentId}
               />
             ) : (
-              <p className="text-[11px] text-muted-foreground">No description.</p>
+              <p className="text-2xs text-muted-foreground">No description.</p>
             )}
 
             {detail.comments.map((entry) => (
               <div key={entry.id} className="rounded border border-border/50 px-2.5 py-2">
-                <p className="mb-1 text-[11px] text-muted-foreground">
+                <p className="mb-1 text-2xs text-muted-foreground">
                   {entry.author?.login ?? "unknown"}
                 </p>
                 <ChatMarkdown
@@ -480,7 +486,7 @@ function IssueDetailView(props: {
             ))}
 
             {detail.commentsTruncated ? (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 This conversation is longer than what is shown.
               </p>
             ) : null}
@@ -499,8 +505,7 @@ function IssueDetailView(props: {
           />
           <div className="mt-1.5 flex justify-end">
             <Button
-              size="sm"
-              className="h-6 px-2 text-xs"
+              size="xs"
               onClick={() => void postComment()}
               disabled={draft.trim().length === 0 || pending !== null}
             >
@@ -545,17 +550,17 @@ function NewIssueView(props: {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={props.onCancel}>
+        <Button variant="ghost" size="xs" onClick={props.onCancel}>
           Cancel
         </Button>
-        <span className="text-[11px] text-muted-foreground">New issue in {props.projectTitle}</span>
+        <span className="text-2xs text-muted-foreground">New issue in {props.projectTitle}</span>
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         <Input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Title"
-          className="h-7 text-xs"
+          size="compact"
           aria-label="Issue title"
         />
         <textarea
@@ -570,8 +575,7 @@ function NewIssueView(props: {
       <div className="shrink-0 border-t border-border/60 p-2">
         <div className="flex justify-end">
           <Button
-            size="sm"
-            className="h-6 px-2 text-xs"
+            size="xs"
             onClick={() => void submit()}
             disabled={title.trim().length === 0 || pending}
           >

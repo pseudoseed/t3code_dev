@@ -1,7 +1,7 @@
 import { TerminalContextSheet } from "./TerminalContextSheet";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View, type ScrollViewInstance } from "react-native";
 
 import { SymbolView, type AppSymbolName } from "../../components/AppSymbol";
 import { environmentCatalog } from "../../connection/catalog";
@@ -138,7 +138,7 @@ export function ThreadTerminalPane(props: {
 }) {
   const { activeTerminalId, environmentId, onClose, onSelectTerminal, threadId, workspaceRoot } =
     props;
-  const tabScroller = useRef<ScrollView>(null);
+  const tabScroller = useRef<ScrollViewInstance>(null);
   const tabOffsets = useRef(new Map<string, number>());
   useEffect(() => {
     const x = tabOffsets.current.get(activeTerminalId);

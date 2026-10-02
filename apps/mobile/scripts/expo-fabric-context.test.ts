@@ -14,13 +14,10 @@ it.skipIf(NodeOS.platform() !== "darwin")(
       const core = new URL("../node_modules/expo-modules-core/ios/", import.meta.url);
       const context = NodeFS.readFileSync(new URL("Core/AppContext.swift", core), "utf8");
       const fabric = NodeFS.readFileSync(new URL("Fabric/ExpoFabricView.swift", core), "utf8");
-      const identifierStart = context.indexOf("  private let contextIdentifier");
-      // The unpatched source uses a bridge-derived identifier; compile that path too
-      // when checking the regression against a pristine package.
+      // Expo 58 numbers each context from a shared counter; compile that identity
+      // code as shipped so the regression covers the installed package.
       const identifier = context.slice(
-        identifierStart >= 0
-          ? identifierStart
-          : context.indexOf("  @objc\n  public var appIdentifier"),
+        context.indexOf("  private static let appContextsCount"),
         context.indexOf("  /**\n   Code signing"),
       );
       const statics = fabric.slice(fabric.indexOf("  // MARK: - Statics"), fabric.lastIndexOf("}"));
@@ -32,7 +29,8 @@ it.skipIf(NodeOS.platform() !== "darwin")(
             new URL("./fixtures/ExpoFabricContextRegression.swift", import.meta.url),
             "utf8",
           ),
-          `public final class AppContext: NSObject {
+          `import Synchronization
+        public final class AppContext: NSObject {
           let moduleRegistry = Registry()
           let reactBridge: Bridge? = nil
           ${identifier}

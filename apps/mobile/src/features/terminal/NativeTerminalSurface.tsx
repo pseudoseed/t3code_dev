@@ -10,6 +10,7 @@ import {
   View,
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
+  type TextInputInstance,
   type ViewProps,
 } from "react-native";
 
@@ -68,12 +69,11 @@ function estimateGridSize(input: {
 
 const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: TerminalSurfaceProps) {
   const fontSize = props.fontSize ?? MOBILE_TYPOGRAPHY.label.fontSize;
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const { themeAppearance, themeId, themeVariables } = useAppearancePreferences();
   const theme = props.theme ?? getMobileTerminalTheme(themeId, themeAppearance, themeVariables);
   // Only the text fallback renders history itself, so it is the one place that
   // still pays for materializing the retained buffer.
-  //
   const buffer = useMemo(() => terminalOutputText(props.output), [props.output]);
   const statusLabel = props.isRunning
     ? "Native terminal unavailable. Using text fallback."

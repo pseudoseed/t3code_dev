@@ -1,3 +1,4 @@
+import { APP_BASE_NAME } from "~/branding";
 import { PermissionChecklist, PermissionContinueButton } from "../permissions/PermissionChecklist";
 import { usePermissionStatus } from "../permissions/usePermissionStatus";
 import {
@@ -5,7 +6,8 @@ import {
   type DesktopSnapShotSetupAction,
   type DesktopSnapShotState,
 } from "@t3tools/contracts";
-import { useId, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { MacAccessibilityIcon, MacScreenRecordingIcon } from "../Icons";
 import { CaptureShortcutConfig } from "./CaptureShortcutConfig";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription } from "../ui/dialog";
@@ -28,8 +30,7 @@ const SETUP_STEPS = [
 const GNOME_ACCESS_COPY = {
   "not-installed": {
     title: "Install the extension",
-    description:
-      "The T3 Code GNOME extension lets you capture other windows and bring them into your draft. Sign out once after installing.",
+    description: `The ${APP_BASE_NAME} GNOME extension lets you capture other windows and bring them into your draft. Sign out once after installing.`,
   },
   "restart-required": {
     title: "Extension installed",
@@ -45,7 +46,7 @@ const GNOME_ACCESS_COPY = {
   },
   disabled: {
     title: "Enable the extension",
-    description: "Enable T3 Code SnapShots to start capturing windows.",
+    description: `Enable ${APP_BASE_NAME} SnapShots to start capturing windows.`,
   },
   enabled: {
     title: "Capture is ready",
@@ -57,75 +58,9 @@ const GNOME_ACCESS_COPY = {
   },
   error: {
     title: "Couldn't set up the extension",
-    description: "Check T3 Code SnapShots in GNOME Extensions, then try again.",
+    description: `Check ${APP_BASE_NAME} SnapShots in GNOME Extensions, then try again.`,
   },
 };
-
-function ScreenRecordingIcon() {
-  const gradientId = useId();
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      className="size-8 shrink-0 drop-shadow-[0_1px_1px_#0005]"
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id={gradientId} x2="0" y2="1">
-          <stop stopColor="#ff6972" />
-          <stop offset="1" stopColor="#ff2938" />
-        </linearGradient>
-      </defs>
-      <rect
-        x="0.5"
-        y="0.5"
-        width="31"
-        height="31"
-        rx="7"
-        fill={`url(#${gradientId})`}
-        stroke="#ffffff40"
-      />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="2" />
-      <circle cx="16" cy="16" r="4.5" fill="#fff" />
-    </svg>
-  );
-}
-
-function AccessibilityPermissionIcon() {
-  const gradientId = useId();
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      className="size-8 shrink-0 drop-shadow-[0_1px_1px_#0005]"
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id={gradientId} x2="0" y2="1">
-          <stop stopColor="#48b6ff" />
-          <stop offset="1" stopColor="#0085ff" />
-        </linearGradient>
-      </defs>
-      <rect
-        x="0.5"
-        y="0.5"
-        width="31"
-        height="31"
-        rx="7"
-        fill={`url(#${gradientId})`}
-        stroke="#ffffff40"
-      />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="1.75" />
-      <circle cx="16" cy="10" r="1.6" fill="#fff" />
-      <path
-        d="m10 13 6 1 6-1M16 14v4m0 0-2.5 6m2.5-6 2.5 6"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export function SnapShotSetupDialog({
   state,
@@ -238,8 +173,7 @@ export function SnapShotSetupDialog({
                     helper?.status === "update-required"
                       ? "Update the capture helper"
                       : "Allow snapshots",
-                  description:
-                    "T3 Code's capture helper lets you capture other apps and return to your draft. It's included with T3 Code.",
+                  description: `${APP_BASE_NAME}'s capture helper lets you capture other apps and return to your draft. It's included with ${APP_BASE_NAME}.`,
                 }
           : backend === "niri"
             ? {
@@ -333,7 +267,7 @@ export function SnapShotSetupDialog({
                     permissions={[
                       {
                         id: "screenRecording",
-                        icon: <ScreenRecordingIcon />,
+                        icon: <MacScreenRecordingIcon className="size-8 shrink-0 drop-shadow-sm" />,
                         title: "Screen Recording",
                         description: "Capture the window you're using.",
                         granted: macPermissions.screenRecording,
@@ -341,7 +275,7 @@ export function SnapShotSetupDialog({
                       },
                       {
                         id: "accessibility",
-                        icon: <AccessibilityPermissionIcon />,
+                        icon: <MacAccessibilityIcon className="size-8 shrink-0 drop-shadow-sm" />,
                         title: "Accessibility",
                         description: includeAccessibility
                           ? "Include text and controls from the captured app."
@@ -420,7 +354,7 @@ export function SnapShotSetupDialog({
                     </p>
                   ))}
                   {step === "access" && (backend === "gnome" || helperBackend) ? (
-                    <p>Included with T3 Code. No download needed.</p>
+                    <p>Included with {APP_BASE_NAME}. No download needed.</p>
                   ) : null}
                   {step === "access" && backend === "gnome" && extension?.status === "enabled" ? (
                     <Button
