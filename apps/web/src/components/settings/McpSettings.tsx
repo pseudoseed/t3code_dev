@@ -235,7 +235,7 @@ function EnvironmentMcpSettings({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{row.name}</p>
-                    <p className="truncate text-[13px] text-muted-foreground/80">
+                    <p className="truncate text-xs text-muted-foreground/80">
                       {row.transport} · {row.target}
                     </p>
                   </div>
@@ -351,7 +351,7 @@ function EnvironmentMcpSettings({
                     );
                   })}
                 {row.envKeys.length > 0 || row.headerKeys.length > 0 ? (
-                  <p className="text-[12px] text-muted-foreground/70">
+                  <p className="text-xs text-muted-foreground/70">
                     Carries credentials: {[...row.envKeys, ...row.headerKeys].join(", ")}
                   </p>
                 ) : null}
