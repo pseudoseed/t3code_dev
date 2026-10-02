@@ -2641,6 +2641,11 @@ export function resolveDesktopArtifactName(): string {
   return `${base}-\${version}-\${arch}.\${ext}`;
 }
 
+/** The app's name in OS prompts and URL handlers; no channel suffix. */
+function resolveDesktopBrandName(): string {
+  return process.env.T3CODE_APP_NAME?.trim() || "T3 Code";
+}
+
 export function resolveDesktopProductName(version: string): string {
   const override = process.env.T3CODE_APP_NAME?.trim();
   if (override) return override;
@@ -2721,8 +2726,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
       extendInfo: {
-        NSScreenCaptureUsageDescription:
-          "T3 Code captures the active window when you use the window capture shortcut.",
+        NSScreenCaptureUsageDescription: `${resolveDesktopBrandName()} captures the active window when you use the window capture shortcut.`,
         // The desktop app hosts the server for phones and browsers. macOS App
         // Nap throttles an app whose windows are hidden or occluded, and the
         // server child shares the app's process coalition, so a napped app
@@ -2731,7 +2735,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
       protocols: [
         {
-          name: "T3 Code",
+          name: resolveDesktopBrandName(),
           schemes: ["t3code", "t3code-dev"],
         },
       ],
@@ -2785,7 +2789,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // t3code:// OAuth callbacks to the app.
       protocols: [
         {
-          name: "T3 Code",
+          name: resolveDesktopBrandName(),
           schemes: ["t3code", "t3code-dev"],
         },
       ],

@@ -35,7 +35,7 @@ line to add. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
 
 Run `t3 --help` for the full reference.
 
-To try T3 Code once without installing it, run `npx t3@latest` instead (needs
+To try PseudoCode once without installing it, run `npx t3@latest` instead (needs
 Node.js for `npx`).
 
 ### Intel Macs
@@ -96,7 +96,7 @@ Install PseudoCode from the
 [App Store](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824) or
 [Google Play](https://play.google.com/store/apps/details?id=com.t3tools.t3code).
 The phone connects to a server on another machine. Follow
-[remote access](./remote-access.md) to link it through T3 Connect or a pairing URL.
+[remote access](./remote-access.md) to link it through Cloud Connect or a pairing URL.
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and
