@@ -86,9 +86,14 @@ function makeEnvironmentLayer(baseDir: string, env: Record<string, string | unde
   );
 }
 
+/** A fixed interface list, or a getter for one that changes mid-test. */
+type NetworkInterfacesInput =
+  | DesktopNetworkInterfaces.NetworkInterfaces
+  | (() => DesktopNetworkInterfaces.NetworkInterfaces);
+
 function makeLayer(input: {
   readonly baseDir: string;
-  readonly networkInterfaces?: DesktopNetworkInterfaces.NetworkInterfaces;
+  readonly networkInterfaces?: NetworkInterfacesInput;
   readonly env?: Record<string, string | undefined>;
   readonly spawnerLayer?: Layer.Layer<ChildProcessSpawner.ChildProcessSpawner>;
   readonly desktopSettingsLayer?: Layer.Layer<DesktopAppSettings.DesktopAppSettings>;
@@ -96,7 +101,10 @@ function makeLayer(input: {
   const env = { T3CODE_HOME: input.baseDir, ...input.env };
   const environmentLayer = makeEnvironmentLayer(input.baseDir, env);
   const networkLayer = Layer.succeed(DesktopNetworkInterfaces.DesktopNetworkInterfaces, {
-    read: Effect.succeed(input.networkInterfaces ?? emptyNetworkInterfaces),
+    read: Effect.sync(() => {
+      const networkInterfaces = input.networkInterfaces ?? emptyNetworkInterfaces;
+      return typeof networkInterfaces === "function" ? networkInterfaces() : networkInterfaces;
+    }),
   });
 
   return DesktopServerExposure.layer.pipe(
@@ -111,7 +119,7 @@ function makeLayer(input: {
 }
 
 const withHarness = <A, E, R>(
-  networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
+  networkInterfaces: NetworkInterfacesInput,
   effect: Effect.Effect<
     A,
     E,
@@ -144,25 +152,33 @@ const withHarness = <A, E, R>(
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
 
 describe("DesktopServerExposure", () => {
-  it.effect("falls back to local-only without losing the requested network preference", () =>
-    withHarness(
-      emptyNetworkInterfaces,
-      Effect.gen(function* () {
-        const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
-        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+  it.effect(
+    "keeps network access requested at launch and advertises once an address appears",
+    () => {
+      let currentNetworkInterfaces = emptyNetworkInterfaces;
+      return withHarness(
+        () => currentNetworkInterfaces,
+        Effect.gen(function* () {
+          const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
+          const settings = yield* DesktopAppSettings.DesktopAppSettings;
 
-        yield* settings.setServerExposureMode("network-accessible");
+          yield* settings.setServerExposureMode("network-accessible");
 
-        const state = yield* serverExposure.configureFromSettings({ port: 4173 });
-        assert.equal(state.mode, "local-only");
-        assert.equal(state.endpointUrl, null);
-        assert.equal((yield* settings.get).serverExposureMode, "network-accessible");
+          const state = yield* serverExposure.configureFromSettings({ port: 4173 });
+          assert.equal(state.mode, "network-accessible");
+          assert.equal(state.endpointUrl, null);
 
-        const backendConfig = yield* serverExposure.backendConfig;
-        assert.equal(backendConfig.bindHost, "127.0.0.1");
-        assert.equal(backendConfig.httpBaseUrl.href, "http://127.0.0.1:4173/");
-      }),
-    ),
+          const backendConfig = yield* serverExposure.backendConfig;
+          assert.equal(backendConfig.bindHost, "0.0.0.0");
+          assert.equal(backendConfig.httpBaseUrl.href, "http://127.0.0.1:4173/");
+
+          currentNetworkInterfaces = lanNetworkInterfaces;
+          const refreshed = yield* serverExposure.getState;
+          assert.equal(refreshed.endpointUrl, "http://192.168.1.20:4173");
+          assert.equal(refreshed.advertisedHost, "192.168.1.20");
+        }),
+      );
+    },
   );
 
   it.effect("returns a typed error when network access is explicitly unavailable", () =>
