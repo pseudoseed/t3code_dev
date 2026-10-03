@@ -448,20 +448,14 @@ function resolveRuntimeState(input: {
           !address.internal && address.family === "IPv4" && isTailscaleIpv4Address(address.address),
       ),
     );
-  const exposure = unavailable
-    ? resolveDesktopServerExposure({
-        mode: "local-only",
-        port: input.port,
-        networkInterfaces: input.networkInterfaces,
-        ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
-      })
-    : requestedExposure;
 
+  // An unavailable network keeps the requested binding: a launch at login can
+  // beat DHCP, and the advertised host is re-read once an address appears.
   return {
     state: runtimeStateFromResolvedExposure({
       requestedMode: input.requestedMode,
       settings: input.settings,
-      exposure,
+      exposure: requestedExposure,
       port: input.port,
     }),
     unavailable,
@@ -512,7 +506,32 @@ export const make = Effect.gen(function* () {
       ? cachedReadDefaultRouteInterface
       : Effect.succeed(null);
 
-  const getState = Ref.get(stateRef).pipe(Effect.map(toContractState));
+  // Re-reads the advertised host so pairing links follow the network: an
+  // address that arrived after launch, or one DHCP changed while running.
+  const refreshAdvertisedHost = Effect.gen(function* () {
+    const state = yield* Ref.get(stateRef);
+    if (state.mode !== "network-accessible") return state;
+    const currentNetworkInterfaces = yield* readNetworkInterfaces;
+    const advertisedHostOverride = Option.getOrUndefined(config.desktopLanHostOverride);
+    const exposure = resolveDesktopServerExposure({
+      mode: state.mode,
+      port: state.port,
+      networkInterfaces: currentNetworkInterfaces,
+      preferredInterface: yield* readPreferredInterface(state.mode, currentNetworkInterfaces),
+      ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
+    });
+    return yield* Ref.updateAndGet(stateRef, (current) =>
+      current.mode === state.mode && current.port === state.port
+        ? {
+            ...current,
+            endpointUrl: Option.fromNullishOr(exposure.endpointUrl),
+            advertisedHost: Option.fromNullishOr(exposure.advertisedHost),
+          }
+        : current,
+    );
+  });
+
+  const getState = refreshAdvertisedHost.pipe(Effect.map(toContractState));
   const backendConfig = Ref.get(stateRef).pipe(Effect.map(toBackendConfig));
 
   const configureFromSettings = Effect.fn("desktop.serverExposure.configureFromSettings")(
@@ -613,7 +632,7 @@ export const make = Effect.gen(function* () {
   );
 
   const getAdvertisedEndpoints = Effect.gen(function* () {
-    const state = yield* Ref.get(stateRef);
+    const state = yield* refreshAdvertisedHost;
     const currentNetworkInterfaces = yield* readNetworkInterfaces;
     const coreEndpoints = resolveDesktopCoreAdvertisedEndpoints({
       port: state.port,
