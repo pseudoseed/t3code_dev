@@ -20,6 +20,7 @@ import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SourceAccountDialCard, UsageDialCard } from "./UsageDialCard";
+import { SourceClearCooldown } from "./SourceClearCooldown";
 
 /**
  * The phone's read of every subscription the connected environments can see:
@@ -149,15 +150,26 @@ export function UsageLimitsRouteScreen() {
               account={account}
               now={now}
               footer={
-                account.usageLimits.resetCredits &&
-                account.usageLimits.resetCredits.availableCount > 0 ? (
-                  <SourceResetCredit
-                    environmentId={source.environmentId}
-                    sourceId={source.id}
-                    accountId={account.id}
-                    creditId={account.usageLimits.resetCredits.nextCreditId ?? ""}
-                    availableCount={account.usageLimits.resetCredits.availableCount}
-                  />
+                source.kind === "cliproxy" ||
+                (account.usageLimits.resetCredits?.availableCount ?? 0) > 0 ? (
+                  <View className="gap-3">
+                    {source.kind === "cliproxy" ? (
+                      <SourceClearCooldown
+                        environmentId={source.environmentId}
+                        input={{ sourceId: source.id, accountId: account.id }}
+                      />
+                    ) : null}
+                    {account.usageLimits.resetCredits &&
+                    account.usageLimits.resetCredits.availableCount > 0 ? (
+                      <SourceResetCredit
+                        environmentId={source.environmentId}
+                        sourceId={source.id}
+                        accountId={account.id}
+                        creditId={account.usageLimits.resetCredits.nextCreditId ?? ""}
+                        availableCount={account.usageLimits.resetCredits.availableCount}
+                      />
+                    ) : null}
+                  </View>
                 ) : undefined
               }
             />

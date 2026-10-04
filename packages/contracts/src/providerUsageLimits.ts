@@ -133,6 +133,13 @@ export const UsageLimitSourceConsumeResetCreditInput = Schema.Struct({
 export type UsageLimitSourceConsumeResetCreditInput =
   typeof UsageLimitSourceConsumeResetCreditInput.Type;
 
+/** Clear a hub's routing cooldown without redeeming a provider reset credit. */
+export const UsageLimitSourceClearCooldownInput = Schema.Struct({
+  sourceId: UsageLimitSourceId,
+  accountId: TrimmedNonEmptyString,
+});
+export type UsageLimitSourceClearCooldownInput = typeof UsageLimitSourceClearCooldownInput.Type;
+
 export const ProviderConsumeResetCreditInput = Schema.Union([
   Schema.Struct({ instanceId: ProviderInstanceId }),
   UsageLimitSourceConsumeResetCreditInput,
@@ -140,7 +147,7 @@ export const ProviderConsumeResetCreditInput = Schema.Union([
 export type ProviderConsumeResetCreditInput = typeof ProviderConsumeResetCreditInput.Type;
 
 /**
- * Why a source could not spend a credit. `detail` is written for the user
+ * Why a source operation failed. `detail` is written for the user
  * because the source is the authority here: its own cooldown, its own credit
  * balance, its own reachability.
  */

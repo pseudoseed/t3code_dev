@@ -113,6 +113,11 @@ environment that will connect to the hub and enter its URL and management key.
 The accounts appear under **Usage → Limits**. Codex accounts show banked reset credits; select an
 account and choose **Use reset** to redeem one. No hub plugin is required.
 
+If you reset quota with the provider but requests still report a quota error, open the hub account
+and choose **Clear cooldown**. This removes the proxy's remembered block for that account without
+spending a reset credit or adding quota. Retry the failed request after it succeeds. The action is
+also available in the subscription overview.
+
 This connection supplies usage information; configure
 the provider separately to send agent requests through the hub. Remove the hub from the same
 settings section when you no longer need it.

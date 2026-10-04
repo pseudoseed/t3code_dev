@@ -82,6 +82,9 @@ const CreditList = Schema.Struct({
 });
 
 const decodeAuthFiles = Schema.decodeUnknownEffect(AuthFiles);
+const decodeResetQuota = Schema.decodeUnknownEffect(
+  Schema.Struct({ status: Schema.Literal("ok") }),
+);
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeApiResponse = Schema.decodeUnknownEffect(ApiResponse);
 const decodeCreditList = Schema.decodeUnknownEffect(Schema.fromJsonString(CreditList));
@@ -310,6 +313,43 @@ export const makeCliproxyApi = Effect.gen(function* () {
     );
   });
 
+  const resetQuota = Effect.fn("CliproxyApi.resetQuota")(function* (
+    config: UsageLimitSourceConfig,
+    authIndex: string,
+  ) {
+    const response = yield* management(config, "reset-quota", { auth_index: authIndex });
+    yield* decodeResetQuota(response).pipe(
+      Effect.mapError(
+        () =>
+          new UsageLimitSourceError({
+            detail: "The hub did not confirm the cooldown was cleared.",
+          }),
+      ),
+    );
+  });
+
+  const clearCooldown = Effect.fn("CliproxyApi.clearCooldown")(function* (
+    config: UsageLimitSourceConfig,
+    accountId: string,
+  ): Effect.fn.Return<void, UsageLimitSourceError> {
+    const accounts = yield* authFiles(config).pipe(
+      Effect.mapError(
+        () => new UsageLimitSourceError({ detail: "The hub could not list accounts." }),
+      ),
+    );
+    const account = accounts.find((account) => account.id === accountId);
+    if (
+      !account ||
+      account.disabled ||
+      (account.provider !== "claude" && account.provider !== "codex")
+    ) {
+      return yield* new UsageLimitSourceError({
+        detail: "The hub account is missing, disabled, or unsupported.",
+      });
+    }
+    yield* resetQuota(config, account.auth_index);
+  });
+
   const consume = Effect.fn("CliproxyApi.consume")(function* (
     config: UsageLimitSourceConfig,
     accountId: string,
@@ -339,9 +379,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
         } as const
       )[response.code];
       if (outcome !== "reset" && outcome !== "alreadyRedeemed") return { outcome };
-      const cleared = yield* management(config, "reset-quota", {
-        auth_index: account.auth_index,
-      }).pipe(Effect.result);
+      const cleared = yield* resetQuota(config, account.auth_index).pipe(Effect.result);
       return {
         outcome,
         ...(cleared._tag === "Failure"
@@ -362,5 +400,5 @@ export const makeCliproxyApi = Effect.gen(function* () {
       ),
     );
   });
-  return { readAccounts, consume };
+  return { readAccounts, consume, clearCooldown };
 });

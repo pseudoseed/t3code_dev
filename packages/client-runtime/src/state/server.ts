@@ -1103,6 +1103,15 @@ export function createServerEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.sourceId, input.accountId]),
       },
     }),
+    clearSourceCooldown: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:clear-source-cooldown",
+      tag: WS_METHODS.usageLimitSourceClearCooldown,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.sourceId, input.accountId]),
+      },
+    }),
     refreshProviders: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:refresh-providers",
       tag: WS_METHODS.serverRefreshProviders,

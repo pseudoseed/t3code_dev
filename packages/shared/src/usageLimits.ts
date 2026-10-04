@@ -18,6 +18,7 @@ import {
   type ServerProviderUsageWindow,
   type UsageLimitSourceSnapshots,
   type UsageLimitSourceSnapshot,
+  type UsageLimitSourceClearCooldownInput,
 } from "@t3tools/contracts";
 
 import * as DateTime from "effect/DateTime";
@@ -176,6 +177,12 @@ export interface LimitAccount {
     readonly environmentId: EnvironmentId;
     readonly input: ProviderConsumeResetCreditInput;
   } | null;
+  /** Each hub keeps its own routing block, independently of native quota and reset credits. */
+  readonly cooldowns: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+    readonly input: UsageLimitSourceClearCooldownInput;
+  }>;
   readonly limits: ServerProviderUsageLimits;
 }
 
@@ -234,6 +241,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       plan: previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
+      cooldowns: [...previous.cooldowns, ...next.cooldowns],
       // A hub only names the account when no environment has it natively.
       sourceLabel: environments.length > 0 ? null : (previous.sourceLabel ?? next.sourceLabel),
       redeem:
@@ -264,6 +272,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
           environments: [{ environmentId, label }],
           sourceLabel: null,
           redeem: { environmentId, input: { instanceId: provider.instanceId } },
+          cooldowns: [],
           limits: provider.usageLimits,
         },
       );
@@ -292,6 +301,16 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
             accentColor: undefined,
             environments: [],
             sourceLabel,
+            cooldowns:
+              source.kind === "cliproxy"
+                ? [
+                    {
+                      environmentId,
+                      label: sourceLabel,
+                      input: { sourceId: source.id, accountId: account.id },
+                    },
+                  ]
+                : [],
             redeem: account.usageLimits.resetCredits?.nextCreditId
               ? {
                   environmentId,

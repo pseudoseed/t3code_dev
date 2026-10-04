@@ -25,6 +25,7 @@ import { ProviderIcon } from "../../components/ProviderIcon";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { environmentPresentations } from "../../state/presentation";
 import { ResetCredits } from "./UsageLimitsSection";
+import { SourceClearCooldown } from "./SourceClearCooldown";
 import { useProviderColors } from "./usageProviders";
 
 const DRIVER_LABEL: Partial<Record<string, string>> = { codex: "Codex", claudeAgent: "Claude" };
@@ -417,6 +418,18 @@ export function UsageLimitAccountScreen({ route }: AccountScreenProps) {
                 <Text className="text-sm text-foreground-muted">{account.sourceLabel}</Text>
               )}
             </View>
+            {account.cooldowns.map((target) => (
+              <View
+                key={JSON.stringify([target.environmentId, target.input])}
+                className="gap-3 rounded-[24px] border-continuous bg-card p-4"
+              >
+                <SourceClearCooldown
+                  environmentId={target.environmentId}
+                  input={target.input}
+                  label={account.cooldowns.length > 1 ? target.label : undefined}
+                />
+              </View>
+            ))}
             {account.redeem && account.limits.resetCredits ? (
               <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
                 <Text className="text-sm font-t3-medium text-foreground">Reset credits</Text>

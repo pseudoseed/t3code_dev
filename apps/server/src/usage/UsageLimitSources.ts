@@ -17,6 +17,7 @@ import {
   UsageLimitSourceError,
   type ProviderConsumeResetCreditOutcome,
   type UsageLimitSourceConsumeResetCreditInput,
+  type UsageLimitSourceClearCooldownInput,
   type ProviderConsumeResetCreditResult,
   type ServerSettings,
   type UsageLimitSourceConfig,
@@ -71,6 +72,9 @@ export class UsageLimitSources extends Context.Service<
     readonly consumeResetCredit: (
       input: UsageLimitSourceConsumeResetCreditInput,
     ) => Effect.Effect<ProviderConsumeResetCreditResult, UsageLimitSourceError>;
+    readonly clearCooldown: (
+      input: UsageLimitSourceClearCooldownInput,
+    ) => Effect.Effect<void, UsageLimitSourceError>;
   }
 >()("t3/usage/UsageLimitSources") {}
 
@@ -165,6 +169,24 @@ export const make = Effect.gen(function* () {
       return result;
     }).pipe(refreshLock.withPermits(1));
 
+  const clearCooldown = Effect.fn("UsageLimitSources.clearCooldown")(function* (
+    input: UsageLimitSourceClearCooldownInput,
+  ) {
+    const settings = yield* settingsService.getSettings.pipe(
+      Effect.mapError(() => new UsageLimitSourceError({ detail: "Could not read hub settings." })),
+    );
+    const config = settings.usageLimitSources[input.sourceId];
+    if (!config?.enabled || config.kind !== "cliproxy" || !config.managementKey) {
+      return yield* new UsageLimitSourceError({
+        detail: "Cooldown clearing requires an enabled CLIProxyAPI hub with a management key.",
+      });
+    }
+    yield* cliproxy.clearCooldown(config, input.accountId);
+    const snapshot = yield* readSource(input.sourceId, config);
+    const previous = yield* Ref.get(stateRef);
+    yield* publish(previous.map((source) => (source.id === input.sourceId ? snapshot : source)));
+  }, refreshLock.withPermits(1));
+
   // Settings edits re-read straight away so a new hub shows up without
   // waiting for the interval, and a removed one leaves the list.
   yield* settingsService.streamChanges.pipe(
@@ -196,6 +218,7 @@ export const make = Effect.gen(function* () {
   return {
     current: Ref.get(stateRef),
     consumeResetCredit,
+    clearCooldown,
     refresh,
     get streamChanges() {
       return Stream.unwrap(
