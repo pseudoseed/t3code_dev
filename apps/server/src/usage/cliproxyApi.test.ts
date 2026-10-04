@@ -50,6 +50,7 @@ function fixture(
     accounts?: Array<(typeof accounts)[number] & { disabled?: boolean }>;
     upstream?: (request: RequestBody) => { status: number; body: unknown };
     cooldownStatus?: number;
+    cooldownBody?: unknown;
   } = {},
 ) {
   const requests: Array<{ path: string; body?: RequestBody }> = [];
@@ -70,7 +71,9 @@ function fixture(
       if (path.endsWith("/reset-quota"))
         return HttpClientResponse.fromWeb(
           request,
-          Response.json({}, { status: options.cooldownStatus ?? 200 }),
+          Response.json(options.cooldownBody ?? { status: "ok" }, {
+            status: options.cooldownStatus ?? 200,
+          }),
         );
       expect(path).toBe("/v0/management/api-call");
       expect(body?.header?.Authorization).toBe("Bearer $TOKEN$");
@@ -208,6 +211,55 @@ describe("CLIProxyAPI built-in management API", () => {
       ]);
     }),
   );
+
+  for (const provider of ["claude", "codex"]) {
+    it.effect(`clears only the selected ${provider} account without spending a reset credit`, () =>
+      Effect.gen(function* () {
+        const test = fixture({ accounts: accounts.map((account) => ({ ...account, provider })) });
+        const api = yield* test.api;
+        yield* api.clearCooldown(config, "second.json");
+        expect(test.requests).toEqual([
+          { path: "/v0/management/auth-files" },
+          { path: "/v0/management/reset-quota", body: { auth_index: "b" } },
+        ]);
+      }),
+    );
+  }
+
+  for (const [name, account] of [
+    ["missing", { ...accounts[0]!, id: "another.json" }],
+    ["disabled", { ...accounts[0]!, disabled: true }],
+    ["unsupported", { ...accounts[0]!, provider: "xai" }],
+  ] as const) {
+    it.effect(`rejects cooldown clearing for a ${name} account without changing the hub`, () =>
+      Effect.gen(function* () {
+        const test = fixture({ accounts: [account] });
+        const api = yield* test.api;
+        const result = yield* api.clearCooldown(config, "first.json").pipe(Effect.result);
+        expect(result._tag).toBe("Failure");
+        expect(test.requests).toEqual([{ path: "/v0/management/auth-files" }]);
+      }),
+    );
+  }
+
+  for (const cooldownStatus of [200, 404, 503]) {
+    it.effect(
+      `does not claim a cooldown was cleared on an unconfirmed HTTP ${cooldownStatus} response`,
+      () =>
+        Effect.gen(function* () {
+          const api = yield* fixture({
+            cooldownStatus,
+            cooldownBody: { error: "private-upstream-detail" },
+          }).api;
+          const result = yield* api.clearCooldown(config, "first.json").pipe(Effect.result);
+          expect(result._tag).toBe("Failure");
+          if (result._tag === "Failure") {
+            expect(result.failure._tag).toBe("UsageLimitSourceError");
+            expect(result.failure.detail).not.toContain("private-upstream-detail");
+          }
+        }),
+    );
+  }
 
   it.effect("pins redemption to the displayed credit and clears only that account's cooldown", () =>
     Effect.gen(function* () {

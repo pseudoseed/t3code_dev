@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { SourceAccountDialCard, UsageDialCard } from "./UsageDialCard";
+import { SourceClearCooldown } from "./SourceClearCooldown";
 
 /**
  * A dismissible read of every subscription this machine can see: the
@@ -185,15 +186,26 @@ function UsageOverlayBody({ onRefreshed }: { readonly onRefreshed: () => void })
                       account={account}
                       now={now}
                       footer={
-                        account.usageLimits.resetCredits &&
-                        account.usageLimits.resetCredits.availableCount > 0 ? (
-                          <SourceResetCredit
-                            environmentId={source.environmentId}
-                            sourceId={source.id}
-                            accountId={account.id}
-                            creditId={account.usageLimits.resetCredits.nextCreditId ?? ""}
-                            availableCount={account.usageLimits.resetCredits.availableCount}
-                          />
+                        source.kind === "cliproxy" ||
+                        (account.usageLimits.resetCredits?.availableCount ?? 0) > 0 ? (
+                          <div className="flex flex-col gap-3">
+                            {source.kind === "cliproxy" ? (
+                              <SourceClearCooldown
+                                environmentId={source.environmentId}
+                                input={{ sourceId: source.id, accountId: account.id }}
+                              />
+                            ) : null}
+                            {account.usageLimits.resetCredits &&
+                            account.usageLimits.resetCredits.availableCount > 0 ? (
+                              <SourceResetCredit
+                                environmentId={source.environmentId}
+                                sourceId={source.id}
+                                accountId={account.id}
+                                creditId={account.usageLimits.resetCredits.nextCreditId ?? ""}
+                                availableCount={account.usageLimits.resetCredits.availableCount}
+                              />
+                            ) : null}
+                          </div>
                         ) : null
                       }
                     />

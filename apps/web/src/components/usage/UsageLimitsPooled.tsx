@@ -25,6 +25,7 @@ import { getDriverOption } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Button } from "../ui/button";
 import { OpenAI } from "../Icons";
+import { SourceClearCooldown } from "./SourceClearCooldown";
 import { Alert, AlertTitle } from "../ui/alert";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import {
@@ -197,6 +198,14 @@ function SegmentPopover({
           <Row label="Restores">+{reset.restoresPercent}% of pool</Row>
         ) : null}
       </div>
+      {account.cooldowns.map((target) => (
+        <SourceClearCooldown
+          key={JSON.stringify([target.environmentId, target.input])}
+          environmentId={target.environmentId}
+          input={target.input}
+          label={account.cooldowns.length > 1 ? target.label : undefined}
+        />
+      ))}
       {credits && redeem ? (
         <div className="border-t border-border/60 pt-2.5 text-muted-foreground">
           <span className="flex items-center gap-3">

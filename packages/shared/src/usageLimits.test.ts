@@ -196,6 +196,13 @@ describe("pools", () => {
     expect(accounts[0]).toMatchObject({
       key: "env-a:claude",
       sourceLabel: null,
+      cooldowns: [
+        {
+          environmentId: "env-b",
+          label: "Desktop · hub",
+          input: { sourceId: "hub", accountId: "claude-same@example.com.json" },
+        },
+      ],
       // Desktop's read is fresher, so its credits and its redeem are the ones on show.
       redeem: { environmentId: "env-b", input: { instanceId: "claude" } },
       environments: [
@@ -273,6 +280,51 @@ describe("pools", () => {
       },
     });
     expect(collectLimitAccounts(input)).toHaveLength(1);
+  });
+
+  it("keeps each hub's cooldown action when accounts merge, without exposing one for a usage dashboard", () => {
+    const account = {
+      id: "claude.json",
+      driver: claude,
+      email: "same@example.com",
+      usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 0 }] },
+    };
+    const input = new Map([
+      [
+        EnvironmentId.make("env"),
+        {
+          ...laptop,
+          serverConfig: {
+            usageLimitSources: [
+              { ...source, accounts: [account] },
+              {
+                ...source,
+                id: UsageLimitSourceId.make("second-hub"),
+                label: "Second hub",
+                accounts: [account],
+              },
+              {
+                ...source,
+                id: UsageLimitSourceId.make("dashboard"),
+                kind: "aiusage" as const,
+                accounts: [account],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const accounts = collectLimitAccounts(input);
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]?.cooldowns).toEqual([
+      { environmentId: "env", label: "hub", input: { sourceId: "hub", accountId: "claude.json" } },
+      {
+        environmentId: "env",
+        label: "Second hub",
+        input: { sourceId: "second-hub", accountId: "claude.json" },
+      },
+    ]);
+    expect(accounts[0]?.redeem).toBeNull();
   });
 
   it("takes windows from a fresher hub read but credits and redeem from the native instance", () => {
@@ -642,6 +694,7 @@ describe("pools", () => {
           environments: [],
           sourceLabel: null,
           redeem: null,
+          cooldowns: [],
           limits: {
             checkedAt,
             windows: [
@@ -688,6 +741,7 @@ describe("pooled account columns", () => {
     environments: [],
     sourceLabel: "Hub",
     redeem: null,
+    cooldowns: [],
     limits: { checkedAt: "2026-09-03T11:00:00.000Z", windows },
   });
   const keys = (pool: ReturnType<typeof collectLimitPools>[number]) =>
@@ -772,6 +826,7 @@ describe("Cursor limit presentation", () => {
     environments: [],
     sourceLabel: "Cursor",
     redeem: null,
+    cooldowns: [],
     limits: {
       checkedAt: "2026-09-03T11:00:00.000Z",
       windows: [
