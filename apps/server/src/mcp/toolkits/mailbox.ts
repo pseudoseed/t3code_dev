@@ -1,5 +1,6 @@
-import * as NodeCrypto from "node:crypto";
+import * as Crypto from "effect/Crypto";
 import {
+  OrchestratorMcpFailure,
   MailboxBody,
   MailboxCursor,
   MailboxError,
@@ -12,15 +13,17 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 import { McpInvocationContext } from "../McpInvocationContext.ts";
-import { makeAgentMailbox } from "../../orchestration/AgentMailbox.ts";
-import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { makeAgentMailbox } from "../../orchestration-v2/AgentMailbox.ts";
+import { ThreadManagementService } from "../../orchestration-v2/ThreadManagementService.ts";
+import { ProjectService } from "../../project/ProjectService.ts";
+import * as McpToolAccess from "../McpToolAccess.ts";
 
 const turnKey = Schema.String.annotate({
   description: "The mailbox turn key supplied in this turn's agent_mailbox context.",
 });
-const dependencies = [McpInvocationContext];
+const dependencies = [McpInvocationContext, ThreadManagementService];
 export const MailboxToolkit = Toolkit.make(
   Tool.make("mailbox_peers", {
     description:
@@ -32,7 +35,7 @@ export const MailboxToolkit = Toolkit.make(
         Schema.Struct({ threadId: ThreadId, title: Schema.String, project: Schema.String }),
       ),
     }),
-    failure: MailboxError,
+    failure: Schema.Union([MailboxError, OrchestratorMcpFailure]),
     dependencies,
   }),
   Tool.make("mailbox_send", {
@@ -46,7 +49,7 @@ export const MailboxToolkit = Toolkit.make(
       retryKey: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
     }),
     success: Schema.Struct({ messageId: MailboxId, status: MailboxMessageState }),
-    failure: MailboxError,
+    failure: Schema.Union([MailboxError, OrchestratorMcpFailure]),
     dependencies,
   }),
   Tool.make("mailbox_read", {
@@ -63,7 +66,7 @@ export const MailboxToolkit = Toolkit.make(
       messages: Schema.Array(MailboxMessage),
       nextCursor: Schema.NullOr(MailboxCursor),
     }),
-    failure: MailboxError,
+    failure: Schema.Union([MailboxError, OrchestratorMcpFailure]),
     dependencies,
   }),
   Tool.make("mailbox_acknowledge", {
@@ -78,93 +81,114 @@ export const MailboxToolkit = Toolkit.make(
       messageId: MailboxId,
       state: Schema.Literals(["acknowledged", "resolved"]),
     }),
-    failure: MailboxError,
+    failure: Schema.Union([MailboxError, OrchestratorMcpFailure]),
     dependencies,
   }),
 );
 
-export const MailboxToolkitHandlersLive = MailboxToolkit.toLayer(
+export const MailboxToolkitHandlersLive = McpToolAccess.toLayer(
+  MailboxToolkit,
   Effect.gen(function* () {
     const mailbox = yield* makeAgentMailbox;
-    const snapshots = yield* ProjectionSnapshotQuery;
+    const crypto = yield* Crypto.Crypto;
+    const threads = yield* ThreadManagementService;
+    const projects = yield* ProjectService;
     const error = (cause: { message: string }) => new MailboxError({ message: cause.message });
     return {
-      mailbox_peers: Effect.fn("mcp.mailbox.peers")(function* (input) {
-        const scope = yield* McpInvocationContext;
-        yield* mailbox.agentTurn(scope, input.turnKey);
-        const peers = yield* mailbox.repository.peers(scope.threadId);
-        const snapshot = yield* snapshots.getShellSnapshot();
-        return {
-          peers: snapshot.threads
-            .filter((thread) => peers.includes(thread.id))
-            .map((thread) => ({
-              threadId: thread.id,
-              title: thread.title,
-              project:
-                snapshot.projects.find((project) => project.id === thread.projectId)?.title ??
-                "Unknown project",
-            })),
-        };
-      }, Effect.mapError(error)),
-      mailbox_send: Effect.fn("mcp.mailbox.send")(function* (input) {
-        const scope = yield* McpInvocationContext;
-        const turn = yield* mailbox.agentTurn(scope, input.turnKey);
-        const messageId = NodeCrypto.createHash("sha256")
-          .update(`${scope.threadId.length}:${scope.threadId}${input.retryKey}`)
-          .digest("hex");
-        yield* mailbox.dispatch(
-          scope.threadId,
-          {
-            kind: "send",
-            id: messageId,
-            executionId: turn.executionId,
-            toThreadId: input.toThreadId,
-            body: input.body,
-            replyTo: input.replyTo ?? null,
-          },
-          { turnKey: input.turnKey, providerSessionId: scope.providerSessionId },
-        );
-        const message = (yield* mailbox.repository
-          .messages(scope.threadId, { id: messageId })
-          .pipe(Effect.mapError(error)))[0];
-        return { messageId, status: message?.state ?? "queued" };
-      }),
-      mailbox_read: Effect.fn("mcp.mailbox.read")(function* (input) {
-        const scope = yield* McpInvocationContext;
-        const turn = yield* mailbox.agentTurn(scope, input.turnKey);
-        const page = yield* mailbox.repository.get({
-          threadId: scope.threadId,
-          ...(input.before === undefined || input.messageId !== undefined
-            ? {}
-            : { before: input.before }),
-          ...(input.peerThreadId === undefined ? {} : { peerThreadId: input.peerThreadId }),
-          ...(input.search === undefined ? {} : { search: input.search }),
-          ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
-        });
-        const messages = page.messages;
-        yield* mailbox.dispatch(
-          scope.threadId,
-          {
-            kind: "read",
-            executionId: turn.executionId,
-            messageIds: messages
-              .filter((message) => message.toThreadId === scope.threadId)
-              .map((message) => message.id),
-          },
-          { turnKey: input.turnKey, providerSessionId: scope.providerSessionId },
-        );
-        return { messages, nextCursor: input.messageId === undefined ? page.nextCursor : null };
-      }, Effect.mapError(error)),
-      mailbox_acknowledge: Effect.fn("mcp.mailbox.acknowledge")(function* (input) {
-        const scope = yield* McpInvocationContext;
-        yield* mailbox.agentTurn(scope, input.turnKey);
-        yield* mailbox.dispatch(
-          scope.threadId,
-          { kind: "state", messageId: input.messageId, state: input.state },
-          { turnKey: input.turnKey, providerSessionId: scope.providerSessionId },
-        );
-        return { messageId: input.messageId, state: input.state };
-      }),
+      mailbox_peers: McpToolAccess.readsAsCaller(
+        Effect.fn("mcp.mailbox.peers")(function* (input) {
+          const scope = yield* McpInvocationContext;
+          yield* mailbox.agentTurn(scope, input.turnKey);
+          const peers = yield* mailbox.repository.peers(scope.thread!.threadId);
+          const snapshot = yield* threads.getShellSnapshot({});
+          const projectList = yield* projects.listShells();
+          return {
+            peers: snapshot.threads
+              .filter((thread) => peers.includes(thread.id))
+              .map((thread) => ({
+                threadId: thread.id,
+                title: thread.title,
+                project:
+                  projectList.find((project) => project.id === thread.projectId)?.title ??
+                  "Unknown project",
+              })),
+          };
+        }, Effect.mapError(error)),
+      ),
+      mailbox_send: McpToolAccess.writesThreads(
+        (input) => [input.toThreadId],
+        Effect.fn("mcp.mailbox.send")(function* (input) {
+          const scope = yield* McpInvocationContext;
+          const turn = yield* mailbox.agentTurn(scope, input.turnKey);
+          const digest = yield* crypto
+            .digest(
+              "SHA-256",
+              new TextEncoder().encode(
+                `${scope.thread!.threadId.length}:${scope.thread!.threadId}${input.retryKey}`,
+              ),
+            )
+            .pipe(Effect.orDie);
+          const messageId = Array.from(new Uint8Array(digest), (byte) =>
+            byte.toString(16).padStart(2, "0"),
+          ).join("");
+          yield* mailbox.dispatch(
+            scope.thread!.threadId,
+            {
+              kind: "send",
+              id: messageId,
+              executionId: turn.executionId,
+              toThreadId: input.toThreadId,
+              body: input.body,
+              replyTo: input.replyTo ?? null,
+            },
+            { turnKey: input.turnKey, providerSessionId: scope.thread!.providerSessionId },
+          );
+          const message = (yield* mailbox.repository
+            .messages(scope.thread!.threadId, { id: messageId })
+            .pipe(Effect.mapError(error)))[0];
+          return { messageId, status: message?.state ?? "queued" };
+        }),
+      ),
+      mailbox_read: McpToolAccess.actsAsCaller(
+        Effect.fn("mcp.mailbox.read")(function* (input) {
+          const scope = yield* McpInvocationContext;
+          const turn = yield* mailbox.agentTurn(scope, input.turnKey);
+          const page = yield* mailbox.repository.get({
+            threadId: scope.thread!.threadId,
+            ...(input.before === undefined || input.messageId !== undefined
+              ? {}
+              : { before: input.before }),
+            ...(input.peerThreadId === undefined ? {} : { peerThreadId: input.peerThreadId }),
+            ...(input.search === undefined ? {} : { search: input.search }),
+            ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
+          });
+          const messages = page.messages;
+          yield* mailbox.dispatch(
+            scope.thread!.threadId,
+            {
+              kind: "read",
+              executionId: turn.executionId,
+              messageIds: messages
+                .filter((message) => message.toThreadId === scope.thread!.threadId)
+                .map((message) => message.id),
+            },
+            { turnKey: input.turnKey, providerSessionId: scope.thread!.providerSessionId },
+          );
+          return { messages, nextCursor: input.messageId === undefined ? page.nextCursor : null };
+        }, Effect.mapError(error)),
+      ),
+      mailbox_acknowledge: McpToolAccess.actsAsCaller(
+        Effect.fn("mcp.mailbox.acknowledge")(function* (input) {
+          const scope = yield* McpInvocationContext;
+          yield* mailbox.agentTurn(scope, input.turnKey);
+          yield* mailbox.dispatch(
+            scope.thread!.threadId,
+            { kind: "state", messageId: input.messageId, state: input.state },
+            { turnKey: input.turnKey, providerSessionId: scope.thread!.providerSessionId },
+          );
+          return { messageId: input.messageId, state: input.state };
+        }),
+      ),
     };
   }),
 );

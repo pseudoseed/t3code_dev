@@ -5,10 +5,9 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
 import {
-  projectThreadAwareness,
+  projectThreadAwarenessV2,
   selectWidgetActivities,
   type AgentAwarenessState,
-  type ProjectThreadAwarenessInput,
 } from "@t3tools/shared/agentAwareness";
 
 export interface AgentWidgetSnapshot {
@@ -43,8 +42,10 @@ function priority(phase: AgentAwarenessState["phase"]): number {
 /** Uses the same phase projection as server-side activity publishing. */
 export function buildAgentWidgetSnapshot(input: {
   readonly projects: readonly Pick<EnvironmentProject, "id" | "environmentId" | "title">[];
-  readonly threads: readonly (ProjectThreadAwarenessInput["thread"] &
-    Pick<EnvironmentThreadShell, "projectId" | "environmentId" | "archivedAt">)[];
+  readonly threads: readonly Pick<
+    EnvironmentThreadShell,
+    "projectId" | "environmentId" | "archivedAt" | "source" | "runtime"
+  >[];
   readonly now?: number;
 }): AgentWidgetSnapshot {
   const projects = new Map(
@@ -60,13 +61,17 @@ export function buildAgentWidgetSnapshot(input: {
       scopedProjectKey({ environmentId: thread.environmentId, projectId: thread.projectId }),
     );
     if (!project) continue;
-    const activity = projectThreadAwareness({
+    const activity = projectThreadAwarenessV2({
       environmentId: thread.environmentId,
       project,
-      thread,
+      thread: thread.source,
     });
     if (activity) {
-      activities.push(activity);
+      activities.push(
+        activity.phase === "failed" && thread.runtime?.lastError
+          ? { ...activity, detail: thread.runtime.lastError }
+          : activity,
+      );
     }
   }
   const selected = selectWidgetActivities(activities, input.now ?? Date.now());

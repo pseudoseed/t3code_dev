@@ -1,20 +1,20 @@
 import type {
-  OrchestrationProjectShell,
-  OrchestrationThreadShell,
+  Project,
+  OrchestrationV2ThreadShell,
   TextGenerationError,
   ThreadId,
 } from "@t3tools/contracts";
-import { projectThreadAwareness, type AgentAwarenessState } from "@t3tools/shared/agentAwareness";
+import { projectThreadAwarenessV2, type AgentAwarenessState } from "@t3tools/shared/agentAwareness";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
-import { Context, DateTime, Effect, Layer, Option, PubSub, Stream } from "effect";
-import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { Context, DateTime, Effect, Layer, PubSub, Stream } from "effect";
+import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
+import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { activitySummaryContext, SUMMARY_INTERVAL_MS } from "./activitySummary.ts";
 
 type Request = {
   state: AgentAwarenessState;
-  thread: OrchestrationThreadShell;
-  project: OrchestrationProjectShell;
+  thread: OrchestrationV2ThreadShell;
+  project: Project;
 };
 type Entry = {
   identity: string;
@@ -39,7 +39,7 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
     cwd: string,
   ) => Effect.Effect<{ summary: string } | undefined, TextGenerationError>,
 ) {
-  const query = yield* ProjectionSnapshotQuery;
+  const query = yield* ThreadManagementService;
   const changes = yield* PubSub.unbounded<ThreadId>();
   const entries = new Map<ThreadId, Entry>();
   const pending = new Map<ThreadId, Request>();
@@ -49,29 +49,27 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
       pending.delete(threadId);
       const entry = entries.get(threadId);
       if (!input || !entry) return;
-      const activities = yield* query.listRecentThreadActivitiesByKinds(
-        threadId,
-        [
-          "tool.completed",
-          "tool.started",
-          "approval.requested",
-          "user-input.requested",
-          "runtime.error",
-        ],
-        12,
-      );
-      const messageId = input.thread.latestTurn?.assistantMessageId;
-      const message = messageId
-        ? yield* query.getTurnStartMessage({ threadId, messageId })
-        : Option.none();
-      const assistantText =
-        Option.isSome(message) && message.value.message.turnId === input.thread.latestTurn?.turnId
-          ? message.value.message.text
-          : undefined;
+      const projection = yield* query.getThreadRecords(threadId, ["turnItems"], {
+        turnItemRunIds: input.thread.latestRunId ? [input.thread.latestRunId] : [],
+      });
+      const items = projection.turnItems.slice(-12);
+      const activities = items.map((item) => ({
+        turnId: item.runId,
+        kind: item.type,
+        summary:
+          item.type === "assistant_message"
+            ? item.text.slice(-350)
+            : item.type === "command_execution"
+              ? item.input.slice(0, 350)
+              : "title" in item && typeof item.title === "string"
+                ? item.title
+                : item.type,
+      }));
+      const assistantText = items.findLast((item) => item.type === "assistant_message");
       const context = activitySummaryContext({
-        assistantText,
+        assistantText: assistantText?.type === "assistant_message" ? assistantText.text : undefined,
         state: input.state,
-        turnId: input.thread.latestTurn?.turnId ?? null,
+        turnId: input.thread.latestRunId,
         activities,
       });
       if (context === entry.context) return;
@@ -81,17 +79,17 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
       // A failed or unavailable provider must be allowed to retry the same evidence.
       if (result) entry.context = context;
       // A delayed result must never describe a newer turn or overwrite an attention transition.
-      const current = yield* query.getThreadShellById(threadId);
+      const current = yield* query.getThreadShell(threadId);
       if (
         entries.get(threadId) !== entry ||
-        Option.isNone(current) ||
-        current.value.archivedAt !== null ||
+        current === null ||
+        current.archivedAt !== null ||
         identity(
-          current.value,
-          projectThreadAwareness({
+          current,
+          projectThreadAwarenessV2({
             environmentId: input.state.environmentId,
             project: input.project,
-            thread: current.value,
+            thread: current,
           })?.phase ?? "",
         ) !== entry.identity
       )
@@ -137,8 +135,8 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
   return ActivitySummaries.of({ enrich, changes: Stream.fromPubSub(changes), drain: worker.drain });
 });
 
-function identity(thread: OrchestrationThreadShell, phase: string) {
-  return `${thread.latestTurn?.turnId ?? ""}:${phase}`;
+function identity(thread: OrchestrationV2ThreadShell, phase: string) {
+  return `${thread.latestRunId ?? ""}:${phase}`;
 }
 const make = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry;

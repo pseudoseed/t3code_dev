@@ -5,7 +5,7 @@ import {
   EnvironmentHttpApi,
 } from "@t3tools/contracts";
 import { Effect } from "effect";
-import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import { requireEnvironmentScope, failEnvironmentInternal } from "../auth/http.ts";
 import { DirectPush } from "./DirectPush.ts";
 

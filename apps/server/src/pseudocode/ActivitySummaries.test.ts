@@ -1,17 +1,19 @@
 import * as TestClock from "effect/testing/TestClock";
 import { it, expect } from "@effect/vitest";
-import { Deferred, Effect, Layer, Option } from "effect";
+import { Deferred, Effect, Layer, DateTime } from "effect";
 import {
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
   TextGenerationError,
   ThreadId,
-  TurnId,
-  type OrchestrationThreadShell,
+  RunId,
+  RuntimeRequestId,
+  type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
-import { projectThreadAwareness } from "@t3tools/shared/agentAwareness";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { projectThreadAwarenessV2 } from "@t3tools/shared/agentAwareness";
+import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import type { ProjectionRecords } from "../orchestration-v2/ProjectionStore.ts";
 import { makeActivitySummaries } from "./ActivitySummaries.ts";
 import { cleanActivitySummary } from "./activitySummary.ts";
 
@@ -25,8 +27,9 @@ function fixture() {
     scripts: [],
     createdAt: "2026-09-09T00:00:00Z",
     updatedAt: "2026-09-09T00:00:00Z",
+    deletedAt: null,
   };
-  let thread: OrchestrationThreadShell = {
+  let thread: OrchestrationV2ThreadShell = {
     id: ThreadId.make("t"),
     projectId: project.id,
     title: "Fix notification routing",
@@ -36,38 +39,49 @@ function fixture() {
     interactionMode: "default",
     branch: null,
     worktreePath: null,
-    latestTurn: {
-      turnId: TurnId.make("turn"),
-      state: "running",
-      requestedAt: project.createdAt,
-      startedAt: project.createdAt,
-      completedAt: null,
-      assistantMessageId: null,
-    },
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    createdBy: "user",
+    creationSource: "web",
+    activeProviderThreadId: null,
+    lineage: { rootThreadId: ThreadId.make("t"), parentThreadId: null, relationshipToParent: null },
+    forkedFrom: null,
+    activeRunId: null,
+    latestRunId: RunId.make("run"),
+    latestVisibleMessage: null,
+    itemCount: 0,
+    visibleItemCount: 0,
+    lastVisitedAt: null,
+    deletedAt: null,
+    status: "running",
+    pendingRuntimeRequest: null,
+    latestRunStartedAt: DateTime.makeUnsafe(project.createdAt),
+    createdAt: DateTime.makeUnsafe(project.createdAt),
+    updatedAt: DateTime.makeUnsafe(project.updatedAt),
     archivedAt: null,
     settledOverride: null,
     settledAt: null,
-    session: null,
     latestUserMessageAt: null,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
     hasActionableProposedPlan: false,
   };
   const request = () => ({
     project,
     thread,
-    state: projectThreadAwareness({ environmentId: EnvironmentId.make("env"), project, thread })!,
+    state: projectThreadAwarenessV2({ environmentId: EnvironmentId.make("env"), project, thread })!,
   });
-  const layer = Layer.mock(ProjectionSnapshotQuery)({
-    getThreadShellById: () => Effect.sync(() => Option.some(thread)),
-    listRecentThreadActivitiesByKinds: () => Effect.succeed([]),
+  const layer = Layer.mock(ThreadManagementService)({
+    getThreadShell: () => Effect.sync(() => thread),
+    getThreadRecords: (_threadId, fields) =>
+      Effect.succeed(
+        Object.fromEntries([
+          ["thread", thread],
+          ...fields.map((field) => [field, []]),
+        ]) as ProjectionRecords<(typeof fields)[number]>,
+      ),
   });
   return {
     request,
     layer,
-    change: (patch: Partial<OrchestrationThreadShell>) => {
+    change: (patch: Partial<OrchestrationV2ThreadShell>) => {
       thread = { ...thread, ...patch };
     },
   };
@@ -92,7 +106,13 @@ it.effect(
       yield* service.enrich(f.request());
       yield* service.drain;
       expect(calls).toBe(1);
-      f.change({ hasPendingUserInput: true });
+      f.change({
+        pendingRuntimeRequest: {
+          id: RuntimeRequestId.make("input"),
+          kind: "user_input",
+          createdAt: DateTime.makeUnsafe(f.request().project.createdAt),
+        },
+      });
       const next = yield* service.enrich(f.request());
       expect(next.phase).toBe("waiting_for_input");
       expect(next.summary).toBeUndefined();
@@ -116,7 +136,7 @@ it.effect("discards an in-flight summary when a new turn starts", () => {
     );
     yield* service.enrich(f.request());
     yield* Deferred.await(started);
-    f.change({ latestTurn: { ...f.request().thread.latestTurn!, turnId: TurnId.make("next") } });
+    f.change({ latestRunId: RunId.make("next") });
     yield* Deferred.succeed(release, undefined);
     yield* service.drain;
     expect((yield* service.enrich(f.request())).summary).toBeUndefined();

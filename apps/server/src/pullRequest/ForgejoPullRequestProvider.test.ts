@@ -2,7 +2,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 import type { ForgejoApiInput } from "../sourceControl/ForgejoCli.ts";
 
 import { ForgejoCli, ForgejoCliError } from "../sourceControl/ForgejoCli.ts";

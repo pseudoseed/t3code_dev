@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { getMailboxThreadCandidates } from "@t3tools/client-runtime/state/mailbox-candidates";
 import { formatMailboxConversationExport } from "@t3tools/client-runtime/state/mailbox-export";
 import {
@@ -123,6 +124,7 @@ export function AgentMailbox({
         })
       : null,
   );
+  const canUpdate = useAtomValue(mailboxEnvironment.update.permissionAtom(environmentId));
   const update = useAtomCommand(mailboxEnvironment.update);
   const exportConversation = useAtomCommand(mailboxEnvironment.exportConversation);
   const revision = shell?.mailboxRevision;
@@ -156,6 +158,7 @@ export function AgentMailbox({
     [projects, environmentId],
   );
   const mutate = async (operation: MailboxUpdateInput["operation"]) => {
+    if (!canUpdate) return;
     setBusy(true);
     try {
       const result = await update({
@@ -381,7 +384,7 @@ export function AgentMailbox({
                             <Button
                               size="sm"
                               variant="ghost-muted"
-                              disabled={busy}
+                              disabled={busy || !canUpdate}
                               onClick={() =>
                                 void mutate({ kind: "link", peerThreadId: id, linked: false })
                               }
@@ -430,7 +433,7 @@ export function AgentMailbox({
                                 size="sm"
                                 variant="outline"
                                 aria-label={`Link ${thread.title}`}
-                                disabled={busy}
+                                disabled={busy || !canUpdate}
                                 onClick={() =>
                                   void mutate({
                                     kind: "link",
@@ -481,7 +484,7 @@ export function AgentMailbox({
                   <Switch
                     id="mailbox-auto-wake"
                     checked={autoWake.enabled}
-                    disabled={busy}
+                    disabled={busy || !canUpdate}
                     onCheckedChange={(enabled) => void mutate({ kind: "auto-wake", enabled })}
                   />
                 </section>
@@ -652,7 +655,7 @@ export function AgentMailbox({
                                 <Button
                                   size="xs"
                                   variant="ghost"
-                                  disabled={busy}
+                                  disabled={busy || !canUpdate}
                                   onClick={() =>
                                     void mutate({
                                       kind: "state",
@@ -668,7 +671,7 @@ export function AgentMailbox({
                                 <Button
                                   size="xs"
                                   variant="ghost"
-                                  disabled={busy}
+                                  disabled={busy || !canUpdate}
                                   onClick={() =>
                                     void mutate({
                                       kind: "state",

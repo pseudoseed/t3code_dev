@@ -1,3 +1,4 @@
+import { ThreadManagementService } from "../../../orchestration-v2/ThreadManagementService.ts";
 /**
  * Issues, as tools an agent can call.
  *
@@ -6,6 +7,7 @@
  */
 import {
   IssueCreateResult,
+  OrchestratorMcpFailure,
   IssueDetail,
   IssueListEntry,
   IssueListState,
@@ -15,13 +17,17 @@ import {
   PositiveInt,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
-const dependencies = [McpInvocationContext.McpInvocationContext];
+const dependencies = [McpInvocationContext.McpInvocationContext, ThreadManagementService];
 
-const IssueToolError = Schema.Union([IssueUnavailableError, IssueOperationError]);
+const IssueToolError = Schema.Union([
+  IssueUnavailableError,
+  IssueOperationError,
+  OrchestratorMcpFailure,
+]);
 
 const IssueListToolInput = Schema.Struct({
   state: Schema.optional(IssueListState).annotate({

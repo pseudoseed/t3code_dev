@@ -1,28 +1,28 @@
 import { Connection, EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
-import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
-import type { EnvironmentId } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
+import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
+import {
+  BoundedThreadSnapshotLoader,
+  ThreadHistoryController,
+} from "@t3tools/client-runtime/state/threads";
 import * as Layer from "effect/Layer";
+import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { Atom } from "effect/unstable/reactivity";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
 
 import type { FoundationHotModule } from "../lib/foundation-fast-refresh";
 import { hotSwappableAtomRuntime } from "../lib/hot-swappable-atom-runtime";
-import { runtimeContextLayer } from "../lib/runtime";
+import * as Runtime from "../lib/runtime";
 import { appAtomRegistry } from "../state/atom-registry";
-import {
-  mobileBackgroundActivityObserverLayer,
-  mobileBackgroundActivityReporterLayer,
-} from "./background-activity";
 import { recordConnectionDiagnostic } from "./diagnostics";
-import { connectionPlatformLayer } from "./platform";
+import * as BackgroundActivity from "./background-activity";
+import * as ConnectionPlatform from "./platform";
 
 /** Mirrors every supervisor phase change into the device connection log. */
 const connectionDiagnosticsLayer = Layer.effectDiscard(
   Effect.gen(function* () {
-    const registry = yield* EnvironmentRegistry;
+    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
     const tracked = new Set<EnvironmentId>();
     yield* Stream.concat(
       Stream.fromEffect(SubscriptionRef.get(registry.entries)),
@@ -58,37 +58,39 @@ const connectionDiagnosticsLayer = Layer.effectDiscard(
 
 declare const module: { readonly hot?: FoundationHotModule } | undefined;
 
-const providedConnectionPlatformLayer = connectionPlatformLayer.pipe(
-  Layer.provide(runtimeContextLayer),
-);
+const layerProvidedConnectionPlatform = ConnectionPlatform.layer.pipe(Layer.provide(Runtime.layer));
 
-const snapshotLoaderLayer = Layer.merge(threadSnapshotLoaderLayer, shellSnapshotLoaderLayer);
+const layerSnapshotLoader = Layer.mergeAll(
+  BoundedThreadSnapshotLoader.layer,
+  ShellSnapshotLoader.layer,
+  ThreadHistoryController.layer,
+);
 
 type ConnectionLayerSource =
   | typeof Connection.layer
-  | typeof snapshotLoaderLayer
-  | typeof runtimeContextLayer
-  | typeof connectionPlatformLayer
-  | typeof mobileBackgroundActivityObserverLayer
-  | typeof mobileBackgroundActivityReporterLayer;
+  | typeof layerSnapshotLoader
+  | typeof Runtime.layer
+  | typeof ConnectionPlatform.layer
+  | typeof BackgroundActivity.layerObserver
+  | typeof BackgroundActivity.layerReporter;
 
-const providedClientConnectionLayer = snapshotLoaderLayer.pipe(
+const layerProvidedClientConnection = layerSnapshotLoader.pipe(
   Layer.provideMerge(
     Connection.layerWithOptions({ usageLimitSources: true, usageLimitsCommand: true }),
   ),
   Layer.provideMerge(
     Layer.mergeAll(
-      runtimeContextLayer,
-      providedConnectionPlatformLayer,
-      mobileBackgroundActivityObserverLayer,
+      Runtime.layer,
+      layerProvidedConnectionPlatform,
+      BackgroundActivity.layerObserver,
     ),
   ),
 );
 
-const connectionLayer = Layer.merge(
-  mobileBackgroundActivityReporterLayer,
+const layerConnection = Layer.merge(
+  BackgroundActivity.layerReporter,
   connectionDiagnosticsLayer,
-).pipe(Layer.provideMerge(providedClientConnectionLayer));
+).pipe(Layer.provideMerge(layerProvidedClientConnection));
 
 export const connectionAtomRuntime: Atom.AtomRuntime<
   Layer.Success<ConnectionLayerSource>,
@@ -97,5 +99,5 @@ export const connectionAtomRuntime: Atom.AtomRuntime<
   id: "t3.mobile.connection-runtime",
   hotModule: typeof module === "undefined" ? undefined : module.hot,
   registry: appAtomRegistry,
-  layer: connectionLayer,
+  layer: layerConnection,
 });

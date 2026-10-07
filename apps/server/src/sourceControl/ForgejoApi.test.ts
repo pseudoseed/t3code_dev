@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import * as ForgejoApi from "./ForgejoApi.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -309,7 +309,6 @@ it.effect("creates pull requests using the Forgejo REST API payload shape", () =
       assert.ok(request);
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
       assert.ok(rawBody);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepStrictEqual(JSON.parse(new TextDecoder().decode(rawBody)), {
         head: "owner:feature/forgejo",
         base: "main",
@@ -470,7 +469,6 @@ it.effect("createRepository posts to /user/repos for own account", () =>
       assert.strictEqual(request.url, "https://git.example.org/api/v1/user/repos");
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
       assert.ok(rawBody);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepStrictEqual(JSON.parse(new TextDecoder().decode(rawBody)), {
         name: "repo",
         private: true,

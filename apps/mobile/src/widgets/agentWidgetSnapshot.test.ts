@@ -1,4 +1,12 @@
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import { makeThreadShellFixture } from "../test-fixtures";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RuntimeRequestId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
   EMPTY_AGENT_WIDGET_SNAPSHOT,
@@ -9,21 +17,38 @@ import {
 
 const environmentId = EnvironmentId.make("environment-1");
 const project = { environmentId, id: ProjectId.make("project-1"), title: "Project" };
-type WidgetThread = Parameters<typeof buildAgentWidgetSnapshot>[0]["threads"][number];
+type WidgetThread = ReturnType<typeof makeThreadShellFixture>;
 function thread(overrides: Partial<WidgetThread> = {}): WidgetThread {
-  return {
+  const shell = makeThreadShellFixture({
     environmentId,
     projectId: project.id,
     id: ThreadId.make("thread-1"),
     title: "Build staging",
     archivedAt: null,
     modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-    session: null,
-    latestTurn: null,
+    runtime: null,
+    latestRun: null,
     updatedAt: "2026-09-06T18:00:00Z",
     hasPendingApprovals: false,
     hasPendingUserInput: true,
     ...overrides,
+  });
+  return {
+    ...shell,
+    source: {
+      ...shell.source,
+      updatedAt: DateTime.makeUnsafe(shell.updatedAt),
+      status: shell.runtime?.status ?? "idle",
+      activityRunStatus: shell.runtime?.status === "running" ? "running" : null,
+      pendingRuntimeRequest:
+        shell.hasPendingApprovals || shell.hasPendingUserInput
+          ? {
+              id: RuntimeRequestId.make("widget-request"),
+              kind: shell.hasPendingApprovals ? "command" : "user_input",
+              createdAt: DateTime.makeUnsafe(shell.updatedAt),
+            }
+          : null,
+    },
   };
 }
 
@@ -32,19 +57,21 @@ describe("agent widget snapshots", () => {
     const now = Date.parse("2026-09-06T18:10:00Z");
     const failed = thread({
       hasPendingUserInput: false,
-      session: {
-        threadId: ThreadId.make("thread-1"),
-        status: "error",
+      runtime: {
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        status: "failed",
         providerName: "Codex",
-        runtimeMode: "full-access",
-        activeTurnId: null,
+        activeRunId: null,
         lastError: "Credential expired\nInternal stack details",
         updatedAt: "2026-09-06T18:00:00Z",
       },
     });
     const snapshot = buildAgentWidgetSnapshot({
       projects: [project],
-      threads: [failed, { ...failed, id: ThreadId.make("old"), updatedAt: "2026-09-05T18:00:00Z" }],
+      threads: [
+        failed,
+        thread({ ...failed, id: ThreadId.make("old"), updatedAt: "2026-09-05T18:00:00Z" }),
+      ],
       now,
     });
     expect(snapshot.activities).toHaveLength(1);
@@ -52,7 +79,7 @@ describe("agent widget snapshots", () => {
     expect(snapshot.activeCount).toBe(0);
     const changed = buildAgentWidgetSnapshot({
       projects: [project],
-      threads: [{ ...failed, session: { ...failed.session!, lastError: "Provider rate limit" } }],
+      threads: [{ ...failed, runtime: { ...failed.runtime!, lastError: "Provider rate limit" } }],
       now,
     });
     expect(agentWidgetContentKey(changed)).not.toBe(agentWidgetContentKey(snapshot));
@@ -149,12 +176,11 @@ describe("agent widget snapshots", () => {
       thread({
         id: ThreadId.make(`thread-${index}`),
         hasPendingUserInput: index === 4,
-        session: {
-          threadId: ThreadId.make(`thread-${index}`),
+        runtime: {
+          providerInstanceId: ProviderInstanceId.make("codex"),
           status: "running",
           providerName: "Codex",
-          runtimeMode: "full-access",
-          activeTurnId: null,
+          activeRunId: null,
           lastError: null,
           updatedAt: "2026-09-06T18:00:00Z",
         },

@@ -85,6 +85,8 @@ const makeFixture = Effect.fn("McpServers.test.makeFixture")(function* () {
         ready: Effect.void,
         getSettings: Effect.succeed(settings),
         updateSettings: () => Effect.succeed(settings),
+        updateProviderInstance: () => Effect.succeed(settings),
+        withSettingsSnapshot: (use) => use(settings),
         streamChanges: Stream.empty,
         subscribeChanges: Effect.succeed(Stream.empty),
       }),

@@ -1,5 +1,4 @@
 import type { AgentAwarenessState } from "@t3tools/shared/agentAwareness";
-import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 
 export const SUMMARY_INTERVAL_MS = 90_000;
 
@@ -7,7 +6,7 @@ export const SUMMARY_INTERVAL_MS = 90_000;
 export function activitySummaryContext(input: {
   state: AgentAwarenessState;
   turnId: string | null;
-  activities: readonly OrchestrationThreadActivity[];
+  activities: ReadonlyArray<{ turnId: string | null; kind: string; summary: string }>;
   assistantText?: string | undefined;
 }): string {
   return JSON.stringify({

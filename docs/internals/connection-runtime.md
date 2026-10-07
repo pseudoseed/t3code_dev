@@ -10,13 +10,16 @@ several views need the same environment.
 
 The [supervisor](../../packages/client-runtime/src/connection/supervisor.ts) owns
 transport retry policy; resolving an endpoint and opening an RPC session are single
-attempts. Transient failures retry with capped backoff. Authentication failures
-wait for a wakeup instead of spending attempts on unchanged conditions.
+attempts. Transient failures retry with jittered exponential backoff, capped at
+five minutes, that resets only after a connection stays up. Without jitter, every
+client of a restarted server reconnects in the same second; with a short cap, a
+client that can never connect retries all day. Authentication
+failures wait for a wakeup instead of spending attempts on unchanged conditions.
 
 The platform's network report never decides anything by itself. iOS answers
 "no path" for a moment on most wakes while the socket underneath is healthy, so
-an offline report only colours a pending retry; it does not abandon an attempt,
-close a session, or hold a retry. A path coming back wakes a pending retry at
+an offline report colours a pending retry and probes an established session; it
+does not abandon an attempt, close a healthy session, or hold a retry. A path coming back wakes a pending retry at
 once and probes a live session, because the socket may have died on the old
 path. Liveness is the transport's call on both ends: the RPC client pings every
 5 seconds while the app is awake, and the Node server
@@ -24,12 +27,14 @@ path. Liveness is the transport's call on both ends: the RPC client pings every
 and terminates a socket silent for two intervals, so a device that vanished
 without a close frame is reaped instead of holding its subscriptions forever.
 
-Foregrounding needs different treatment depending on the connection's state.
-It wakes a retry immediately, leaves an ordinary in-flight attempt alone, and
-probes an established session before replacing it. A long mobile background
-suspension forces replacement because the OS can kill a socket without reporting
-closure. Treating every foreground event as a reconnect delays healthy attempts;
-treating every resume as harmless leaves suspended sockets stuck.
+Foregrounding, an explicit retry, and an offline report probe the established
+session, and only a failed probe reconnects. Offline reports are often wrong, for
+example for a loopback server. A long mobile background suspension is the one
+exception: it replaces the session at once, because the OS can kill a socket
+without reporting closure, and a probe would hold a dead socket in "Resuming"
+until it times out. That fresh attempt runs even while the network reports
+offline. Foregrounding also wakes a pending retry immediately and
+leaves an ordinary in-flight attempt alone.
 
 The [registry](../../packages/client-runtime/src/connection/registry.ts) scopes
 connections by environment. An involuntary disconnect retains the registration

@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import type {
   EnvironmentId,
@@ -105,6 +106,7 @@ function EnvironmentMcpSettings({
   const { data, error, isPending, refresh } = useEnvironmentQuery(
     environmentId === null ? null : mcpEnvironment.inventory({ environmentId, input: {} }),
   );
+  const canWrite = useAtomValue(mcpEnvironment.add.permissionAtom(environmentId));
   const formId = useId();
   const pending = useRef(false);
   const addServer = useAtomCommand(mcpEnvironment.add, { reportFailure: false });
@@ -152,7 +154,7 @@ function EnvironmentMcpSettings({
   const runMutation = async (
     operation: () => Promise<AtomCommandResult<McpMutationResult, unknown>>,
   ) => {
-    if (pending.current) return;
+    if (pending.current || !canWrite) return;
     pending.current = true;
     setBusy(true);
     setStatus(null);
@@ -178,7 +180,8 @@ function EnvironmentMcpSettings({
     name.trim().length > 0 &&
     (advanced ? json.trim().length > 0 : /^https?:\/\//.test(url.trim())) &&
     selectedInstanceIds.length > 0 &&
-    !busy;
+    !busy &&
+    canWrite;
 
   return (
     <SettingsPageContainer>
@@ -244,7 +247,7 @@ function EnvironmentMcpSettings({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={busy}
+                        disabled={busy || !canWrite}
                         onClick={() =>
                           void runMutation(() =>
                             copyServer({
@@ -287,7 +290,7 @@ function EnvironmentMcpSettings({
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busy}
+                              disabled={busy || !canWrite}
                               onClick={() =>
                                 setAuthTarget({ instanceId: instance.instanceId, name: row.name })
                               }
@@ -301,7 +304,7 @@ function EnvironmentMcpSettings({
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busy}
+                              disabled={busy || !canWrite}
                               onClick={() =>
                                 void runMutation(() =>
                                   repair({
@@ -318,7 +321,7 @@ function EnvironmentMcpSettings({
                             <Button
                               size="sm"
                               variant="ghost"
-                              disabled={busy}
+                              disabled={busy || !canWrite}
                               onClick={() =>
                                 void runMutation(() =>
                                   removeServer({

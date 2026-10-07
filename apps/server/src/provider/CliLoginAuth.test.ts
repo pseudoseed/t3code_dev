@@ -7,7 +7,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { makeCliLoginAuth, type CliLoginAuthOptions } from "./CliLoginAuth.ts";
-import type { ProviderAuthController } from "./Services/ProviderAuthService.ts";
+import type { ProviderAuthController } from "./ProviderAuthService.ts";
 
 const instanceId = ProviderInstanceId.make("claudeAgent_work");
 const owner = "owner-session";

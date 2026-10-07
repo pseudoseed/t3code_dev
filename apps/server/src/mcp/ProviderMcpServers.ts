@@ -38,12 +38,12 @@ import * as Crypto from "effect/Crypto";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 import { PtyAdapter } from "../terminal/PtyAdapter.ts";
 import { runMcpPtyLogin } from "./McpPtyLogin.ts";
 import { makeCliLoginAuth } from "../provider/CliLoginAuth.ts";
 import { findMcpAuthorizationUrl } from "../provider/cliLoginOutput.ts";
-import type { ProviderAuthController } from "../provider/Services/ProviderAuthService.ts";
+import type { ProviderAuthController } from "../provider/ProviderAuthService.ts";
 import {
   clearClaudeMcpAuthCache,
   copyMcpRecords,

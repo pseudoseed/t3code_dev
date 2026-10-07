@@ -6,7 +6,7 @@ import {
   removeLearnedCorrection,
   type CorrectionPair,
 } from "@t3tools/client-runtime/voice-input";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 import {
   ActivityIndicator,

@@ -6,7 +6,7 @@ import {
   type DirectPushStatus,
   type ThreadId,
 } from "@t3tools/contracts";
-import { projectThreadAwareness, type AgentAwarenessState } from "@t3tools/shared/agentAwareness";
+import { projectThreadAwarenessV2, type AgentAwarenessState } from "@t3tools/shared/agentAwareness";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import {
   Context,
@@ -23,8 +23,8 @@ import {
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { AuthSessionRepository } from "../persistence/AuthSessions.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
+import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import { ProjectService } from "../project/ProjectService.ts";
 import { eventThreadId, shouldPublishAgentAwarenessEvent } from "../relay/AgentAwarenessRelay.ts";
 import { forkParked } from "../serverActivation.ts";
 import { ApnsTransport, ApnsTransportError, type ApnsRequest } from "./ApnsTransport.ts";
@@ -75,12 +75,12 @@ export const make = Effect.gen(function* () {
   const transport = yield* ApnsTransport;
   const secrets = yield* ServerSecretStore;
   const sessions = yield* AuthSessionRepository;
-  const query = yield* ProjectionSnapshotQuery;
-  const engine = yield* OrchestrationEngineService;
+  const query = yield* ThreadManagementService;
+  const projectService = yield* ProjectService;
   const environment = yield* ServerEnvironment;
   const mutex = yield* Semaphore.make(1);
   const states = new Map<ThreadId, AgentAwarenessState>();
-  const attentionFlags = new Map<ThreadId, { approval: boolean; input: boolean }>();
+  const seenRequests = new Map<ThreadId, Set<string>>();
   const lastWidgetPush = new Map<AuthSessionId, number>();
   let hydrated = false;
   const stored = yield* secrets.get(STORAGE_KEY);
@@ -97,16 +97,18 @@ export const make = Effect.gen(function* () {
     if (hydrated) return;
     const snapshot = yield* query.getShellSnapshot();
     const environmentId = yield* environment.getEnvironmentId;
-    const projects = new Map(snapshot.projects.map((project) => [project.id, project]));
+    const projects = new Map(
+      (yield* projectService.snapshot).projects.map((project) => [project.id, project]),
+    );
     for (const thread of snapshot.threads) {
       const project = projects.get(thread.projectId);
       if (!project || thread.archivedAt !== null) continue;
-      const state = projectThreadAwareness({ environmentId, project, thread });
+      const state = projectThreadAwarenessV2({ environmentId, project, thread });
       if (state) states.set(thread.id, state);
-      attentionFlags.set(thread.id, {
-        approval: thread.hasPendingApprovals,
-        input: thread.hasPendingUserInput,
-      });
+      seenRequests.set(
+        thread.id,
+        new Set(thread.pendingRuntimeRequest ? [thread.pendingRuntimeRequest.id] : []),
+      );
     }
     hydrated = true;
   });
@@ -288,13 +290,13 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           if (!transport.bundleId) return;
           yield* hydrate;
-          const thread = yield* query.getThreadShellById(threadId);
+          const thread = Option.fromNullishOr(yield* query.getThreadShell(threadId));
           const project = Option.isSome(thread)
-            ? yield* query.getProjectShellById(thread.value.projectId)
+            ? yield* projectService.getById(thread.value.projectId)
             : Option.none();
           let next =
             Option.isSome(thread) && Option.isSome(project) && thread.value.archivedAt === null
-              ? projectThreadAwareness({
+              ? projectThreadAwarenessV2({
                   environmentId: yield* environment.getEnvironmentId,
                   project: project.value,
                   thread: thread.value,
@@ -314,18 +316,18 @@ export const make = Effect.gen(function* () {
             });
           }
           const previous = states.get(threadId);
-          const previousFlags = attentionFlags.get(threadId);
-          const flags = {
-            approval: next !== null && Option.isSome(thread) && thread.value.hasPendingApprovals,
-            input: next !== null && Option.isSome(thread) && thread.value.hasPendingUserInput,
-          };
+          const seen = seenRequests.get(threadId) ?? new Set<string>();
+          const request = Option.isSome(thread) ? thread.value.pendingRuntimeRequest : null;
           const phase =
-            flags.approval && !previousFlags?.approval
-              ? "waiting_for_approval"
-              : flags.input && !previousFlags?.input
+            next !== null && request !== null && !seen.has(request.id)
+              ? request.kind === "user_input"
                 ? "waiting_for_input"
-                : null;
-          attentionFlags.set(threadId, flags);
+                : "waiting_for_approval"
+              : null;
+          if (request) seen.add(request.id);
+          // Only recent identities are needed to avoid replaying overlapping requests.
+          if (seen.size > 64) seen.delete(seen.values().next().value!);
+          seenRequests.set(threadId, seen);
           if (activityIdentity(previous ?? null) === activityIdentity(next) && !phase) return;
           if (next) states.set(threadId, next);
           else states.delete(threadId);
@@ -380,7 +382,7 @@ export const make = Effect.gen(function* () {
     );
     yield* forkParked(
       Effect.gen(function* () {
-        const events = yield* engine.subscribeDomainEvents;
+        const events = query.streamDomainEvents;
         yield* mutex
           .withPermit(hydrate)
           .pipe(Effect.catch(() => Effect.logWarning("Direct push initial snapshot unavailable.")));

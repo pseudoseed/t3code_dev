@@ -1,4 +1,4 @@
-import { MessageId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import { MessageId, ProviderInstanceId, ThreadId, RunId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { getMailboxConversationMessages, getMailboxThreadStatus } from "./mailboxPresentation.ts";
@@ -11,23 +11,28 @@ const idle: ThreadStatusInput = {
   hasPendingUserInput: false,
   hasActionableProposedPlan: false,
   interactionMode: "default",
-  latestTurn: null,
-  session: null,
+  latestRun: null,
+  runtime: null,
+  pendingBackgroundTasks: [],
 };
-const session = {
+const runtime = {
   threadId: ThreadId.make("peer"),
   status: "running" as const,
   providerName: "Codex",
   providerInstanceId: ProviderInstanceId.make("codex"),
   runtimeMode: "full-access" as const,
-  activeTurnId: TurnId.make("turn"),
+  activeRunId: RunId.make("turn"),
   lastError: null,
   updatedAt: "2026-10-07T12:00:00.000Z",
 };
 
 describe("mailbox thread status", () => {
   it("shows blocked threads ahead of running or background work", () => {
-    const working = { ...idle, session, backgroundLiveness: "working" as const };
+    const working = {
+      ...idle,
+      runtime,
+      pendingBackgroundTasks: [{ taskId: "bg-1", description: "Work", kind: "command" as const }],
+    };
     expect(getMailboxThreadStatus({ ...working, hasPendingApprovals: true })).toEqual({
       label: "Needs approval",
       tone: "warning",
@@ -38,38 +43,46 @@ describe("mailbox thread status", () => {
     });
   });
 
-  it("follows session changes from starting to working to idle", () => {
+  it("follows runtime changes from starting to working to idle", () => {
     expect(
-      getMailboxThreadStatus({ ...idle, session: { ...session, status: "starting" } }).label,
+      getMailboxThreadStatus({ ...idle, runtime: { ...runtime, status: "starting" } }).label,
     ).toBe("Starting");
-    expect(getMailboxThreadStatus({ ...idle, session }).label).toBe("Working");
+    expect(getMailboxThreadStatus({ ...idle, runtime }).label).toBe("Working");
     expect(
       getMailboxThreadStatus({
         ...idle,
-        session: { ...session, status: "ready", activeTurnId: null },
+        runtime: { ...runtime, status: "idle", activeRunId: null },
       }).label,
     ).toBe("Idle");
   });
 
   it("shows background work after a turn ends, and failures ahead of stale liveness", () => {
-    expect(getMailboxThreadStatus({ ...idle, backgroundLiveness: "working" }).label).toBe(
-      "Working",
-    );
-    expect(getMailboxThreadStatus({ ...idle, backgroundLiveness: "monitoring" }).label).toBe(
-      "Monitoring",
-    );
     expect(
       getMailboxThreadStatus({
         ...idle,
-        backgroundLiveness: "working",
-        session: { ...session, status: "error" },
+        pendingBackgroundTasks: [{ taskId: "bg-1", description: "Work", kind: "command" as const }],
+      }).label,
+    ).toBe("Working");
+    expect(
+      getMailboxThreadStatus({
+        ...idle,
+        pendingBackgroundTasks: [
+          { taskId: "bg-1", description: "Watch", kind: "monitor" as const },
+        ],
+      }).label,
+    ).toBe("Monitoring");
+    expect(
+      getMailboxThreadStatus({
+        ...idle,
+        pendingBackgroundTasks: [{ taskId: "bg-1", description: "Work", kind: "command" as const }],
+        runtime: { ...runtime, status: "failed" },
       }),
     ).toEqual({ label: "Failed", tone: "error" });
   });
 
-  it("distinguishes stopped sessions from idle threads", () => {
-    for (const status of ["stopped", "interrupted"] as const) {
-      expect(getMailboxThreadStatus({ ...idle, session: { ...session, status } }).label).toBe(
+  it("distinguishes stopped runtimes from idle threads", () => {
+    for (const status of ["cancelled", "interrupted"] as const) {
+      expect(getMailboxThreadStatus({ ...idle, runtime: { ...runtime, status } }).label).toBe(
         "Stopped",
       );
     }
@@ -80,10 +93,10 @@ describe("mailbox thread status", () => {
       ...idle,
       interactionMode: "plan" as const,
       hasActionableProposedPlan: true,
-      backgroundLiveness: "monitoring" as const,
-      latestTurn: {
-        turnId: TurnId.make("plan"),
-        state: "completed" as const,
+      pendingBackgroundTasks: [{ taskId: "bg-1", description: "Watch", kind: "monitor" as const }],
+      latestRun: {
+        runId: RunId.make("plan"),
+        status: "completed" as const,
         requestedAt: "2026-10-07T12:00:00.000Z",
         startedAt: "2026-10-07T12:00:01.000Z",
         completedAt: "2026-10-07T12:00:02.000Z",
@@ -91,10 +104,10 @@ describe("mailbox thread status", () => {
       },
     };
     expect(getMailboxThreadStatus(plan)).toEqual({ label: "Plan ready", tone: "warning" });
-    expect(getMailboxThreadStatus({ ...plan, session }).label).toBe("Working");
-    const failed = { ...plan, latestTurn: { ...plan.latestTurn, state: "error" as const } };
+    expect(getMailboxThreadStatus({ ...plan, runtime }).label).toBe("Working");
+    const failed = { ...plan, latestRun: { ...plan.latestRun, status: "failed" as const } };
     expect(getMailboxThreadStatus(failed).label).toBe("Failed");
-    expect(getMailboxThreadStatus({ ...failed, session }).label).toBe("Working");
+    expect(getMailboxThreadStatus({ ...failed, runtime }).label).toBe("Working");
   });
 
   it("identifies settled, archived, and unavailable existing links", () => {

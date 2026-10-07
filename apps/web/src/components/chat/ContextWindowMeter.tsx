@@ -6,7 +6,10 @@ import {
   formatThreadCostUsd,
 } from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
+import {
+  formatContextWindowCompactionMessage,
+  formatContextWindowCost,
+} from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
 
@@ -19,7 +22,9 @@ export function ContextWindowMeter(props: {
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
   const usedPercentage = formatContextWindowPercentage(usage.usedPercentage);
-  const costLabel = formatThreadCostUsd(usage.costUsd ?? null);
+  const costLabel =
+    formatThreadCostUsd(usage.costUsd ?? null) ??
+    (usage.cost ? formatContextWindowCost(usage.cost) : null);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
   const circumference = 2 * Math.PI * radius;

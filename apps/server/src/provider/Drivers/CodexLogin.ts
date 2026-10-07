@@ -25,11 +25,11 @@ import type { CodexSettings, ProviderInstanceId } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 
 import { expandHomePath } from "../../pathExpansion.ts";
 import { makeCliLoginAuth, runCliInvocation, type CliInvocation } from "../CliLoginAuth.ts";
-import type { ProviderAuthController } from "../Services/ProviderAuthService.ts";
+import type { ProviderAuthController } from "../ProviderAuthService.ts";
 
 /** Hosts OpenAI serves the Codex device-authorization pages from. */
 const AUTHORIZATION_URL_HOSTS = ["openai.com", "chatgpt.com"] as const;

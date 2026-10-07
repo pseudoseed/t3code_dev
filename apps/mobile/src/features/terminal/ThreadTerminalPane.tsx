@@ -1,10 +1,12 @@
 import { TerminalContextSheet } from "./TerminalContextSheet";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { AuthTerminalOperateScope, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type ScrollViewInstance } from "react-native";
 
 import { SymbolView, type AppSymbolName } from "../../components/AppSymbol";
 import { environmentCatalog } from "../../connection/catalog";
+import { readEnvironmentScope } from "../../state/session";
+import { uuidv4 } from "../../lib/uuid";
 import { terminalEnvironment } from "../../state/terminal";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentPresentation } from "../../state/presentation";
@@ -30,7 +32,7 @@ export type TerminalPaneDockPosition = "right" | "bottom";
 
 function TerminalPaneTab(props: {
   readonly isActive: boolean;
-  readonly onClose: () => void;
+  readonly onClose: (() => void) | undefined;
   readonly onSelect: () => void;
   readonly session: TerminalMenuSession;
   readonly theme: TerminalTheme;
@@ -77,6 +79,7 @@ function TerminalPaneTab(props: {
         accessibilityRole="button"
         className="size-8 items-center justify-center"
         hitSlop={6}
+        disabled={props.onClose === undefined}
         onPress={props.onClose}
       >
         <SymbolView
@@ -94,6 +97,7 @@ function TerminalPaneAction(props: {
   readonly accessibilityLabel: string;
   readonly icon: AppSymbolName;
   readonly onPress: () => void;
+  readonly disabled?: boolean;
   readonly theme: TerminalTheme;
 }) {
   return (
@@ -101,6 +105,7 @@ function TerminalPaneAction(props: {
       accessibilityLabel={props.accessibilityLabel}
       accessibilityRole="button"
       className="size-11 items-center justify-center"
+      disabled={props.disabled}
       onPress={props.onPress}
     >
       <SymbolView
@@ -198,7 +203,7 @@ export function ThreadTerminalPane(props: {
   const tabs = useMemo(
     () =>
       buildTerminalMenuSessions({
-        knownSessions: session.knownSessions,
+        knownSessions: session.knownSessions ?? [],
         workspaceRoot,
         currentSession: {
           terminalId: activeTerminalId,
@@ -224,18 +229,21 @@ export function ThreadTerminalPane(props: {
   tabsRef.current = tabs;
 
   const handleOpenNewTerminal = useCallback(() => {
+    if (!readEnvironmentScope(environmentId, AuthTerminalOperateScope)) return;
     onSelectTerminal(
       nextOpenTerminalId({
         listedTerminalIds: tabs.map((tab) => tab.terminalId),
         activeRouteTerminalId: activeTerminalId,
+        ...(session.knownSessions === null ? { uniqueSuffix: uuidv4() } : {}),
       }),
     );
-  }, [activeTerminalId, onSelectTerminal, tabs]);
+  }, [activeTerminalId, environmentId, onSelectTerminal, session.knownSessions, tabs]);
 
   // Closing the active tab hands over to the neighbouring shell; the pane
   // closes only when this was the last one.
   const handleCloseTerminal = useCallback(
     (terminalId: string) => {
+      if (!readEnvironmentScope(environmentId, AuthTerminalOperateScope)) return;
       void closeTerminal({ environmentId, input: { threadId, terminalId } });
       if (terminalId !== activeTerminalId) {
         return;
@@ -290,7 +298,7 @@ export function ThreadTerminalPane(props: {
             >
               <TerminalPaneTab
                 isActive={tab.terminalId === activeTerminalId}
-                onClose={() => handleCloseTerminal(tab.terminalId)}
+                onClose={session.canOperate ? () => handleCloseTerminal(tab.terminalId) : undefined}
                 onSelect={() => onSelectTerminal(tab.terminalId)}
                 session={tab}
                 theme={theme}
@@ -302,6 +310,7 @@ export function ThreadTerminalPane(props: {
           <TerminalPaneAction
             accessibilityLabel={`Open new terminal in ${basename(workspaceRoot) ?? "this workspace"}`}
             icon={{ ios: "plus", android: "add" }}
+            disabled={!session.canOperate}
             onPress={handleOpenNewTerminal}
             theme={theme}
           />
@@ -339,6 +348,7 @@ export function ThreadTerminalPane(props: {
       <View className="flex-1">
         {isEnvironmentReady ? (
           <TerminalSurfacePanel
+            readOnly={!session.canOperate}
             autoFocus={Platform.OS !== "android"}
             content={session.surfaceContent}
             onCapture={setCapturedOutput}

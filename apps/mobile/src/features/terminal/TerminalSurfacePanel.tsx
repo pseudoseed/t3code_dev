@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import {
   KeyboardController,
   KeyboardEvents,
@@ -7,6 +7,9 @@ import {
   useKeyboardState,
 } from "react-native-keyboard-controller";
 
+import { MaterialButton } from "../../components/MaterialButton";
+import { MaterialIconButton } from "../../components/MaterialIconButton";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolView } from "../../components/AppSymbol";
 import {
   ComposerToolbarButton,
@@ -79,7 +82,9 @@ function AccessoryContainer(props: { readonly children: ReactNode; readonly host
  */
 export function TerminalSurfacePanel(props: {
   readonly autoFocus?: boolean;
+  readonly readOnly?: boolean;
   readonly captureRequest?: number;
+  readonly onRequestCapture?: () => void;
   readonly onCapture?: (text: string) => void;
   readonly content: { readonly output: TerminalOutputState };
   /**
@@ -111,8 +116,16 @@ export function TerminalSurfacePanel(props: {
     height: state.height,
     isVisible: state.isVisible,
   }));
+  const insets = useSafeAreaInsets();
   const isHosted = props.keyboardMode === "hosted";
-  const isAccessoryVisible = keyboardState.isVisible && !isAccessoryDismissed;
+  const isAccessoryVisible = !props.readOnly && keyboardState.isVisible && !isAccessoryDismissed;
+  const terminalAutoFocus =
+    !props.readOnly &&
+    (props.autoFocus ?? true) &&
+    (Platform.OS === "android"
+      ? !isAccessoryDismissed &&
+        (!SHOWCASE_ENABLED || keyboardFocusRequest > 0 || keyboardState.isVisible)
+      : !SHOWCASE_ENABLED);
   const bottomInset = isHosted
     ? 0
     : (keyboardState.isVisible ? keyboardState.height : 0) +
@@ -193,7 +206,8 @@ export function TerminalSurfacePanel(props: {
     <>
       <View className="flex-1" style={{ paddingBottom: bottomInset }}>
         <TerminalSurface
-          autoFocus={(props.autoFocus ?? true) && !SHOWCASE_ENABLED}
+          readOnly={props.readOnly}
+          autoFocus={terminalAutoFocus}
           output={props.content.output}
           captureRequest={props.captureRequest}
           onCapture={props.onCapture}
@@ -208,6 +222,23 @@ export function TerminalSurfacePanel(props: {
         />
       </View>
 
+      {Platform.OS === "android" && !keyboardState.isVisible ? (
+        <View
+          className="min-h-14 flex-row items-center gap-2 bg-card-alt px-2"
+          style={{ paddingBottom: isHosted ? 0 : insets.bottom }}
+        >
+          {props.onRequestCapture ? (
+            <MaterialButton label="Attach output" tone="text" onPress={props.onRequestCapture} />
+          ) : null}
+          <View className="flex-1" />
+          <MaterialIconButton
+            accessibilityLabel="Show keyboard"
+            disabled={props.readOnly}
+            icon="keyboard"
+            onPress={handleShowKeyboard}
+          />
+        </View>
+      ) : null}
       {isAccessoryVisible ? (
         <AccessoryContainer hosted={isHosted}>
           <View
@@ -253,10 +284,11 @@ export function TerminalSurfacePanel(props: {
             </ComposerToolbarRow>
           </View>
         </AccessoryContainer>
-      ) : !keyboardState.isVisible ? (
+      ) : Platform.OS !== "android" && !props.readOnly && !keyboardState.isVisible ? (
         <Pressable
           accessibilityLabel="Show keyboard"
           accessibilityRole="button"
+          disabled={props.readOnly}
           onPress={handleShowKeyboard}
           style={({ pressed }) => ({
             bottom: 16,
@@ -268,6 +300,7 @@ export function TerminalSurfacePanel(props: {
         >
           <GlassSurface
             chrome="none"
+            fallbackColor={theme.background}
             glassEffectStyle="regular"
             tintColor="transparent"
             style={{

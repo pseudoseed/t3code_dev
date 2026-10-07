@@ -160,7 +160,6 @@ layer("writes", (it) => {
       yield* provider.comment({ ...target, number: 12, body: "on it" });
       const call = request.mock.calls.at(-1)?.[0];
       assert.strictEqual(call?.method, "POST");
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepStrictEqual(JSON.parse(call?.body ?? "{}"), { body: "on it" });
     }),
   );
@@ -193,7 +192,6 @@ layer("writes", (it) => {
       yield* provider.setState({ ...target, number: 12, state: "closed" });
       const call = request.mock.calls.at(-1)?.[0];
       assert.strictEqual(call?.method, "PATCH");
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepStrictEqual(JSON.parse(call?.body ?? "{}"), { state: "closed" });
     }),
   );

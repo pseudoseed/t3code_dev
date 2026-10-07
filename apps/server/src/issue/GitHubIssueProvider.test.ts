@@ -1,288 +1,190 @@
 import { assert, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { ChildProcessSpawner } from "effect/unstable/process";
-
-import * as GitHubCli from "../sourceControl/GitHubCli.ts";
+import * as GitHubApi from "../sourceControl/GitHubApi.ts";
 import * as GitHubIssueProvider from "./GitHubIssueProvider.ts";
-
-const execute = vi.fn<GitHubCli.GitHubCli["Service"]["execute"]>();
-
-const layer = it.layer(Layer.mock(GitHubCli.GitHubCli)({ execute }));
-
-function output(stdout: string) {
-  return Effect.succeed({
-    exitCode: ChildProcessSpawner.ExitCode(0),
-    stdout,
-    stderr: "",
-    stdoutTruncated: false,
-    stderrTruncated: false,
+const rest = vi.fn<GitHubApi.GitHubApi["Service"]["rest"]>();
+const layer = Layer.mock(GitHubApi.GitHubApi)({ rest });
+const target = { cwd: "/repo", host: "github.enterprise.example", repository: "acme/repo" };
+const output = (body: unknown) =>
+  Effect.succeed({
+    body: JSON.stringify(body),
+    status: 200,
+    headers: {},
+    truncated: false,
+    invalidUtf8: false,
   });
-}
-
-/** The last command `gh` was asked to run. */
-function lastArgs(): ReadonlyArray<string> {
-  return execute.mock.calls.at(-1)?.[0].args ?? [];
-}
-
-const target = { cwd: "/repo", host: "github.com", repository: "acme/web" };
-
-const issueJson = (overrides: Record<string, unknown> = {}) => ({
-  number: 12,
-  title: "Cache is never invalidated",
-  url: "https://github.com/acme/web/issues/12",
-  state: "OPEN",
-  createdAt: "2026-06-16T05:04:32Z",
-  updatedAt: "2026-06-16T05:04:33Z",
-  author: { login: "bilal", name: "Bilal" },
-  labels: [{ name: "bug", color: "d73a4a" }],
-  assignees: [{ login: "octocat" }],
-  ...overrides,
+const raw = (number = 12) => ({
+  number,
+  title: "Fix connection",
+  html_url: `https://${target.host}/acme/repo/issues/${number}`,
+  state: "open",
+  user: { login: "sam" },
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-02T00:00:00Z",
+  comments: 2,
+  labels: [{ name: "bug", color: "#abc123" }],
+  assignees: [{ login: "pat" }],
 });
-
-layer("lists issues", (it) => {
-  it.effect("asks gh for the repository, state and fields it needs", () =>
+it.layer(layer)("GitHub issues through upstream API", (it) => {
+  it.effect("routes Enterprise searches with state, involvement and search text", () =>
     Effect.gen(function* () {
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
-      execute.mockReturnValue(output(JSON.stringify([issueJson()])));
+      rest.mockImplementation(() => output({ items: [raw()], total_count: 1 }));
       const provider = yield* GitHubIssueProvider.make;
-      const page = yield* provider.listIssues({
+      const result = yield* provider.listIssues({
         ...target,
         state: "open",
-        involvement: "all",
-        viewer: "bilal",
-        limit: 20,
-      });
-
-      assert.deepStrictEqual(
-        page.items.map((item) => [item.number, item.state, item.title]),
-        [[12, "open", "Cache is never invalidated"]],
-      );
-      assert.deepStrictEqual(page.items[0]?.labels, [{ name: "bug", color: "d73a4a" }]);
-      assert.deepStrictEqual(
-        page.items[0]?.assignees.map((entry) => entry.login),
-        ["octocat"],
-      );
-      const args = lastArgs();
-      assert.deepStrictEqual(args.slice(0, 6), [
-        "issue",
-        "list",
-        "--repo",
-        "github.com/acme/web",
-        "--state",
-        "open",
-      ]);
-    }),
-  );
-
-  it.effect("hands a search term to GitHub rather than filtering here", () =>
-    Effect.gen(function* () {
-      execute.mockReturnValue(output("[]"));
-      const provider = yield* GitHubIssueProvider.make;
-      yield* provider.listIssues({
-        ...target,
-        state: "all",
         involvement: "assigned",
-        viewer: "bilal",
+        viewer: "pat",
         limit: 20,
-        query: "cache",
+        query: "connection",
       });
-      const args = lastArgs();
-      assert.ok(args.includes("--search"), args.join(" "));
-      assert.ok(args.includes("cache"), args.join(" "));
-      assert.ok(args.includes("--assignee"), args.join(" "));
-      assert.ok(args.includes("@me"), args.join(" "));
+      assert.equal(result.items[0]?.commentCount, 2);
+      assert.deepEqual(result.items[0]?.labels, [{ name: "bug", color: "abc123" }]);
+      const call = rest.mock.lastCall![0];
+      assert.equal(call.host, target.host);
+      assert.include(
+        decodeURIComponent(call.path),
+        "repo:acme/repo is:issue is:open assignee:pat connection",
+      );
+      assert.equal(call.allowReserve, true);
     }),
   );
-
-  it.effect("reports a repository with its tracker off instead of failing", () =>
+  it.effect("lists issues without involvement narrowing when account lookup is unavailable", () =>
     Effect.gen(function* () {
-      // `gh` exits non-zero and the sentence explaining why never reaches the error, so the
-      // provider asks GitHub whether the tracker is on before reporting a failure.
-      execute.mockImplementation((input) =>
-        input.args[0] === "repo"
-          ? output(JSON.stringify({ hasIssuesEnabled: false }))
-          : Effect.fail(
-              new GitHubCli.GitHubCliCommandError({
-                command: "gh",
-                cwd: "/repo",
-                cause: new Error("exit 1"),
-              }),
-            ),
-      );
-      const provider = yield* GitHubIssueProvider.make;
-      const page = yield* provider.listIssues({
-        ...target,
-        state: "open",
-        involvement: "all",
-        viewer: "bilal",
-        limit: 20,
-      });
-      // A setting, not a fault: the panel says the tracker is off rather than that gh failed.
-      assert.deepStrictEqual(page.items, []);
-      assert.match(page.disabledReason ?? "", /turned off/u);
-    }),
-  );
-
-  it.effect("keeps a real failure a failure when the tracker is on", () =>
-    Effect.gen(function* () {
-      execute.mockImplementation((input) =>
-        input.args[0] === "repo"
-          ? output(JSON.stringify({ hasIssuesEnabled: true }))
-          : Effect.fail(
-              new GitHubCli.GitHubCliCommandError({
-                command: "gh",
-                cwd: "/repo",
-                cause: new Error("exit 1"),
-              }),
-            ),
-      );
-      const provider = yield* GitHubIssueProvider.make;
-      const error = yield* Effect.flip(
-        provider.listIssues({
-          ...target,
-          state: "open",
-          involvement: "all",
-          viewer: "bilal",
-          limit: 20,
-        }),
-      );
-      assert.strictEqual(error.reason, "failed");
-    }),
-  );
-});
-
-layer("reads one issue", (it) => {
-  it.effect("carries the conversation and whether this account may write", () =>
-    Effect.gen(function* () {
-      execute.mockImplementation((input) =>
-        input.args[0] === "repo"
-          ? output(JSON.stringify({ viewerPermission: "READ" }))
-          : output(
-              JSON.stringify(
-                issueJson({
-                  body: "It never clears.",
-                  closedAt: null,
-                  comments: [
-                    {
-                      id: "IC_1",
-                      body: "Confirmed",
-                      createdAt: "2026-06-16T06:00:00Z",
-                      url: "https://github.com/acme/web/issues/12#issuecomment-1",
-                      author: { login: "octocat" },
-                    },
-                  ],
-                }),
-              ),
-            ),
-      );
-      const provider = yield* GitHubIssueProvider.make;
-      const detail = yield* provider.getIssue({ ...target, number: 12 });
-      assert.strictEqual(detail.body, "It never clears.");
-      assert.strictEqual(detail.comments.length, 1);
-      assert.strictEqual(detail.comments[0]?.author?.login, "octocat");
-      // Read access is not write access, so the composer stays hidden.
-      assert.strictEqual(detail.viewerCanWrite, false);
-      assert.strictEqual(detail.commentsTruncated, false);
-    }),
-  );
-
-  it.effect("treats a permission it could not read as write", () =>
-    Effect.gen(function* () {
-      execute.mockImplementation((input) =>
-        input.args[0] === "repo"
+      rest.mockImplementation((input) =>
+        input.path === "user"
           ? Effect.fail(
-              new GitHubCli.GitHubCliCommandError({
-                command: "gh",
-                cwd: "/repo",
-                cause: new Error("no"),
+              new GitHubApi.GitHubApiRequestError({
+                host: target.host,
+                operation: "getViewer",
+                cause: "Account lookup unavailable",
               }),
             )
-          : output(JSON.stringify(issueJson({ body: "", comments: [] }))),
+          : output({ items: [raw()], total_count: 1 }),
       );
       const provider = yield* GitHubIssueProvider.make;
-      const detail = yield* provider.getIssue({ ...target, number: 12 });
-      // Hiding the composer from someone entitled to write is the worse of the two mistakes.
-      assert.strictEqual(detail.viewerCanWrite, true);
+      const viewer = yield* provider.getViewer(target).pipe(Effect.orElseSucceed(() => ""));
+      for (const involvement of ["authored", "assigned"] as const) {
+        const result = yield* provider.listIssues({
+          ...target,
+          state: "open",
+          involvement,
+          viewer,
+          limit: 20,
+          query: "connection",
+        });
+        assert.equal(result.items[0]?.number, 12);
+        const query = new URL(
+          `https://api.example/${rest.mock.lastCall![0].path}`,
+        ).searchParams.get("q");
+        assert.equal(query, "repo:acme/repo is:issue is:open connection");
+      }
     }),
   );
-});
-
-layer("writes", (it) => {
-  it.effect("sends a comment body on stdin rather than in the command line", () =>
+  it.effect("keeps pagination stable when the requested limit is not a full API page", () =>
     Effect.gen(function* () {
-      execute.mockReturnValue(output(""));
+      rest.mockImplementation((input) =>
+        output({
+          items: Array.from({ length: 100 }, (_, index) =>
+            raw(index + (input.path.endsWith("page=2") ? 101 : 1)),
+          ),
+          total_count: 200,
+        }),
+      );
       const provider = yield* GitHubIssueProvider.make;
-      yield* provider.comment({ ...target, number: 12, body: "on it" });
-      const call = execute.mock.calls.at(-1)?.[0];
-      assert.strictEqual(call?.stdin, "on it");
-      assert.ok(call?.args.includes("--body-file"), call?.args.join(" "));
-      assert.ok(!call?.args.includes("on it"), "the body must not reach argv");
-    }),
-  );
-
-  it.effect("reads the new issue's number out of the URL gh prints", () =>
-    Effect.gen(function* () {
-      execute.mockReturnValue(output("https://github.com/acme/web/issues/99\n"));
-      const provider = yield* GitHubIssueProvider.make;
-      const created = yield* provider.createIssue({
+      const result = yield* provider.listIssues({
         ...target,
-        title: "Something broke",
-        body: "details",
+        state: "all",
+        involvement: "all",
+        viewer: "pat",
+        limit: 150,
       });
-      assert.deepStrictEqual(created, {
-        number: 99,
-        url: "https://github.com/acme/web/issues/99",
+      assert.lengthOf(result.items, 150);
+      assert.equal(result.items[149]?.number, 150);
+      assert.isTrue(result.truncated);
+    }),
+  );
+  it.effect("reports disabled trackers separately from a transport failure", () =>
+    Effect.gen(function* () {
+      rest.mockImplementation((input) =>
+        input.path.startsWith("search/")
+          ? output({ items: [], total_count: 0 })
+          : output({ has_issues: false }),
+      );
+      const provider = yield* GitHubIssueProvider.make;
+      const result = yield* provider.listIssues({
+        ...target,
+        state: "open",
+        involvement: "all",
+        viewer: "pat",
+        limit: 20,
       });
-    }),
-  );
-
-  it.effect("fails rather than guess when gh reports no URL", () =>
-    Effect.gen(function* () {
-      execute.mockReturnValue(output("Creating issue...\n"));
-      const provider = yield* GitHubIssueProvider.make;
-      const exit = yield* Effect.exit(provider.createIssue({ ...target, title: "x", body: "" }));
-      assert.strictEqual(exit._tag, "Failure");
-    }),
-  );
-
-  it.effect("closes and reopens through the matching gh subcommand", () =>
-    Effect.gen(function* () {
-      execute.mockReturnValue(output(""));
-      const provider = yield* GitHubIssueProvider.make;
-      yield* provider.setState({ ...target, number: 12, state: "closed" });
-      assert.deepStrictEqual(lastArgs().slice(0, 3), ["issue", "close", "12"]);
-      yield* provider.setState({ ...target, number: 12, state: "open" });
-      assert.deepStrictEqual(lastArgs().slice(0, 3), ["issue", "reopen", "12"]);
-    }),
-  );
-});
-
-layer("classifies failures", (it) => {
-  it.effect("reports a missing CLI as a missing tool rather than a failed request", () =>
-    Effect.gen(function* () {
-      execute.mockReturnValue(
+      assert.include(result.disabledReason ?? "", "turned off");
+      rest.mockImplementation(() =>
         Effect.fail(
-          new GitHubCli.GitHubCliUnavailableError({
-            command: "gh",
-            cwd: "/repo",
-            cause: new Error("gh not found"),
+          new GitHubApi.GitHubApiRequestError({
+            host: target.host,
+            operation: "listIssues",
+            cause: "offline",
           }),
         ),
       );
-      const provider = yield* GitHubIssueProvider.make;
-      const error = yield* Effect.flip(
-        provider.listIssues({
-          ...target,
-          state: "open",
-          involvement: "all",
-          viewer: "bilal",
-          limit: 10,
-        }),
+      assert.equal(
+        (yield* Effect.result(
+          provider.listIssues({
+            ...target,
+            state: "open",
+            involvement: "all",
+            viewer: "pat",
+            limit: 20,
+          }),
+        ))._tag,
+        "Failure",
       );
-      // The service turns this into "install gh", rather than into one failed listing.
-      assert.strictEqual(error.reason, "missing-tool");
-      assert.strictEqual(error.provider, "github");
+    }),
+  );
+  it.effect("loads issue details, comments, and repository write permission", () =>
+    Effect.gen(function* () {
+      rest.mockImplementation((input) =>
+        input.path.includes("/comments?")
+          ? output([
+              {
+                id: 3,
+                body: "Investigating",
+                html_url: "https://example/comment",
+                created_at: "2026-09-02T00:00:00Z",
+                user: { login: "pat" },
+              },
+            ])
+          : input.path.endsWith("/issues/12")
+            ? output({ ...raw(), body: "Details" })
+            : output({ permissions: { push: false } }),
+      );
+      const provider = yield* GitHubIssueProvider.make;
+      const result = yield* provider.getIssue({ ...target, number: 12 });
+      assert.equal(result.body, "Details");
+      assert.equal(result.comments[0]?.body, "Investigating");
+      assert.isFalse(result.viewerCanWrite);
+    }),
+  );
+  it.effect("writes bodies through structured API requests and can close/reopen", () =>
+    Effect.gen(function* () {
+      rest.mockClear();
+      rest.mockImplementation(() => output({ number: 42, html_url: "https://example/issues/42" }));
+      const provider = yield* GitHubIssueProvider.make;
+      yield* provider.comment({ ...target, number: 12, body: "Literal `code` and $HOME" });
+      assert.deepEqual(rest.mock.lastCall![0].body, { body: "Literal `code` and $HOME" });
+      const created = yield* provider.createIssue({
+        ...target,
+        title: "New issue",
+        body: "Description",
+      });
+      assert.equal(created.number, 42);
+      yield* provider.setState({ ...target, number: 12, state: "closed" });
+      assert.deepEqual(rest.mock.lastCall![0].body, { state: "closed" });
+      yield* provider.setState({ ...target, number: 12, state: "open" });
+      assert.deepEqual(rest.mock.lastCall![0].body, { state: "open" });
     }),
   );
 });

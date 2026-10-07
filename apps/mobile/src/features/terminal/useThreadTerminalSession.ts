@@ -6,9 +6,19 @@ import {
   terminalOutputText,
   type KnownTerminalSession,
 } from "@t3tools/client-runtime/state/terminal";
-import { DEFAULT_TERMINAL_ID, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import {
+  AuthTerminalReadScope,
+  AuthTerminalOperateScope,
+  DEFAULT_TERMINAL_ID,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
+import { useTerminalLifecycle } from "./useTerminalLifecycle";
+import { useTerminalSurfaceBuffer } from "./useTerminalSurfaceBuffer";
+import { useTerminalGridSync } from "./useTerminalGridSync";
 import { terminalEnvironment } from "../../state/terminal";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
@@ -110,6 +120,8 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     threadWorktreePath,
     workspaceRoot,
   } = input;
+  const canRead = useEnvironmentScope(environmentId, AuthTerminalReadScope);
+  const canOperate = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const writeTerminal = useAtomCommand(terminalEnvironment.write, "terminal write");
   const resizeTerminal = useAtomCommand(terminalEnvironment.resize, "terminal resize");
   const clearTerminalCommand = useAtomCommand(terminalEnvironment.clear, "terminal clear");
@@ -118,9 +130,9 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   const onSessionEndedRef = useRef(input.onSessionEnded);
   onSessionEndedRef.current = input.onSessionEnded;
 
-  const knownSessions = useKnownTerminalSessions({ environmentId, threadId });
+  const { sessions: knownSessions } = useKnownTerminalSessions({ environmentId, threadId });
   const activeKnownSession = useMemo(
-    () => knownSessions.find((session) => session.target.terminalId === terminalId) ?? null,
+    () => knownSessions?.find((session) => session.target.terminalId === terminalId) ?? null,
     [knownSessions, terminalId],
   );
   const cachedGridSize =
@@ -224,65 +236,22 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
       threadId,
     ],
   );
-  const terminal = useAttachedTerminalSession({ environmentId, terminal: terminalAttachInput });
+  const terminal = useAttachedTerminalSession({
+    environmentId,
+    terminal: canOperate
+      ? terminalAttachInput
+      : canRead && enabled && threadId !== null && activeKnownSession !== null
+        ? { threadId, terminalId }
+        : null,
+  });
   const terminalKey =
     environmentId && threadId ? `${environmentId}:${threadId}:${terminalId}` : terminalId;
-  const surfaceContent = useMemo(() => ({ output: terminal.output }), [terminal.output]);
-  const isRunning = terminal.status === "running" || terminal.status === "starting";
-  const runningTerminalKeyRef = useRef<string | null>(null);
-  const reopenedStaleTerminalKeyRef = useRef<string | null>(null);
-
-  // Attach subscriptions are cached with an idle TTL, so revisiting a
-  // terminal whose session ended while unobserved reuses the stale stream
-  // without a new attach RPC — the server never respawns anything. Detect
-  // that (dead status with processed events, never seen running here) and
-  // issue an explicit open; its snapshot flows into the live subscription.
-  useEffect(() => {
-    if (isRunning) {
-      reopenedStaleTerminalKeyRef.current = null;
-      return;
-    }
-    if (
-      terminalAttachInput === null ||
-      environmentId === null ||
-      threadId === null ||
-      (terminal.status !== "closed" && terminal.status !== "exited") ||
-      terminal.version === 0 ||
-      runningTerminalKeyRef.current === terminalKey ||
-      reopenedStaleTerminalKeyRef.current === terminalKey
-    ) {
-      return;
-    }
-    reopenedStaleTerminalKeyRef.current = terminalKey;
-    void openTerminal({
-      environmentId,
-      input: {
-        threadId,
-        terminalId,
-        cwd: terminalAttachInput.cwd,
-        worktreePath: terminalAttachInput.worktreePath,
-        cols: terminalAttachInput.cols,
-        rows: terminalAttachInput.rows,
-        ...(terminalAttachInput.env ? { env: terminalAttachInput.env } : {}),
-      },
-    }).then((result) => {
-      // Release the guard on failure so a later render can retry the respawn.
-      if (result._tag === "Failure" && reopenedStaleTerminalKeyRef.current === terminalKey) {
-        reopenedStaleTerminalKeyRef.current = null;
-      }
-    });
-  }, [
-    environmentId,
-    isRunning,
-    openTerminal,
-    terminal.status,
-    terminal.version,
-    terminalAttachInput,
-    terminalId,
+  const surfaceOutput = useTerminalSurfaceBuffer({
     terminalKey,
-    threadId,
-  ]);
-
+    buffer: terminal.version === 0 ? null : terminal.output,
+  });
+  const surfaceContent = useMemo(() => ({ output: surfaceOutput }), [surfaceOutput]);
+  const isRunning = terminal.status === "running" || terminal.status === "starting";
   useEffect(() => {
     terminalDebugLog("session:status", {
       terminalKey,
@@ -355,6 +324,7 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   useEffect(() => {
     const initialInput = pendingLaunch?.initialInput;
     if (
+      !canOperate ||
       !initialInput ||
       environmentId === null ||
       threadId === null ||
@@ -369,6 +339,7 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
       input: { threadId, terminalId, data: initialInput },
     });
   }, [
+    canOperate,
     environmentId,
     launchTargetKey,
     pendingLaunch?.initialInput,
@@ -407,7 +378,14 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
 
   const writeInput = useCallback(
     async (data: string) => {
-      if (environmentId === null || threadId === null || !isRunning || !enabled) return false;
+      if (
+        environmentId === null ||
+        threadId === null ||
+        !isRunning ||
+        !enabled ||
+        !readEnvironmentScope(environmentId, AuthTerminalOperateScope)
+      )
+        return false;
       const generation = inputGeneration.current;
       for (const chunk of chunkTerminalWrite(data)) {
         if (generation !== inputGeneration.current) return false;
@@ -424,9 +402,9 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
 
   const [pasteSession] = useState(createTerminalPasteSession);
   useEffect(() => {
-    pasteSession.reset(isRunning && enabled);
+    pasteSession.reset(canOperate && isRunning && enabled);
     return () => pasteSession.reset(false);
-  }, [enabled, isRunning, pasteSession, terminal.lifecycleVersion, terminalKey]);
+  }, [canOperate, enabled, isRunning, pasteSession, terminal.lifecycleVersion, terminalKey]);
   const pasteFromClipboard = useCallback(
     () =>
       pasteSession.paste({
@@ -470,7 +448,11 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   );
 
   const clearTerminal = useCallback(() => {
-    if (environmentId === null || threadId === null) {
+    if (
+      environmentId === null ||
+      threadId === null ||
+      !readEnvironmentScope(environmentId, AuthTerminalOperateScope)
+    ) {
       return;
     }
     setPendingModifierState({ terminalId, value: null });
@@ -480,24 +462,15 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     });
   }, [clearTerminalCommand, environmentId, terminalId, threadId]);
 
-  // Layout can arrive before attach finishes. Send that measurement once the
-  // shell is ready rather than leaving it at the initial 80-column fallback.
-  useEffect(() => {
-    if (!enabled || !isRunning || environmentId === null || threadId === null) return;
-    void resizeTerminal({
-      environmentId,
-      input: { threadId, terminalId, cols: lastGridSize.cols, rows: lastGridSize.rows },
-    });
-  }, [
-    enabled,
+  useTerminalGridSync({
     environmentId,
-    isRunning,
-    lastGridSize.cols,
-    lastGridSize.rows,
-    resizeTerminal,
-    terminalId,
     threadId,
-  ]);
+    terminalId,
+    canOperate: canOperate && enabled,
+    terminal,
+    size: lastGridSize,
+    resize: resizeTerminal,
+  });
 
   const handleResize = useCallback(
     (size: { readonly cols: number; readonly rows: number }) => {
@@ -514,51 +487,50 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
     [environmentId, lastGridSize.cols, lastGridSize.rows, terminalId, terminalKey, threadId],
   );
 
-  // When the process ends while attached (e.g. typing `exit`), close the
-  // session and hand control back to the host, mirroring the web drawer's
-  // onSessionExited flow. Only a running -> exited transition observed here
-  // counts, so an already-exited session can still be opened (it restarts on
-  // attach).
-  useEffect(() => {
-    // Detached (hidden surface or environment drop): forget the running
-    // marker so a reattach takes the stale-reopen path instead of misreading
-    // the dead snapshot as an exit observed here.
-    if (terminalAttachInput === null) {
-      runningTerminalKeyRef.current = null;
-      return;
-    }
-    if (isRunning) {
-      runningTerminalKeyRef.current = terminalKey;
-      return;
-    }
-    // The web drawer treats both exited and closed as session end.
-    const sessionEnded = terminal.status === "exited" || terminal.status === "closed";
-    if (!sessionEnded || runningTerminalKeyRef.current !== terminalKey) {
-      return;
-    }
-    runningTerminalKeyRef.current = null;
-    // Mark this key handled so the stale-attach effect doesn't respawn the
-    // session the user just ended.
-    reopenedStaleTerminalKeyRef.current = terminalKey;
-    if (environmentId !== null && threadId !== null) {
-      void closeTerminal({
-        environmentId,
-        input: { threadId, terminalId },
-      });
-    }
-    onSessionEndedRef.current({ terminalId });
-  }, [
-    closeTerminal,
-    environmentId,
-    isRunning,
-    terminal.status,
-    terminalAttachInput,
-    terminalId,
+  useTerminalLifecycle({
     terminalKey,
-    threadId,
-  ]);
+    canOperate,
+    observing: canRead && !canOperate && enabled && activeKnownSession !== null,
+    attached: terminalAttachInput !== null,
+    terminal,
+    reopen: async () => {
+      if (
+        terminalAttachInput === null ||
+        environmentId === null ||
+        threadId === null ||
+        !readEnvironmentScope(environmentId, AuthTerminalOperateScope)
+      )
+        return false;
+      const result = await openTerminal({
+        environmentId,
+        input: {
+          threadId,
+          terminalId,
+          cwd: terminalAttachInput.cwd,
+          worktreePath: terminalAttachInput.worktreePath,
+          cols: terminalAttachInput.cols,
+          rows: terminalAttachInput.rows,
+          ...(terminalAttachInput.env ? { env: terminalAttachInput.env } : {}),
+        },
+      });
+      return result._tag === "Success";
+    },
+    onRunning: () => {},
+    onExit: () => {
+      if (
+        environmentId === null ||
+        threadId === null ||
+        !readEnvironmentScope(environmentId, AuthTerminalOperateScope)
+      )
+        return;
+      void closeTerminal({ environmentId, input: { threadId, terminalId } });
+      onSessionEndedRef.current({ terminalId });
+    },
+  });
 
   return {
+    canRead,
+    canOperate,
     clearTerminal,
     cwd: terminal.summary?.cwd ?? workspaceRoot ?? null,
     handleResize,

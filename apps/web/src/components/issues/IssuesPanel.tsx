@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   IssueDetail,
@@ -58,6 +59,7 @@ interface IssuesPanelProps {
  * only where the host said this account may write.
  */
 export function IssuesPanel(props: IssuesPanelProps) {
+  const canCreate = useAtomValue(issueEnvironment.create.permissionAtom(props.environmentId));
   const [state, setState] = useState<IssueListState>("open");
   const [sort, setSort] = useState<IssueSort>("recent");
   const [search, setSearch] = useState("");
@@ -177,6 +179,7 @@ export function IssuesPanel(props: IssuesPanelProps) {
             className="size-7"
             onClick={() => setComposing(true)}
             aria-label="New issue"
+            disabled={!canCreate}
           >
             <Plus className="size-3.5" />
           </Button>
@@ -340,6 +343,8 @@ function IssueDetailView(props: {
   const detailQuery = useEnvironmentQuery(
     issueEnvironment.detail({ environmentId: props.environmentId, input: reference }),
   );
+  const canComment = useAtomValue(issueEnvironment.comment.permissionAtom(props.environmentId));
+  const canSetState = useAtomValue(issueEnvironment.setState.permissionAtom(props.environmentId));
   const comment = useAtomCommand(issueEnvironment.comment, { reportFailure: true });
   const setState = useAtomCommand(issueEnvironment.setState, { reportFailure: true });
   const newThread = useNewThreadHandler();
@@ -351,7 +356,7 @@ function IssueDetailView(props: {
 
   const postComment = useCallback(async () => {
     const body = draft.trim();
-    if (body.length === 0 || pending !== null) return;
+    if (!canComment || body.length === 0 || pending !== null) return;
     setPending("comment");
     const result = await comment({
       environmentId: props.environmentId,
@@ -360,10 +365,10 @@ function IssueDetailView(props: {
     setPending(null);
     // The draft is kept on failure: the reader's words are the one thing worth not losing.
     if (result._tag === "Success") setDraft("");
-  }, [comment, draft, pending, props.environmentId, reference]);
+  }, [canComment, comment, draft, pending, props.environmentId, reference]);
 
   const toggleState = useCallback(async () => {
-    if (!detail || pending !== null) return;
+    if (!canSetState || !detail || pending !== null) return;
     setPending("state");
     const result = await setState({
       environmentId: props.environmentId,
@@ -371,7 +376,7 @@ function IssueDetailView(props: {
     });
     setPending(null);
     if (result._tag === "Success") props.onChanged();
-  }, [detail, pending, props, reference, setState]);
+  }, [canSetState, detail, pending, props, reference, setState]);
 
   /**
    * Opens a thread on this project, on a branch named for the issue, with the issue already in
@@ -438,7 +443,7 @@ function IssueDetailView(props: {
             variant="ghost"
             size="xs"
             onClick={() => void toggleState()}
-            disabled={pending !== null}
+            disabled={!canSetState || pending !== null}
           >
             {detail.state === "open" ? "Close" : "Reopen"}
           </Button>
@@ -507,7 +512,7 @@ function IssueDetailView(props: {
             <Button
               size="xs"
               onClick={() => void postComment()}
-              disabled={draft.trim().length === 0 || pending !== null}
+              disabled={!canComment || draft.trim().length === 0 || pending !== null}
             >
               {pending === "comment" ? <Loader2 className="size-3 animate-spin" /> : "Comment"}
             </Button>
@@ -527,12 +532,13 @@ function NewIssueView(props: {
 }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const canCreate = useAtomValue(issueEnvironment.create.permissionAtom(props.environmentId));
   const create = useAtomCommand(issueEnvironment.create, { reportFailure: true });
   const [pending, setPending] = useState(false);
 
   const submit = useCallback(async () => {
     const trimmed = title.trim();
-    if (trimmed.length === 0 || pending) return;
+    if (!canCreate || trimmed.length === 0 || pending) return;
     setPending(true);
     const result = await create({
       environmentId: props.environmentId,
@@ -545,7 +551,7 @@ function NewIssueView(props: {
     setPending(false);
     // The draft stays on screen where it failed, so nothing typed is thrown away.
     if (result._tag === "Success") props.onCreated(result.value.number);
-  }, [body, create, pending, props, title]);
+  }, [body, canCreate, create, pending, props, title]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -577,7 +583,7 @@ function NewIssueView(props: {
           <Button
             size="xs"
             onClick={() => void submit()}
-            disabled={title.trim().length === 0 || pending}
+            disabled={!canCreate || title.trim().length === 0 || pending}
           >
             {pending ? <Loader2 className="size-3 animate-spin" /> : "Create"}
           </Button>

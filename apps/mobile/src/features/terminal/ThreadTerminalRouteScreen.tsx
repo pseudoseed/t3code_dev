@@ -1,5 +1,12 @@
-import { DEFAULT_TERMINAL_ID, EnvironmentId } from "@t3tools/contracts";
+import {
+  AuthTerminalReadScope,
+  AuthTerminalOperateScope,
+  DEFAULT_TERMINAL_ID,
+  EnvironmentId,
+} from "@t3tools/contracts";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -12,6 +19,8 @@ import { KeyboardController } from "react-native-keyboard-controller";
 
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingScreen } from "../../components/LoadingScreen";
+import { uuidv4 } from "../../lib/uuid";
+import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -25,7 +34,7 @@ import {
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { useThreadSelection } from "../../state/use-thread-selection";
-import { useSelectedThreadDetail } from "../../state/use-thread-detail";
+import { useSelectedThreadProjection } from "../../state/use-thread-detail";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { TerminalSurfacePanel } from "./TerminalSurfacePanel";
 import { getMobileTerminalTheme } from "./terminalTheme";
@@ -47,6 +56,7 @@ import {
 function TerminalHeader(props: {
   readonly subtitle: string;
   readonly isEnvironmentReady: boolean;
+  readonly canOperateTerminal: boolean;
   readonly fontSize: number;
   readonly terminalId: string;
   readonly sessions: ReadonlyArray<TerminalMenuSession>;
@@ -135,6 +145,7 @@ function TerminalHeader(props: {
                   })),
                   {
                     id: "terminal-new",
+                    disabled: !props.canOperateTerminal,
                     title: "Open new terminal",
                     icon: "plus",
                     subtitle: `Start another shell in ${basename(props.workspaceRoot) ?? "this workspace"}`,
@@ -170,17 +181,21 @@ type ThreadTerminalRouteScreenProps = StaticScreenProps<{
  */
 export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps) {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const nativeColumnMetrics = useNativeColumnLayoutMetrics();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, "environment retry");
   const { state: workspaceState } = useWorkspaceState();
   const { dock, fileInspector } = useAdaptiveWorkspaceLayout();
   const params = props.route.params;
   const { selectedThread, selectedThreadProject, selectedEnvironmentConnection } =
     useThreadSelection();
-  const selectedThreadDetail = useSelectedThreadDetail();
+  const selectedThreadDetail = useSelectedThreadProjection();
   const routeEnvironmentIdRaw = firstRouteParam(params.environmentId);
   const routeEnvironmentId = routeEnvironmentIdRaw
     ? EnvironmentId.make(routeEnvironmentIdRaw)
     : null;
+  const canOperateTerminal = useEnvironmentScope(routeEnvironmentId, AuthTerminalOperateScope);
+  const canReadTerminal = useEnvironmentScope(routeEnvironmentId, AuthTerminalReadScope);
   const environment = useEnvironmentPresentation(routeEnvironmentId);
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
   const requestedTerminalId = firstRouteParam(params.terminalId);
@@ -196,13 +211,19 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     setTerminalFontSize,
   } = useAppearancePreferences();
   const fontSize = appearance.terminalFontSize;
-  const knownSessions = useKnownTerminalSessions({
+  const {
+    sessions: knownSessions,
+    isPending: sessionsPending,
+    error: sessionsError,
+  } = useKnownTerminalSessions({
     environmentId: selectedThread?.environmentId ?? null,
     threadId: selectedThread?.id ?? null,
   });
   const runningSession = useMemo(
-    () => pickRunningTerminalSessionForBootstrap(knownSessions),
-    [knownSessions],
+    () =>
+      pickRunningTerminalSessionForBootstrap(knownSessions ?? []) ??
+      (canOperateTerminal ? null : (knownSessions?.[0] ?? null)),
+    [canOperateTerminal, knownSessions],
   );
   const shouldRedirectToRunningTerminal =
     requestedTerminalId === null &&
@@ -224,7 +245,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     isEnvironmentReady,
     onSessionEnded: handleSessionEnded,
     terminalId,
-    threadDetailWorktreePath: selectedThreadDetail?.worktreePath ?? null,
+    threadDetailWorktreePath: selectedThreadDetail?.projection.thread.worktreePath ?? null,
     threadId: selectedThread?.id ?? null,
     threadWorktreePath: selectedThread?.worktreePath ?? null,
     workspaceRoot: selectedThreadProject?.workspaceRoot ?? null,
@@ -235,7 +256,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const terminalMenuSessions = useMemo<ReadonlyArray<TerminalMenuSession>>(
     () =>
       buildTerminalMenuSessions({
-        knownSessions,
+        knownSessions: knownSessions ?? [],
         workspaceRoot: selectedThreadProject?.workspaceRoot ?? null,
         currentSession: {
           terminalId,
@@ -357,7 +378,10 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   }, [session.isRunning]);
 
   const handleOpenNewTerminal = useCallback(() => {
-    if (!selectedThread) {
+    if (
+      !selectedThread ||
+      !readEnvironmentScope(selectedThread.environmentId, AuthTerminalOperateScope)
+    ) {
       return;
     }
 
@@ -368,10 +392,11 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         terminalId: nextOpenTerminalId({
           listedTerminalIds: terminalMenuSessions.map((menuSession) => menuSession.terminalId),
           activeRouteTerminalId: terminalId,
+          ...(knownSessions === null ? { uniqueSuffix: uuidv4() } : {}),
         }),
       }),
     );
-  }, [navigation, selectedThread, terminalId, terminalMenuSessions]);
+  }, [knownSessions, navigation, selectedThread, terminalId, terminalMenuSessions]);
 
   const canShowWithChat = dock.supported || fileInspector.supported;
   const handleShowWithChat = useCallback(() => {
@@ -463,6 +488,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       <TerminalHeader
         subtitle={headerSubtitle}
         isEnvironmentReady={isEnvironmentReady}
+        canOperateTerminal={canOperateTerminal}
         fontSize={fontSize}
         terminalId={terminalId}
         sessions={terminalMenuSessions}
@@ -480,7 +506,14 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
       />
 
       <MaterialScreenContent>
-        <View className="flex-1" style={{ backgroundColor: terminalTheme.background }}>
+        <View
+          className="flex-1"
+          style={{
+            backgroundColor: terminalTheme.background,
+            paddingTop:
+              Platform.OS === "ios" ? (nativeColumnMetrics?.safeArea.top ?? insets.top) : 0,
+          }}
+        >
           {!isEnvironmentReady ? (
             <EnvironmentConnectionNotice
               environmentLabel={
@@ -498,10 +531,31 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               resourceName="terminal"
               onRetry={handleRetryEnvironment}
             />
+          ) : !canReadTerminal && !canOperateTerminal ? (
+            <EmptyState
+              title="Terminal access unavailable"
+              detail="This connection does not have permission to view terminals."
+            />
+          ) : !canOperateTerminal && sessionsPending ? (
+            <LoadingScreen message="Loading terminals…" />
+          ) : !canOperateTerminal && sessionsError !== null ? (
+            <EmptyState title="Could not load terminals" detail={sessionsError} />
+          ) : !canOperateTerminal &&
+            knownSessions?.some((entry) => entry.target.terminalId === terminalId) !== true ? (
+            <EmptyState
+              title="No terminal available"
+              detail="An authorized connection must open a terminal before it can be viewed here."
+            />
           ) : (
             <>
               <TerminalSurfacePanel
+                readOnly={!canOperateTerminal}
                 captureRequest={captureRequest}
+                onRequestCapture={
+                  Platform.OS !== "android" && hasNativeTerminalSurface()
+                    ? () => setCaptureRequest((value) => value + 1)
+                    : undefined
+                }
                 onCapture={(text) => {
                   if (text.trim()) setCapturedOutput(text);
                   else Alert.alert("No terminal output", "There is no visible output to attach.");
@@ -519,7 +573,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                 terminalKey={terminalKey}
                 theme={terminalTheme}
               />
-              {hasNativeTerminalSurface() ? (
+              {Platform.OS !== "android" && hasNativeTerminalSurface() ? (
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {

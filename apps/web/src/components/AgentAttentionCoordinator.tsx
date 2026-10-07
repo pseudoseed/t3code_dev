@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -57,7 +58,9 @@ function EnvironmentAttentionObserver({ environmentId }: { environmentId: Enviro
     const notifications = new Map<ThreadId, Notification>();
     const atom = environmentShell.stateValueAtom(environmentId);
     const observe = (state: EnvironmentShellState) => {
-      const threads = Option.isSome(state.snapshot) ? state.snapshot.value.threads : [];
+      const threads = Option.isSome(state.snapshot)
+        ? state.snapshot.value.threads.map((thread) => presentThreadShell(environmentId, thread))
+        : [];
       const requests = track(threads, state.status === "live");
       const pendingIds = new Set(
         threads

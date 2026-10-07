@@ -1,39 +1,28 @@
-/**
- * Derives the composer's context-window readout from a thread's activity log.
- *
- * Adapters emit `context-window.updated` activities as a turn runs, and
- * orchestration stamps the thread's running cost onto them. Clients only ever
- * care about the newest resolvable one, so this walks backwards and stops at
- * the first row with a usable `usedTokens`.
- *
- * @module contextWindow
- */
 import type {
-  OrchestrationThreadActivity,
-  ThreadCostSource,
+  OrchestrationV2ProviderTurnTokenUsage,
+  OrchestrationV2ProviderThread,
+  OrchestrationV2TurnItem,
   ThreadTokenUsageSnapshot,
+  ThreadCostSource,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+function positiveCost(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function asFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function asBoolean(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
-function asCostSource(value: unknown): ThreadCostSource | null {
-  return value === "providerReported" || value === "modelPriced" ? value : null;
-}
-
+type DisplayUsage = Omit<
+  ThreadTokenUsageSnapshot,
+  "costRevision" | "costSessionId" | "pendingCostTokens"
+>;
 type NullableContextWindowUsage = {
-  readonly [Key in keyof ThreadTokenUsageSnapshot]: undefined extends ThreadTokenUsageSnapshot[Key]
-    ? Exclude<ThreadTokenUsageSnapshot[Key], undefined> | null
-    : ThreadTokenUsageSnapshot[Key];
+  readonly [Key in keyof DisplayUsage]: undefined extends DisplayUsage[Key]
+    ? Exclude<DisplayUsage[Key], undefined> | null
+    : DisplayUsage[Key];
 };
 
 export type ContextWindowSnapshot = NullableContextWindowUsage & {
@@ -43,60 +32,142 @@ export type ContextWindowSnapshot = NullableContextWindowUsage & {
   readonly updatedAt: string;
 };
 
+/** Prefers the provider's live usage report (#8144); falls back to the last compaction item. */
 export function deriveLatestContextWindowSnapshot(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  entries: ReadonlyArray<{
+    readonly item: OrchestrationV2TurnItem;
+  }>,
+  liveUsage?: OrchestrationV2ProviderTurnTokenUsage | null,
+  providerThread?: Pick<OrchestrationV2ProviderThread, "contextUsage" | "updatedAt"> | null,
 ): ContextWindowSnapshot | null {
-  for (let index = activities.length - 1; index >= 0; index -= 1) {
-    const activity = activities[index];
-    if (!activity || activity.kind !== "context-window.updated") {
-      continue;
-    }
-
-    const payload = asRecord(activity.payload);
-    const usedTokens = asFiniteNumber(payload?.usedTokens);
-    if (usedTokens === null || usedTokens < 0) {
-      continue;
-    }
-
-    const maxTokens = asFiniteNumber(payload?.maxTokens);
+  if (liveUsage != null) {
+    const usedTokens = Math.max(0, liveUsage.usedTokens);
+    const maxTokens = liveUsage.maxTokens ?? null;
     const usedPercentage =
       maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null;
     const remainingTokens =
       maxTokens !== null ? Math.max(0, Math.round(maxTokens - usedTokens)) : null;
     const remainingPercentage = usedPercentage !== null ? Math.max(0, 100 - usedPercentage) : null;
-    const costUsd = asFiniteNumber(payload?.costUsd);
-
     return {
+      sessionInputTokens: null,
+      sessionCachedInputTokens: null,
+      sessionCacheCreationTokens: null,
+      sessionOutputTokens: null,
+      sessionCostUsd: null,
+      costUsd: positiveCost(providerThread?.contextUsage?.costUsd),
+      costSource: providerThread?.contextUsage?.costSource ?? null,
       usedTokens,
-      totalProcessedTokens: asFiniteNumber(payload?.totalProcessedTokens),
+      totalProcessedTokens: null,
       maxTokens,
       remainingTokens,
       usedPercentage,
       remainingPercentage,
-      inputTokens: asFiniteNumber(payload?.inputTokens),
-      cachedInputTokens: asFiniteNumber(payload?.cachedInputTokens),
-      outputTokens: asFiniteNumber(payload?.outputTokens),
-      reasoningOutputTokens: asFiniteNumber(payload?.reasoningOutputTokens),
-      lastUsedTokens: asFiniteNumber(payload?.lastUsedTokens),
-      lastInputTokens: asFiniteNumber(payload?.lastInputTokens),
-      lastCachedInputTokens: asFiniteNumber(payload?.lastCachedInputTokens),
-      lastOutputTokens: asFiniteNumber(payload?.lastOutputTokens),
-      lastReasoningOutputTokens: asFiniteNumber(payload?.lastReasoningOutputTokens),
-      sessionInputTokens: asFiniteNumber(payload?.sessionInputTokens),
-      sessionCachedInputTokens: asFiniteNumber(payload?.sessionCachedInputTokens),
-      sessionCacheCreationTokens: asFiniteNumber(payload?.sessionCacheCreationTokens),
-      sessionOutputTokens: asFiniteNumber(payload?.sessionOutputTokens),
-      // A provider's own session total is server bookkeeping, not the thread
-      // figure: a thread outlives its sessions. Only `costUsd` is displayable.
+      inputTokens: liveUsage.inputTokens ?? null,
+      cachedInputTokens: liveUsage.cachedInputTokens ?? null,
+      outputTokens: liveUsage.outputTokens ?? null,
+      reasoningOutputTokens: liveUsage.reasoningOutputTokens ?? null,
+      lastUsedTokens: null,
+      lastInputTokens: null,
+      lastCachedInputTokens: null,
+      lastOutputTokens: null,
+      lastReasoningOutputTokens: null,
+      toolUses: null,
+      durationMs: null,
+      compactsAutomatically: true,
+      autoCompactThreshold: null,
+      cost: providerThread?.contextUsage?.cost ?? null,
+      updatedAt: liveUsage.updatedAt,
+    };
+  }
+  const providerUsage = providerThread?.contextUsage;
+  const providerUsageUpdatedAt = providerThread?.updatedAt;
+  if (
+    providerUsage !== null &&
+    providerUsage !== undefined &&
+    providerUsageUpdatedAt !== undefined
+  ) {
+    const maxTokens = asFiniteNumber(providerUsage.maxTokens);
+    const usedTokens = providerUsage.usedTokens;
+    const usedPercentage =
+      maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null;
+    return {
+      sessionInputTokens: null,
+      sessionCachedInputTokens: null,
+      sessionCacheCreationTokens: null,
+      sessionOutputTokens: null,
       sessionCostUsd: null,
-      // Zero here means "not known", not "free".
-      costUsd: costUsd !== null && costUsd > 0 ? costUsd : null,
-      costSource: asCostSource(payload?.costSource),
-      toolUses: asFiniteNumber(payload?.toolUses),
-      durationMs: asFiniteNumber(payload?.durationMs),
-      compactsAutomatically: asBoolean(payload?.compactsAutomatically) ?? false,
-      autoCompactThreshold: asFiniteNumber(payload?.autoCompactThreshold),
-      updatedAt: activity.createdAt,
+      costUsd: positiveCost(providerThread?.contextUsage?.costUsd),
+      costSource: providerThread?.contextUsage?.costSource ?? null,
+      usedTokens,
+      totalProcessedTokens: asFiniteNumber(providerUsage.totalProcessedTokens),
+      maxTokens,
+      remainingTokens: maxTokens === null ? null : Math.max(0, Math.round(maxTokens - usedTokens)),
+      usedPercentage,
+      remainingPercentage: usedPercentage === null ? null : Math.max(0, 100 - usedPercentage),
+      inputTokens: asFiniteNumber(providerUsage.inputTokens),
+      cachedInputTokens: asFiniteNumber(providerUsage.cachedInputTokens),
+      outputTokens: asFiniteNumber(providerUsage.outputTokens),
+      reasoningOutputTokens: asFiniteNumber(providerUsage.reasoningOutputTokens),
+      lastUsedTokens: asFiniteNumber(providerUsage.lastUsedTokens),
+      lastInputTokens: asFiniteNumber(providerUsage.lastInputTokens),
+      lastCachedInputTokens: asFiniteNumber(providerUsage.lastCachedInputTokens),
+      lastOutputTokens: asFiniteNumber(providerUsage.lastOutputTokens),
+      lastReasoningOutputTokens: asFiniteNumber(providerUsage.lastReasoningOutputTokens),
+      toolUses: asFiniteNumber(providerUsage.toolUses),
+      durationMs: asFiniteNumber(providerUsage.durationMs),
+      compactsAutomatically: providerUsage.compactsAutomatically ?? null,
+      cost: providerUsage.cost ?? null,
+      autoCompactThreshold: providerUsage.autoCompactThreshold ?? null,
+      updatedAt: DateTime.formatIso(providerUsageUpdatedAt),
+    };
+  }
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry || entry.item.type !== "compaction") {
+      continue;
+    }
+    const payload = entry.item;
+    const usedTokens = asFiniteNumber(payload.afterTokenCount);
+    if (usedTokens === null || usedTokens < 0) {
+      continue;
+    }
+
+    const maxTokens = null;
+    const usedPercentage =
+      maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null;
+    const remainingTokens =
+      maxTokens !== null ? Math.max(0, Math.round(maxTokens - usedTokens)) : null;
+    const remainingPercentage = usedPercentage !== null ? Math.max(0, 100 - usedPercentage) : null;
+
+    return {
+      sessionInputTokens: null,
+      sessionCachedInputTokens: null,
+      sessionCacheCreationTokens: null,
+      sessionOutputTokens: null,
+      sessionCostUsd: null,
+      costUsd: positiveCost(providerThread?.contextUsage?.costUsd),
+      costSource: providerThread?.contextUsage?.costSource ?? null,
+      usedTokens,
+      totalProcessedTokens: asFiniteNumber(payload.beforeTokenCount),
+      maxTokens,
+      remainingTokens,
+      usedPercentage,
+      remainingPercentage,
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      reasoningOutputTokens: null,
+      lastUsedTokens: null,
+      lastInputTokens: null,
+      lastCachedInputTokens: null,
+      lastOutputTokens: null,
+      lastReasoningOutputTokens: null,
+      toolUses: null,
+      durationMs: null,
+      compactsAutomatically: true,
+      autoCompactThreshold: null,
+      cost: providerThread?.contextUsage?.cost ?? null,
+      updatedAt: DateTime.formatIso(payload.startedAt ?? payload.updatedAt),
     };
   }
 
@@ -153,4 +224,24 @@ export function formatThreadCostUsd(value: number | null): string | null {
     return `$${value.toFixed(2)}`;
   }
   return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
+/** A thread spans provider switches; each provider total excludes the imported V1 baseline. */
+export function deriveThreadCostSnapshot(
+  legacyUsage: ThreadTokenUsageSnapshot | null | undefined,
+  providerThreads: ReadonlyArray<Pick<OrchestrationV2ProviderThread, "contextUsage">>,
+): { readonly costUsd: number | null; readonly costSource: ThreadCostSource | null } {
+  const costs = [legacyUsage, ...providerThreads.map((thread) => thread.contextUsage)].filter(
+    (usage) => usage != null && positiveCost(usage.costUsd) !== null,
+  );
+  const total = costs.reduce((sum, usage) => sum + (usage?.costUsd ?? 0), 0);
+  return {
+    costUsd: total > 0 ? total : null,
+    costSource:
+      total <= 0
+        ? null
+        : costs.some((usage) => usage?.costSource === "modelPriced")
+          ? "modelPriced"
+          : "providerReported",
+  };
 }

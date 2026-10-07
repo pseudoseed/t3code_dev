@@ -1,12 +1,12 @@
-import type { OrchestrationThreadShell } from "@t3tools/contracts";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 
 type AttentionThread = Pick<
-  OrchestrationThreadShell,
+  EnvironmentThreadShell,
   "id" | "title" | "archivedAt" | "hasPendingApprovals" | "hasPendingUserInput"
 >;
 
 export type AgentAttentionRequest = {
-  readonly threadId: OrchestrationThreadShell["id"];
+  readonly threadId: EnvironmentThreadShell["id"];
   readonly title: string;
   readonly kind: "approval" | "input";
 };

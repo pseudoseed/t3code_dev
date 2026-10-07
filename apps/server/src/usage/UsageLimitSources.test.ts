@@ -1,9 +1,10 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import { UsageLimitSourceId, type UsageLimitSourceConfig } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
@@ -89,7 +90,12 @@ function fixture(overrides: Partial<UsageLimitSourceConfig> = {}, resetStatus = 
     upstream,
     layer: UsageLimitSources.layer.pipe(
       Layer.provide(
-        Layer.mergeAll(settings, background, Layer.succeed(HttpClient.HttpClient, http)),
+        Layer.mergeAll(
+          settings,
+          background,
+          Layer.succeed(HttpClient.HttpClient, http),
+          NodeCrypto.layer,
+        ),
       ),
     ),
   };
@@ -114,22 +120,20 @@ describe("UsageLimitSources.clearCooldown", () => {
     }).pipe(Effect.provide(test.layer));
   });
 
-  for (const [name, overrides] of [
+  it.effect.each([
     ["disabled", { enabled: false }],
     ["dashboard", { kind: "aiusage" }],
     ["missing management key", { managementKey: "" }],
-  ] as const) {
-    it.effect(`rejects a ${name} source without clearing any account`, () => {
-      const test = fixture(overrides);
-      return Effect.gen(function* () {
-        const service = yield* UsageLimitSources.UsageLimitSources;
-        yield* service.refresh;
-        test.requests.length = 0;
-        expect((yield* service.clearCooldown(input).pipe(Effect.result))._tag).toBe("Failure");
-        expect(test.requests).toEqual([]);
-      }).pipe(Effect.provide(test.layer));
-    });
-  }
+  ] as const)("rejects a %s source without clearing any account", ([_name, overrides]) => {
+    const test = fixture(overrides);
+    return Effect.gen(function* () {
+      const service = yield* UsageLimitSources.UsageLimitSources;
+      yield* service.refresh;
+      test.requests.length = 0;
+      expect((yield* service.clearCooldown(input).pipe(Effect.result))._tag).toBe("Failure");
+      expect(test.requests).toEqual([]);
+    }).pipe(Effect.provide(test.layer));
+  });
 
   it.effect("rejects a removed source without touching another hub", () => {
     const test = fixture();

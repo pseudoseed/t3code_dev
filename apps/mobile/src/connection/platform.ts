@@ -1,11 +1,7 @@
 import {
-  ClientPresentation,
-  CloudSession,
-  EnvironmentOwnedDataCleanup,
+  ClientCapabilities,
   PlatformConnectionSource,
-  PrimaryEnvironmentAuth,
-  RelayDeviceIdentity,
-  SshEnvironmentGateway,
+  Persistence,
 } from "@t3tools/client-runtime/platform";
 import {
   ConnectionBlockedError,
@@ -14,7 +10,6 @@ import {
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { managedRelayAccountChanges, managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
-import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -31,15 +26,16 @@ import * as MobileStorage from "../persistence/mobile-storage";
 import { appAtomRegistry } from "../state/atom-registry";
 import { clearThreadOutboxEnvironment } from "../state/thread-outbox-removal";
 import { clearComposerDraftsEnvironment } from "../state/use-composer-drafts";
+import { clearThreadComposerErrorsForEnvironment } from "../state/thread-composer-error";
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
 import { recordConnectionDiagnostic } from "./diagnostics";
-import { connectionStorageLayer } from "./storage";
+import * as ConnectionStorage from "./storage";
 
 /**
  * iOS reports a path change several times around a wake, and a resume-time
  * query can briefly answer "no path" while the socket underneath is fine. The
- * supervisor no longer acts on "offline", but it does probe on "online", so
- * a flap is settled here before it can trigger a probe per bounce.
+ * supervisor probes live connections when the path looks lost, so a flap is
+ * settled here before it can trigger a probe per bounce.
  */
 const NETWORK_CHANGE_DEBOUNCE = "1 second";
 
@@ -69,14 +65,30 @@ const queryNetworkStatus = Effect.tryPromise({
 // used to install its own listener and its own resume-time path query, which
 // on iOS spins up a fresh path monitor per call on the busiest frame of the
 // resume.
-const connectivityLayer = Layer.effect(
-  Connectivity.Connectivity,
+class MobileNetworkState extends Context.Service<
+  MobileNetworkState,
+  {
+    readonly status: Effect.Effect<MobileNetworkStatus>;
+    readonly changes: Stream.Stream<MobileNetworkStatus>;
+    readonly pathChanges: Stream.Stream<"network-changed">;
+  }
+>()("@t3/mobile/MobileNetworkState") {}
+
+const layerNetworkState = Layer.effect(
+  MobileNetworkState,
   Effect.gen(function* () {
     const updates = yield* PubSub.unbounded<MobileNetworkStatus>();
+    const paths = yield* PubSub.unbounded<"network-changed">();
     let latest: MobileNetworkStatus | null = null;
+    let previousType: Network.NetworkStateType | undefined;
     const publish = (state: Network.NetworkState, source: string) => {
       const status = networkStatus(state);
       recordConnectionDiagnostic("network", `${status} type=${state.type ?? "?"} (${source})`);
+      const type = state.isConnected === true ? state.type : undefined;
+      if (previousType !== undefined && type !== undefined && type !== previousType) {
+        PubSub.publishUnsafe(paths, "network-changed");
+      }
+      previousType = type ?? previousType;
       latest = status;
       PubSub.publishUnsafe(updates, status);
     };
@@ -96,6 +108,11 @@ const connectivityLayer = Layer.effect(
             })
             .catch(() => undefined);
         });
+        void Network.getNetworkStateAsync()
+          .then((state) => {
+            if (active && latest === null) publish(state, "initial");
+          })
+          .catch(() => undefined);
         return () => {
           active = false;
           networkSubscription.remove();
@@ -104,16 +121,25 @@ const connectivityLayer = Layer.effect(
       }),
       (close) => Effect.sync(close),
     );
-    return Connectivity.Connectivity.of({
+    return MobileNetworkState.of({
       status: Effect.suspend(() => (latest === null ? queryNetworkStatus : Effect.succeed(latest))),
       changes: Stream.fromPubSub(updates).pipe(Stream.debounce(NETWORK_CHANGE_DEBOUNCE)),
+      pathChanges: Stream.fromPubSub(paths),
     });
   }),
 );
 
-const wakeupsLayer = Layer.effect(
+const layerConnectivity = Layer.effect(
+  Connectivity.Connectivity,
+  Effect.map(MobileNetworkState, ({ status, changes }) =>
+    Connectivity.Connectivity.of({ status, changes }),
+  ),
+).pipe(Layer.provide(layerNetworkState));
+
+const layerWakeups = Layer.effect(
   Wakeups.ConnectionWakeups,
   Effect.gen(function* () {
+    const network = yield* MobileNetworkState;
     const wakeups = yield* PubSub.unbounded<
       "application-active-probe" | "application-active-reconnect"
     >();
@@ -143,21 +169,21 @@ const wakeupsLayer = Layer.effect(
     );
     return Wakeups.ConnectionWakeups.of({
       changes: Stream.merge(
-        Stream.fromPubSub(wakeups),
+        Stream.merge(Stream.fromPubSub(wakeups), network.pathChanges),
         managedRelayAccountChanges(appAtomRegistry).pipe(
           Stream.map(() => "credentials-changed" as const),
         ),
       ),
     });
   }),
-);
+).pipe(Layer.provide(layerNetworkState));
 
-const capabilitiesLayer = Layer.effectContext(
+const layerCapabilities = Layer.effectContext(
   Effect.gen(function* () {
     const storage = yield* MobileStorage.MobileStorage;
     return Context.make(
-      CloudSession,
-      CloudSession.of({
+      ClientCapabilities.CloudSession,
+      ClientCapabilities.CloudSession.of({
         identity: Effect.sync(() =>
           Option.fromNullishOr(appAtomRegistry.get(managedRelaySessionAtom)),
         ),
@@ -189,12 +215,14 @@ const capabilitiesLayer = Layer.effectContext(
       }),
     ).pipe(
       Context.add(
-        PrimaryEnvironmentAuth,
-        PrimaryEnvironmentAuth.of({ bearerToken: Effect.succeed(Option.none()) }),
+        ClientCapabilities.PrimaryEnvironmentAuth,
+        ClientCapabilities.PrimaryEnvironmentAuth.of({
+          bearerToken: Effect.succeed(Option.none()),
+        }),
       ),
       Context.add(
-        RelayDeviceIdentity,
-        RelayDeviceIdentity.of({
+        ClientCapabilities.RelayDeviceIdentity,
+        ClientCapabilities.RelayDeviceIdentity.of({
           deviceId: storage.loadOrCreateAgentAwarenessDeviceId.pipe(
             Effect.mapError(
               (cause) =>
@@ -208,15 +236,14 @@ const capabilitiesLayer = Layer.effectContext(
         }),
       ),
       Context.add(
-        ClientPresentation,
-        ClientPresentation.of({
+        ClientCapabilities.ClientPresentation,
+        ClientCapabilities.ClientPresentation.of({
           metadata: authClientMetadata(Constants.expoConfig?.version),
-          scopes: AuthStandardClientScopes,
         }),
       ),
       Context.add(
-        SshEnvironmentGateway,
-        SshEnvironmentGateway.of({
+        ClientCapabilities.SshEnvironmentGateway,
+        ClientCapabilities.SshEnvironmentGateway.of({
           provision: () =>
             Effect.fail(
               new ConnectionBlockedError({
@@ -238,28 +265,25 @@ const capabilitiesLayer = Layer.effectContext(
   }),
 );
 
-const platformConnectionSourceLayer = Layer.succeed(
-  PlatformConnectionSource,
-  PlatformConnectionSource.of({
+const layerPlatformConnectionSource = Layer.succeed(
+  PlatformConnectionSource.PlatformConnectionSource,
+  PlatformConnectionSource.PlatformConnectionSource.of({
     registrations: Stream.empty,
   }),
 );
 
-const providedConnectionStorageLayer = connectionStorageLayer.pipe(
-  Layer.provide(Runtime.runtimeContextLayer),
-);
-const providedCapabilitiesLayer = capabilitiesLayer.pipe(
-  Layer.provide(Runtime.runtimeContextLayer),
-);
+const layerProvidedConnectionStorage = ConnectionStorage.layer.pipe(Layer.provide(Runtime.layer));
+const layerProvidedCapabilities = layerCapabilities.pipe(Layer.provide(Runtime.layer));
 
-const environmentOwnedDataCleanupLayer = Layer.succeed(
-  EnvironmentOwnedDataCleanup,
-  EnvironmentOwnedDataCleanup.of({
+const layerEnvironmentOwnedDataCleanup = Layer.succeed(
+  Persistence.EnvironmentOwnedDataCleanup,
+  Persistence.EnvironmentOwnedDataCleanup.of({
     clear: (environmentId) =>
       Effect.all(
         [
           Effect.promise(() => clearThreadOutboxEnvironment(environmentId)),
           Effect.promise(() => clearComposerDraftsEnvironment(environmentId)),
+          Effect.sync(() => clearThreadComposerErrorsForEnvironment(environmentId)),
         ],
         { concurrency: "unbounded", discard: true },
       ).pipe(
@@ -274,24 +298,24 @@ const environmentOwnedDataCleanupLayer = Layer.succeed(
 );
 
 type ConnectionPlatformLayerSource =
-  | typeof providedConnectionStorageLayer
-  | typeof Runtime.runtimeContextLayer
-  | typeof connectivityLayer
-  | typeof wakeupsLayer
-  | typeof providedCapabilitiesLayer
-  | typeof platformConnectionSourceLayer
-  | typeof environmentOwnedDataCleanupLayer;
+  | typeof layerProvidedConnectionStorage
+  | typeof Runtime.layer
+  | typeof layerConnectivity
+  | typeof layerWakeups
+  | typeof layerProvidedCapabilities
+  | typeof layerPlatformConnectionSource
+  | typeof layerEnvironmentOwnedDataCleanup;
 
-export const connectionPlatformLayer: Layer.Layer<
+export const layer: Layer.Layer<
   Layer.Success<ConnectionPlatformLayerSource>,
   Layer.Error<ConnectionPlatformLayerSource>,
   Layer.Services<ConnectionPlatformLayerSource>
 > = Layer.mergeAll(
-  providedConnectionStorageLayer,
-  Runtime.runtimeContextLayer,
-  connectivityLayer,
-  wakeupsLayer,
-  providedCapabilitiesLayer,
-  platformConnectionSourceLayer,
-  environmentOwnedDataCleanupLayer,
+  layerProvidedConnectionStorage,
+  Runtime.layer,
+  layerConnectivity,
+  layerWakeups,
+  layerProvidedCapabilities,
+  layerPlatformConnectionSource,
+  layerEnvironmentOwnedDataCleanup,
 );

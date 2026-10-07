@@ -21,11 +21,11 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 
 import { makeCliLoginAuth, runCliInvocation, type CliInvocation } from "../CliLoginAuth.ts";
 import { stripAnsi } from "../cliLoginOutput.ts";
-import type { ProviderAuthController } from "../Services/ProviderAuthService.ts";
+import type { ProviderAuthController } from "../ProviderAuthService.ts";
 import { makeClaudeEnvironment } from "./ClaudeHome.ts";
 
 /** Hosts Anthropic serves the Claude Code sign-in page from. */

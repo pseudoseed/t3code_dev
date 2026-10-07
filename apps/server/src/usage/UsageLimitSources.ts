@@ -37,7 +37,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
-import { ServerSettingsService } from "../serverSettings.ts";
+import * as Settings from "../serverSettings.ts";
 import { makeAiUsageApi } from "./aiUsageApi.ts";
 import { makeCliproxyApi } from "./cliproxyApi.ts";
 
@@ -94,7 +94,7 @@ export const make = Effect.gen(function* () {
   // Each source kind speaks its own protocol behind one readAccounts/consume pair.
   const apiFor = (config: UsageLimitSourceConfig) =>
     config.kind === "aiusage" ? aiUsage : cliproxy;
-  const settingsService = yield* ServerSettingsService;
+  const settingsService = yield* Settings.ServerSettingsService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
   const stateRef = yield* Ref.make<ReadonlyArray<UsageLimitSourceSnapshot>>([]);
   const changes = yield* Effect.acquireRelease(

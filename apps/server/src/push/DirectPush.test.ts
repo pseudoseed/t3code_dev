@@ -1,5 +1,5 @@
 import { it, expect } from "@effect/vitest";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema, DateTime } from "effect";
 import { TestClock } from "effect/testing";
 import {
   AuthSessionId,
@@ -7,10 +7,11 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
-  TurnId,
+  RunId,
+  RuntimeRequestId,
   AuthOrchestrationReadScope,
   type DirectPushRegistration,
-  type OrchestrationThreadShell,
+  type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import { ActivitySummaries } from "../pseudocode/ActivitySummaries.ts";
 import { DirectPush, make } from "./DirectPush.ts";
@@ -18,8 +19,8 @@ import { ApnsTransport, type ApnsRequest, type ApnsResult } from "./ApnsTranspor
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { AuthSessionRecord, AuthSessionRepository } from "../persistence/AuthSessions.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import { ProjectService } from "../project/ProjectService.ts";
 import { aggregateActivity, liveActivityPayload } from "./payloads.ts";
 
 const sessionId = AuthSessionId.make("session");
@@ -57,7 +58,7 @@ const activeSession = Schema.decodeUnknownSync(AuthSessionRecord)({
 });
 
 function harness() {
-  let thread: OrchestrationThreadShell = {
+  let thread: OrchestrationV2ThreadShell = {
     id: threadId,
     projectId,
     title: "Fix notifications",
@@ -67,24 +68,28 @@ function harness() {
     interactionMode: "default",
     branch: null,
     worktreePath: null,
-    latestTurn: null,
-    createdAt: now,
-    updatedAt: now,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    createdBy: "user",
+    creationSource: "web",
+    activeProviderThreadId: null,
+    lineage: { rootThreadId: threadId, parentThreadId: null, relationshipToParent: null },
+    forkedFrom: null,
+    activeRunId: null,
+    latestRunId: RunId.make("run"),
+    latestVisibleMessage: null,
+    itemCount: 0,
+    visibleItemCount: 0,
+    lastVisitedAt: null,
+    deletedAt: null,
+    status: "running",
+    pendingRuntimeRequest: null,
+    latestRunStartedAt: DateTime.makeUnsafe(now),
+    createdAt: DateTime.makeUnsafe(now),
+    updatedAt: DateTime.makeUnsafe(now),
     archivedAt: null,
     settledOverride: null,
     settledAt: null,
-    session: {
-      threadId,
-      status: "running",
-      providerName: "Codex",
-      runtimeMode: "full-access",
-      activeTurnId: null,
-      lastError: null,
-      updatedAt: now,
-    },
-    latestUserMessageAt: now,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
+    latestUserMessageAt: DateTime.makeUnsafe(now),
     hasActionableProposedPlan: false,
   };
   const project = {
@@ -96,6 +101,7 @@ function harness() {
     scripts: [],
     createdAt: now,
     updatedAt: now,
+    deletedAt: null,
   };
   const requests: ApnsRequest[] = [];
   let result: ApnsResult = { status: 200 };
@@ -127,21 +133,26 @@ function harness() {
           getById: () => Effect.sync(() => (revoked ? Option.none() : Option.some(activeSession))),
         }),
         Layer.mock(ServerEnvironment)({ getEnvironmentId: Effect.succeed(environmentId) }),
-        Layer.mock(OrchestrationEngineService)({}),
-        Layer.mock(ProjectionSnapshotQuery)({
+        Layer.mock(ThreadManagementService)({
           getShellSnapshot: () =>
             Effect.succeed({
+              schemaVersion: 1,
               snapshotSequence: 0,
-              projects: [project],
+              archivedThreads: [],
               threads: [thread],
-              updatedAt: now,
             }),
-          getThreadShellById: () => Effect.sync(() => Option.some(thread)),
-          getProjectShellById: () => Effect.succeed(Option.some(project)),
+          getThreadShell: () => Effect.sync(() => thread),
+        }),
+        Layer.mock(ProjectService)({
+          snapshot: Effect.succeed({ projects: [project], updatedAt: now }),
+          getById: () => Effect.succeed(Option.some(project)),
         }),
       ),
     ),
   );
+  let pendingInput: OrchestrationV2ThreadShell["pendingRuntimeRequest"] = null;
+  let pendingApproval: OrchestrationV2ThreadShell["pendingRuntimeRequest"] = null;
+  let requestNumber = 0;
   return {
     layer,
     requests,
@@ -149,8 +160,27 @@ function harness() {
     summarize: (value: string) => {
       summary = value;
     },
-    change: (patch: Partial<OrchestrationThreadShell>) => {
-      thread = { ...thread, ...patch };
+    change: (
+      patch: Partial<OrchestrationV2ThreadShell> & { input?: boolean; approval?: boolean },
+    ) => {
+      const { input, approval, ...fields } = patch;
+      if (input !== undefined)
+        pendingInput = input
+          ? (pendingInput ?? {
+              id: RuntimeRequestId.make(`input:${++requestNumber}`),
+              kind: "user_input",
+              createdAt: DateTime.makeUnsafe(now),
+            })
+          : null;
+      if (approval !== undefined)
+        pendingApproval = approval
+          ? (pendingApproval ?? {
+              id: RuntimeRequestId.make(`approval:${++requestNumber}`),
+              kind: "command",
+              createdAt: DateTime.makeUnsafe(now),
+            })
+          : null;
+      thread = { ...thread, ...fields, pendingRuntimeRequest: pendingApproval ?? pendingInput };
     },
     revoke: () => {
       revoked = true;
@@ -169,15 +199,18 @@ it.effect(
       const push = yield* DirectPush;
       expect((yield* push.register(sessionId, registration)).registered).toBe(true);
       expect(h.requests.some((request) => request.kind === "alert")).toBe(false);
-      h.change({ hasPendingUserInput: true });
+      h.change({ input: true });
       yield* push.publishThread(threadId);
       yield* push.publishThread(threadId);
-      h.change({ title: "Renamed thread", updatedAt: "2026-09-06T12:01:00.000Z" });
+      h.change({
+        title: "Renamed thread",
+        updatedAt: DateTime.makeUnsafe("2026-09-06T12:01:00.000Z"),
+      });
       yield* push.publishThread(threadId);
       expect(h.requests.filter((request) => request.kind === "alert")).toHaveLength(1);
-      h.change({ hasPendingUserInput: false });
+      h.change({ input: false });
       yield* push.publishThread(threadId);
-      h.change({ hasPendingUserInput: true });
+      h.change({ input: true });
       yield* push.publishThread(threadId);
       expect(h.requests.filter((request) => request.kind === "alert")).toHaveLength(2);
       const alert = h.requests.find((request) => request.kind === "alert")!;
@@ -198,7 +231,7 @@ it.effect("does not send to revoked sessions and removes their persisted registr
     yield* push.register(sessionId, registration);
     h.requests.length = 0;
     h.revoke();
-    h.change({ hasPendingApprovals: true });
+    h.change({ approval: true });
     yield* push.publishThread(threadId);
     expect(h.requests).toEqual([]);
     expect((yield* push.status(sessionId)).registered).toBe(false);
@@ -210,11 +243,11 @@ it.effect("does not replay an input alert when an overlapping approval resolves"
   return Effect.gen(function* () {
     const push = yield* DirectPush;
     yield* push.register(sessionId, registration);
-    h.change({ hasPendingUserInput: true });
+    h.change({ input: true });
     yield* push.publishThread(threadId);
-    h.change({ hasPendingApprovals: true });
+    h.change({ approval: true });
     yield* push.publishThread(threadId);
-    h.change({ hasPendingApprovals: false });
+    h.change({ approval: false });
     yield* push.publishThread(threadId);
     expect(h.requests.filter((request) => request.kind === "alert")).toHaveLength(2);
   }).pipe(Effect.provide(h.layer));
@@ -251,7 +284,7 @@ it.effect("clears invalid tokens without retrying permanent APNs rejections", ()
     yield* push.register(sessionId, registration);
     expect(h.requests).toHaveLength(2);
     h.requests.length = 0;
-    h.change({ hasPendingUserInput: true });
+    h.change({ input: true });
     yield* push.publishThread(threadId);
     expect(h.requests).toEqual([]);
   }).pipe(Effect.provide(h.layer));
@@ -313,15 +346,8 @@ it.effect("sends the final summary after the live activity has ended", () => {
     const push = yield* DirectPush;
     yield* push.register(sessionId, registration);
     h.change({
-      session: null,
-      latestTurn: {
-        turnId: TurnId.make("finished"),
-        state: "completed",
-        requestedAt: now,
-        startedAt: now,
-        completedAt: now,
-        assistantMessageId: null,
-      },
+      status: "completed",
+      latestRunCompletedAt: DateTime.makeUnsafe(now),
     });
     yield* push.publishThread(threadId);
     h.requests.length = 0;
@@ -354,7 +380,11 @@ it.effect("heartbeats the widget while an agent is active and stays quiet when i
     expect(h.requests.find((request) => request.kind === "liveactivity")?.payload).toMatchObject({
       aps: { event: "update" },
     });
-    h.change({ session: null, latestTurn: null, updatedAt: "2026-09-06T12:10:00.000Z" });
+    h.change({
+      status: "idle",
+      latestRunId: null,
+      updatedAt: DateTime.makeUnsafe("2026-09-06T12:10:00.000Z"),
+    });
     yield* push.publishThread(threadId);
     h.requests.length = 0;
     yield* TestClock.adjust("10 minutes");

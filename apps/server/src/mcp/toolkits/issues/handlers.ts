@@ -9,16 +9,18 @@ import { IssueOperationError, IssueUnavailableError, type ProjectId } from "@t3t
 import * as Effect from "effect/Effect";
 
 import * as IssueService from "../../../issue/IssueService.ts";
-import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { IssueToolkit } from "./tools.ts";
 
 const DEFAULT_LIST_LIMIT = 30;
 
-export const IssueToolkitHandlersLive = IssueToolkit.toLayer(
+export const IssueToolkitHandlersLive = McpToolAccess.toLayer(
+  IssueToolkit,
   Effect.gen(function* () {
     const issues = yield* IssueService.IssueService;
-    const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
 
     /**
      * The project the calling agent is working in.
@@ -35,17 +37,17 @@ export const IssueToolkitHandlersLive = IssueToolkit.toLayer(
           detail: "This agent session may not read issues.",
         });
       }
-      const snapshot = yield* projections.getShellSnapshot().pipe(
+      const scope = yield* McpInvocationContext.requireThreadScope(invocation, "Issue tools");
+      const thread = yield* threads.getThreadShell(scope.thread.threadId).pipe(
         Effect.mapError(
           () =>
             new IssueOperationError({
               operation: "resolveThread",
-              detail: "The thread list could not be read.",
+              detail: "The thread could not be read.",
             }),
         ),
       );
-      const thread = snapshot.threads.find((candidate) => candidate.id === invocation.threadId);
-      if (thread === undefined) {
+      if (thread === null || thread.deletedAt !== null) {
         return yield* new IssueOperationError({
           operation: "resolveThread",
           detail: "This agent's thread could not be found.",
@@ -55,44 +57,54 @@ export const IssueToolkitHandlersLive = IssueToolkit.toLayer(
     });
 
     return {
-      issue_list: Effect.fn("mcp.issues.list")(function* (input) {
-        const projectId = yield* currentProject();
-        const result = yield* issues.list({
-          projectId,
-          state: input.state ?? "open",
-          ...(input.query === undefined || input.query.trim().length === 0
-            ? {}
-            : { query: input.query.trim() }),
-          limit: input.limit ?? DEFAULT_LIST_LIMIT,
-        });
-        return { issues: result.entries, truncated: result.truncated };
-      }),
+      issue_list: McpToolAccess.readsAsCaller(
+        Effect.fn("mcp.issues.list")(function* (input) {
+          const projectId = yield* currentProject();
+          const result = yield* issues.list({
+            projectId,
+            state: input.state ?? "open",
+            ...(input.query === undefined || input.query.trim().length === 0
+              ? {}
+              : { query: input.query.trim() }),
+            limit: input.limit ?? DEFAULT_LIST_LIMIT,
+          });
+          return { issues: result.entries, truncated: result.truncated };
+        }),
+      ),
 
-      issue_read: Effect.fn("mcp.issues.read")(function* (input) {
-        const projectId = yield* currentProject();
-        // No repository: the project's own is authoritative, so it is not something an agent
-        // could name wrongly.
-        return yield* issues.detail({ projectId, number: input.number });
-      }),
+      issue_read: McpToolAccess.readsAsCaller(
+        Effect.fn("mcp.issues.read")(function* (input) {
+          const projectId = yield* currentProject();
+          // No repository: the project's own is authoritative, so it is not something an agent
+          // could name wrongly.
+          return yield* issues.detail({ projectId, number: input.number });
+        }),
+      ),
 
-      issue_comment: Effect.fn("mcp.issues.comment")(function* (input) {
-        const projectId = yield* currentProject();
-        yield* issues.comment({ projectId, number: input.number, body: input.body });
-      }),
+      issue_comment: McpToolAccess.actsAsCaller(
+        Effect.fn("mcp.issues.comment")(function* (input) {
+          const projectId = yield* currentProject();
+          yield* issues.comment({ projectId, number: input.number, body: input.body });
+        }),
+      ),
 
-      issue_create: Effect.fn("mcp.issues.create")(function* (input) {
-        const projectId = yield* currentProject();
-        return yield* issues.create({
-          projectId,
-          title: input.title,
-          ...(input.body === undefined ? {} : { body: input.body }),
-        });
-      }),
+      issue_create: McpToolAccess.actsAsCaller(
+        Effect.fn("mcp.issues.create")(function* (input) {
+          const projectId = yield* currentProject();
+          return yield* issues.create({
+            projectId,
+            title: input.title,
+            ...(input.body === undefined ? {} : { body: input.body }),
+          });
+        }),
+      ),
 
-      issue_set_state: Effect.fn("mcp.issues.setState")(function* (input) {
-        const projectId = yield* currentProject();
-        yield* issues.setState({ projectId, number: input.number, state: input.state });
-      }),
+      issue_set_state: McpToolAccess.actsAsCaller(
+        Effect.fn("mcp.issues.setState")(function* (input) {
+          const projectId = yield* currentProject();
+          yield* issues.setState({ projectId, number: input.number, state: input.state });
+        }),
+      ),
     };
   }),
 );

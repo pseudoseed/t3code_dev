@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { Atom, AsyncResult } from "effect/unstable/reactivity";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
@@ -46,9 +46,9 @@ function Coordinator() {
       thread.archivedAt,
       thread.hasPendingApprovals,
       thread.hasPendingUserInput,
-      thread.session?.status,
-      thread.session?.activeTurnId,
-      thread.latestTurn?.state,
+      thread.runtime?.status,
+      thread.runtime?.activeRunId,
+      thread.latestRun?.status,
       thread.title,
     ]),
   );

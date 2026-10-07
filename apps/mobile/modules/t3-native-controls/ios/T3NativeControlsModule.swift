@@ -16,6 +16,16 @@ public final class T3NativeControlsModule: Module {
     Function("projectIconPng") { (image: SharedRef<UIImage>, maximumSize: Int) -> String? in
       Self.projectIconPng(image.ref, maximumSize: maximumSize)
     }
+    Constants {
+      if #available(iOS 26.0, *) {
+        return ["supportsWorkspaceColumns": NSClassFromString("RNSSplitHostComponentView") != nil]
+      }
+      return ["supportsWorkspaceColumns": false]
+    }
+    View(T3LayoutMetricsView.self) {
+      ViewName("LayoutMetrics")
+      Events("onMetricsChange")
+    }
 
     AsyncFunction("presentVideo") { (url: URL, title: String, sourceIdentifier: String, identifier: String, promise: Promise) in
       try self.presentVideo(

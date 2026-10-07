@@ -6,7 +6,7 @@ import * as Layer from "effect/Layer";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { describe, expect } from "vite-plus/test";
 
 import * as RemoteOpenTargets from "./RemoteOpenTargets.ts";
@@ -18,7 +18,7 @@ const TAILSCALE_STATUS_JSON = JSON.stringify({
 });
 
 /** Spawner whose `tailscale status --json` exits with the given output. */
-const spawnerLayer = (input: { readonly exitCode: number; readonly stdout: string }) =>
+const layerSpawner = (input: { readonly exitCode: number; readonly stdout: string }) =>
   Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
     ChildProcessSpawner.make(() =>
@@ -40,7 +40,7 @@ const spawnerLayer = (input: { readonly exitCode: number; readonly stdout: strin
     ),
   );
 
-const netLayer = (input: { readonly ipv4: boolean; readonly ipv6: boolean }) =>
+const layerNet = (input: { readonly ipv4: boolean; readonly ipv6: boolean }) =>
   Layer.succeed(NetService.NetService, {
     canListenOnHost: () => Effect.succeed(true),
     isPortAvailableOnLoopback: () => Effect.succeed(true),
@@ -58,7 +58,7 @@ const resolveTargets = (input: {
     Effect.provideService(HostProcessHostname, input.hostname),
     Effect.provide(
       RemoteOpenTargets.layer.pipe(
-        Layer.provide(Layer.mergeAll(netLayer(input.sshd), spawnerLayer(input.tailscale))),
+        Layer.provide(Layer.mergeAll(layerNet(input.sshd), layerSpawner(input.tailscale))),
       ),
     ),
   );
@@ -171,7 +171,7 @@ describe("RemoteOpenTargets cache", () => {
         Layer.merge(
           RemoteOpenTargets.layer.pipe(
             Layer.provide(
-              Layer.mergeAll(netLayer({ ipv4: true, ipv6: true }), countingSpawnerLayer(spawns)),
+              Layer.mergeAll(layerNet({ ipv4: true, ipv6: true }), countingSpawnerLayer(spawns)),
             ),
           ),
           TestClock.layer(),

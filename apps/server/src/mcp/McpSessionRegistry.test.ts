@@ -2,8 +2,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import { HttpServer } from "effect/unstable/http";
-import * as NetAddress from "effect/unstable/net/NetAddress";
+import { HttpServer } from "effect/http";
+import * as NetAddress from "effect/net/NetAddress";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as McpProviderSession from "./McpProviderSession.ts";
@@ -47,7 +47,7 @@ it.effect("a mailbox-only credential authenticates but cannot authorize preview 
     );
     expect(scope?.capabilities.has("mailbox")).toBe(true);
     expect(scope?.capabilities.has("preview")).toBe(false);
-    expect(issued.config.previewEnabled).toBe(false);
+    expect(issued.config.browserToolsAvailable).toBe(false);
   }),
 );
 
@@ -66,7 +66,10 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
     expect(token.length).toBeGreaterThan(20);
 
     const resolved = yield* registry.resolve(token);
-    expect(resolved?.threadId).toBe(threadId);
+    expect(resolved?.thread.threadId).toBe(threadId);
+    expect(resolved?.capabilities).toEqual(
+      new Set(["preview", "orchestration", "worktree", "pull-requests", "issues", "mailbox"]),
+    );
 
     yield* registry.revokeThread(threadId);
     expect(yield* registry.resolve(token)).toBeUndefined();
@@ -101,15 +104,25 @@ it.effect("always grants pull-requests and gates browser and device access indep
     expect(yield* capabilitiesOf(withPreview)).toEqual([
       "issues",
       "mailbox",
+      "orchestration",
       "preview",
       "pull-requests",
+      "worktree",
     ]);
-    expect(yield* capabilitiesOf(withoutPreview)).toEqual(["issues", "mailbox", "pull-requests"]);
+    expect(yield* capabilitiesOf(withoutPreview)).toEqual([
+      "issues",
+      "mailbox",
+      "orchestration",
+      "pull-requests",
+      "worktree",
+    ]);
     expect(yield* capabilitiesOf(withDevice)).toEqual([
       "device",
       "issues",
       "mailbox",
+      "orchestration",
       "pull-requests",
+      "worktree",
     ]);
   }),
 );
@@ -170,7 +183,7 @@ it.effect("keeps a credential alive across turns that never touch an MCP tool", 
       yield* registry.touch(threadId);
     }
 
-    expect((yield* registry.resolve(token))?.threadId).toBe(threadId);
+    expect((yield* registry.resolve(token))?.thread.threadId).toBe(threadId);
   }),
 );
 
@@ -233,7 +246,7 @@ it.effect(
 
       yield* registry.touch(threadId);
       const renewed = yield* registry.resolve(token);
-      expect(renewed?.providerSessionId).toBe(issued.config.providerSessionId);
+      expect(renewed?.thread.providerSessionId).toBe(issued.config.providerSessionId);
       expect(renewed?.capabilities.has("mailbox")).toBe(true);
       yield* registry.touch(ThreadId.make("abandoned-provider-thread"));
       expect(yield* registry.resolve(abandonedToken)).toBeUndefined();

@@ -23,7 +23,7 @@ import {
   type SourceControlProviderKind,
 } from "@t3tools/contracts";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProjectService } from "../project/ProjectService.ts";
 import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { IssueProviderRegistry } from "./IssueProviderRegistry.ts";
@@ -78,7 +78,7 @@ export class IssueService extends Context.Service<
 
 const make = Effect.gen(function* () {
   const registry = yield* IssueProviderRegistry;
-  const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const projections = yield* ProjectService;
   const sourceControlProviders = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
 
   const toError = (error: IssueProviderError): IssueError =>
@@ -102,7 +102,7 @@ const make = Effect.gen(function* () {
    * it is signed in to — the step that makes a self-hosted Forgejo work at all.
    */
   const resolveProject = (projectId: ProjectId): Effect.Effect<ResolvedProject, IssueError> =>
-    projections.getShellSnapshot().pipe(
+    projections.listShells().pipe(
       Effect.mapError(
         () =>
           new IssueOperationError({
@@ -111,7 +111,7 @@ const make = Effect.gen(function* () {
           }),
       ),
       Effect.flatMap((snapshot) => {
-        const project = snapshot.projects.find((candidate) => candidate.id === projectId);
+        const project = snapshot.find((candidate) => candidate.id === projectId);
         const identity = project?.repositoryIdentity;
         const repository =
           project === undefined
@@ -182,7 +182,7 @@ const make = Effect.gen(function* () {
     list: (input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
-          resolved.api.getViewer({ cwd: resolved.cwd }).pipe(
+          resolved.api.getViewer({ cwd: resolved.cwd, host: resolved.host }).pipe(
             // Involvement narrowing wants a name; without one the listing is not narrowed.
             Effect.orElseSucceed(() => ""),
             Effect.flatMap((viewer) =>

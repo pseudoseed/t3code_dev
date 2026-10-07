@@ -1,3 +1,4 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- ES256 signing and P-256 key fixtures need Node crypto; Effect Crypto has no signing API.
 import * as NodeCrypto from "node:crypto";
 import * as NodeHttp2 from "node:http2";
 import { Context, DateTime, Effect, FileSystem, Layer, Path, Schema } from "effect";

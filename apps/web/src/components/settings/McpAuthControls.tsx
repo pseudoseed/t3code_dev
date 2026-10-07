@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, McpAuthInput } from "@t3tools/contracts";
 import {
   squashAtomCommandFailure,
@@ -22,6 +23,7 @@ export function McpAuthControls({
   input: McpAuthInput;
   onChanged: () => void;
 }) {
+  const canWrite = useAtomValue(mcpEnvironment.authStart.permissionAtom(environmentId));
   const callbackId = useId();
   const target = { environmentId, input };
   const query = useEnvironmentQuery(mcpEnvironment.authSubscribe(target));
@@ -44,7 +46,7 @@ export function McpAuthControls({
   }, [auth?.phase, onChanged]);
 
   async function run<A, E>(operation: () => Promise<AtomCommandResult<A, E>>) {
-    if (pending.current) return;
+    if (pending.current || !canWrite) return;
     pending.current = true;
     setBusy(true);
     setError(null);
@@ -120,7 +122,7 @@ export function McpAuthControls({
                 }
                 placeholder="http://localhost:…"
               />
-              <Button size="sm" type="submit" disabled={busy || !callbackUrl.trim()}>
+              <Button size="sm" type="submit" disabled={!canWrite || busy || !callbackUrl.trim()}>
                 Complete sign-in
               </Button>
             </form>
@@ -133,7 +135,7 @@ export function McpAuthControls({
             <Button
               size="sm"
               variant="outline"
-              disabled={busy}
+              disabled={!canWrite || busy}
               onClick={() =>
                 void run(() => cancel({ environmentId, input: { ...input, flowId: auth.flowId! } }))
               }
@@ -145,7 +147,7 @@ export function McpAuthControls({
           <>
             <Button
               size="sm"
-              disabled={busy || !auth}
+              disabled={!canWrite || busy || !auth}
               onClick={() => void run(() => start(target))}
             >
               Sign in
@@ -153,7 +155,7 @@ export function McpAuthControls({
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !auth}
+              disabled={!canWrite || busy || !auth}
               onClick={() => void run(() => logout(target))}
             >
               Sign out

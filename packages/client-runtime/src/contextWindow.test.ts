@@ -1,55 +1,49 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EventId, type OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 import {
   deriveLatestContextWindowSnapshot,
+  deriveThreadCostSnapshot,
   formatContextWindowPercentage,
   formatThreadCostUsd,
 } from "./contextWindow.ts";
 
-function makeActivity(id: string, payload: unknown): OrchestrationThreadActivity {
-  return {
-    id: EventId.make(id),
-    tone: "info",
-    kind: "context-window.updated",
-    summary: "Context window updated",
-    payload,
-    turnId: TurnId.make("turn-1"),
-    createdAt: "2026-09-07T00:00:00.000Z",
-  };
-}
+const updatedAt = DateTime.makeUnsafe("2026-09-07T00:00:00.000Z");
 
 describe("deriveLatestContextWindowSnapshot cost", () => {
-  it("carries the running cost the server stamped", () => {
-    const snapshot = deriveLatestContextWindowSnapshot([
-      makeActivity("activity-1", {
+  it("carries accumulated thread cost alongside live context usage", () => {
+    const snapshot = deriveLatestContextWindowSnapshot(
+      [],
+      {
         usedTokens: 79_062,
         maxTokens: 1_000_000,
-        costUsd: 1.2345,
-        costSource: "providerReported",
-      }),
-    ]);
-
-    expect(snapshot?.costUsd).toBe(1.2345);
-    expect(snapshot?.costSource).toBe("providerReported");
+        updatedAt: DateTime.formatIso(updatedAt),
+      },
+      {
+        contextUsage: { usedTokens: 10, costUsd: 1.2345, costSource: "providerReported" },
+        updatedAt,
+      },
+    );
+    expect(snapshot).toMatchObject({
+      usedTokens: 79_062,
+      costUsd: 1.2345,
+      costSource: "providerReported",
+    });
   });
 
-  it("treats a zero or malformed cost as unknown rather than free", () => {
-    const snapshot = deriveLatestContextWindowSnapshot([
-      makeActivity("activity-1", { usedTokens: 100, costUsd: 0, costSource: "guessed" }),
-    ]);
-
+  it("treats a zero cost as unknown rather than free", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([], undefined, {
+      contextUsage: { usedTokens: 100, costUsd: 0 },
+      updatedAt,
+    });
     expect(snapshot?.costUsd).toBeNull();
-    expect(snapshot?.costSource).toBeNull();
   });
 
-  it("never reports a provider's session total as the thread total", () => {
-    // A thread outlives its provider sessions, so only the figure the server
-    // accumulated across them is displayable.
-    const snapshot = deriveLatestContextWindowSnapshot([
-      makeActivity("activity-1", { usedTokens: 100, sessionCostUsd: 9.99 }),
-    ]);
-
+  it("never reports a provider session total as the thread total", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([], undefined, {
+      contextUsage: { usedTokens: 100, sessionCostUsd: 9.99 },
+      updatedAt,
+    });
     expect(snapshot?.sessionCostUsd).toBeNull();
     expect(snapshot?.costUsd).toBeNull();
   });
@@ -83,5 +77,21 @@ describe("formatThreadCostUsd", () => {
   it("has nothing to print when no cost is known", () => {
     expect(formatThreadCostUsd(null)).toBeNull();
     expect(formatThreadCostUsd(0)).toBeNull();
+  });
+});
+
+describe("whole-thread cost across providers", () => {
+  it("adds the imported baseline once and includes inactive providers", () => {
+    expect(
+      deriveThreadCostSnapshot({ usedTokens: 0, costUsd: 3, costSource: "providerReported" }, [
+        { contextUsage: { usedTokens: 100, costUsd: 2, costSource: "providerReported" } },
+        { contextUsage: { usedTokens: 200, costUsd: 1, costSource: "modelPriced" } },
+      ]),
+    ).toEqual({ costUsd: 6, costSource: "modelPriced" });
+  });
+  it("keeps unknown or invalid costs out of the total", () => {
+    expect(
+      deriveThreadCostSnapshot(null, [{ contextUsage: { usedTokens: 0, costUsd: NaN } }]),
+    ).toEqual({ costUsd: null, costSource: null });
   });
 });

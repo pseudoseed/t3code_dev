@@ -17,9 +17,9 @@ type ThreadStatusInput = Pick<
   | "hasPendingUserInput"
   | "hasActionableProposedPlan"
   | "interactionMode"
-  | "latestTurn"
-  | "session"
-  | "backgroundLiveness"
+  | "latestRun"
+  | "runtime"
+  | "pendingBackgroundTasks"
 >;
 
 /** Derived from live shells, so a peer's status updates without refetching mailbox history. */
@@ -28,24 +28,26 @@ export function getMailboxThreadStatus(thread: ThreadStatusInput | undefined): M
   if (thread.archivedAt !== null) return { label: "Archived", tone: "neutral" };
   if (thread.hasPendingApprovals) return { label: "Needs approval", tone: "warning" };
   if (thread.hasPendingUserInput) return { label: "Awaiting input", tone: "warning" };
-  if (thread.session?.status === "error") return { label: "Failed", tone: "error" };
-  if (thread.session?.status === "running") return { label: "Working", tone: "info" };
-  if (thread.session?.status === "starting") return { label: "Starting", tone: "info" };
-  if (thread.latestTurn?.state === "error") return { label: "Failed", tone: "error" };
+  if (thread.runtime?.status === "failed") return { label: "Failed", tone: "error" };
+  if (thread.runtime?.status === "running") return { label: "Working", tone: "info" };
+  if (thread.runtime?.status === "starting") return { label: "Starting", tone: "info" };
+  if (thread.latestRun?.status === "failed") return { label: "Failed", tone: "error" };
   if (
     thread.interactionMode === "plan" &&
     thread.hasActionableProposedPlan &&
-    thread.latestTurn?.state === "completed"
+    thread.latestRun?.status === "completed"
   ) {
     return { label: "Plan ready", tone: "warning" };
   }
-  if (thread.backgroundLiveness === "working") return { label: "Working", tone: "info" };
-  if (thread.backgroundLiveness === "monitoring") return { label: "Monitoring", tone: "info" };
+  if (thread.pendingBackgroundTasks.some((task) => task.kind !== "monitor"))
+    return { label: "Working", tone: "info" };
+  if (thread.pendingBackgroundTasks.some((task) => task.kind === "monitor"))
+    return { label: "Monitoring", tone: "info" };
   if (thread.settledOverride === "settled") return { label: "Settled", tone: "neutral" };
   if (
-    thread.session?.status === "stopped" ||
-    thread.session?.status === "interrupted" ||
-    thread.latestTurn?.state === "interrupted"
+    thread.runtime?.status === "cancelled" ||
+    thread.runtime?.status === "interrupted" ||
+    thread.latestRun?.status === "interrupted"
   ) {
     return { label: "Stopped", tone: "neutral" };
   }
