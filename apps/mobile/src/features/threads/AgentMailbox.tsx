@@ -1,4 +1,15 @@
 import { getMailboxThreadCandidates } from "@t3tools/client-runtime/state/mailbox-candidates";
+import { formatMailboxConversationExport } from "@t3tools/client-runtime/state/mailbox-export";
+import {
+  formatMailboxTime,
+  getMailboxConversationMessages,
+  getMailboxThreadStatus,
+  mailboxMessageStatus,
+  mailboxTurnStatus,
+  type MailboxStatus,
+  type MailboxStatusTone,
+} from "@t3tools/client-runtime/state/mailbox-presentation";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   CommandId,
   type EnvironmentId,
@@ -8,15 +19,76 @@ import {
 } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { CommonActions, useNavigation } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Modal, Pressable, ScrollView, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { withUniwind } from "uniwind";
 import * as Crypto from "expo-crypto";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text, AppTextInput } from "../../components/AppText";
+import { ThemedSwitch } from "../../components/ThemedSwitch";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { mailboxEnvironment } from "../../state/mailbox";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { shareGeneratedTextFile } from "../../lib/attachmentDownload";
+
+const ThemedSafeAreaView = withUniwind(SafeAreaView);
+const statusClasses: Record<MailboxStatusTone, { container: string; text: string }> = {
+  neutral: { container: "bg-subtle-strong", text: "text-foreground-secondary" },
+  info: { container: "bg-update", text: "text-update-foreground" },
+  warning: { container: "bg-warning", text: "text-warning-foreground" },
+  error: { container: "bg-danger", text: "text-danger-foreground" },
+  success: { container: "bg-subtle-strong", text: "text-foreground" },
+};
+
+function StatusBadge({ status }: { status: MailboxStatus }) {
+  const classes = statusClasses[status.tone];
+  return (
+    <View className={`self-start rounded-md px-2 py-1 ${classes.container}`}>
+      <Text className={`text-xs font-t3-medium ${classes.text}`}>{status.label}</Text>
+    </View>
+  );
+}
+
+function MailboxAction(props: {
+  label: string;
+  accessibilityLabel?: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={props.accessibilityLabel ?? props.label}
+      accessibilityState={{ disabled: props.disabled ?? false }}
+      disabled={props.disabled}
+      onPress={props.onPress}
+      className="min-h-11 shrink-0 items-center justify-center px-3 disabled:opacity-50"
+    >
+      <Text className="text-sm font-t3-medium text-primary-text">{props.label}</Text>
+    </Pressable>
+  );
+}
+
+function ThreadIdentity(props: {
+  thread: EnvironmentThreadShell | undefined;
+  project: string | undefined;
+}) {
+  return (
+    <View className="min-w-0 gap-1">
+      <Text className="text-base font-t3-medium">
+        {props.thread?.title ?? "Unavailable thread"}
+      </Text>
+      {props.project ? (
+        <Text className="text-sm text-foreground-muted" numberOfLines={1}>
+          {props.project}
+        </Text>
+      ) : null}
+      <StatusBadge status={getMailboxThreadStatus(props.thread)} />
+    </View>
+  );
+}
 
 interface MailboxProps {
   environmentId: EnvironmentId;
@@ -31,9 +103,14 @@ export function AgentMailboxSheet(props: MailboxProps & { open: boolean; close: 
       visible={props.open}
       animationType="slide"
       presentationStyle="pageSheet"
+      allowSwipeDismissal
       onRequestClose={props.close}
     >
-      {props.open ? <MailboxContents {...props} /> : null}
+      {props.open ? (
+        <SafeAreaProvider>
+          <MailboxContents {...props} />
+        </SafeAreaProvider>
+      ) : null}
     </Modal>
   );
 }
@@ -41,17 +118,26 @@ export function AgentMailboxSheet(props: MailboxProps & { open: boolean; close: 
 function MailboxContents({
   environmentId,
   threadId,
+  pendingCount,
   revision,
   close,
 }: MailboxProps & { close: () => void }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [candidateLimit, setCandidateLimit] = useState(12);
+  const [candidateLimit, setCandidateLimit] = useState(8);
   const [before, setBefore] = useState<MailboxGetInput["before"]>();
+  const [executionId, setExecutionId] = useState<MailboxGetInput["executionId"]>();
   const [beforeTurn, setBeforeTurn] = useState<MailboxGetInput["beforeTurn"]>();
   const [messageId, setMessageId] = useState<MailboxGetInput["messageId"]>();
-  const [expandedTurn, setExpandedTurn] = useState<string | null>(null);
+  const [peerThreadId, setPeerThreadId] = useState<MailboxGetInput["peerThreadId"]>();
+  const [messageSearch, setMessageSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const exportController = useRef<AbortController | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const { themeAppearance } = useAppearancePreferences();
   const threads = useThreadShells();
   const projects = useProjects();
   const navigation = useNavigation();
@@ -61,12 +147,17 @@ function MailboxContents({
       input: {
         threadId,
         ...(before ? { before } : {}),
+        ...(executionId ? { executionId } : {}),
         ...(beforeTurn ? { beforeTurn } : {}),
         ...(messageId ? { messageId } : {}),
+        ...(peerThreadId ? { peerThreadId } : {}),
+        ...(appliedSearch ? { search: appliedSearch } : {}),
       },
     }),
   );
   const update = useAtomCommand(mailboxEnvironment.update);
+  const exportConversation = useAtomCommand(mailboxEnvironment.exportConversation);
+  useEffect(() => () => exportController.current?.abort(), []);
   const refresh = query.refresh;
   useEffect(() => {
     if (revision >= 0) refresh();
@@ -89,12 +180,8 @@ function MailboxContents({
       ),
     [projects, environmentId],
   );
-  const name = (id: ThreadId) => {
-    const thread = threadById.get(id);
-    return thread
-      ? `${projectById.get(thread.projectId)?.title ?? "Project"} / ${thread.title}`
-      : "Unavailable thread";
-  };
+  const projectName = (thread: EnvironmentThreadShell | undefined) =>
+    thread ? (projectById.get(thread.projectId)?.title ?? "Project") : undefined;
   const mutate = async (operation: MailboxUpdateInput["operation"]) => {
     setBusy(true);
     try {
@@ -118,7 +205,7 @@ function MailboxContents({
     }
   };
   const openThread = (id: ThreadId) => {
-    if (!threads.some((entry) => entry.environmentId === environmentId && entry.id === id)) return;
+    if (!threadById.has(id)) return;
     close();
     navigation.dispatch(CommonActions.navigate("Thread", { environmentId, threadId: id }));
   };
@@ -139,284 +226,470 @@ function MailboxContents({
     [threads, projects, environmentId, threadId, linkedThreadIds, search],
   );
   const visibleCandidates = candidates.slice(0, candidateLimit);
+  const showPicker = pickerOpen || (linkedThreadIds !== undefined && peers.length === 0);
+  const autoWake = query.data?.autoWake;
+  const messages = useMemo(
+    () =>
+      peerThreadId
+        ? getMailboxConversationMessages(query.data?.messages ?? [], threadId, peerThreadId)
+        : (query.data?.messages ?? []),
+    [query.data?.messages, threadId, peerThreadId],
+  );
+  const turns = query.data?.turns ?? [];
+  const waitingCount = query.data?.pendingCount ?? (peerThreadId ? 0 : pendingCount);
+  const showConversation = (id: ThreadId | undefined) => {
+    setMessageSearch("");
+    setAppliedSearch("");
+    setBefore(undefined);
+    setMessageId(undefined);
+    setPeerThreadId(id);
+  };
+  const showMessage = (id: string) => {
+    setMessageSearch("");
+    setAppliedSearch("");
+    setBefore(undefined);
+    setPeerThreadId(undefined);
+    setMessageId(id);
+  };
+  const applyMessageSearch = (value = messageSearch) => {
+    setBefore(undefined);
+    setMessageSearch(value);
+    setAppliedSearch(value.trim());
+  };
+  const shareConversation = async () => {
+    if (!peerThreadId || exporting) return;
+    const controller = new AbortController();
+    exportController.current = controller;
+    setExporting(true);
+    setMutationError(null);
+    try {
+      const result = await exportConversation({ environmentId, input: { threadId, peerThreadId } });
+      if (controller.signal.aborted) return;
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      const participant = (id: ThreadId) => {
+        const thread = threadById.get(id);
+        return {
+          threadId: id,
+          title: thread?.title ?? "Unavailable thread",
+          project: projectName(thread) ?? null,
+        };
+      };
+      const { filename, contents } = formatMailboxConversationExport({
+        participants: [participant(threadId), participant(peerThreadId)],
+        messages: result.value,
+        exportedAt: new Date().toISOString(),
+      });
+      await shareGeneratedTextFile({
+        name: filename,
+        mimeType: "application/json",
+        contents,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setMutationError(
+          error instanceof Error ? error.message : "Could not export the conversation. Try again.",
+        );
+      }
+    } finally {
+      exportController.current = null;
+      if (!controller.signal.aborted) setExporting(false);
+    }
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="flex-row items-center justify-between px-4 py-3">
-        <Text className="text-lg font-semibold">Agent mailbox</Text>
-        <Pressable accessibilityRole="button" onPress={close} className="p-2">
-          <Text className="text-primary">Done</Text>
-        </Pressable>
+    <ThemedSafeAreaView className="flex-1 bg-sheet-solid">
+      <View className="flex-row items-center justify-between gap-2 border-b border-border px-4 py-2">
+        <Text className="flex-1 text-lg font-t3-bold">
+          {peerThreadId ? "Conversation" : "Agent mailbox"}
+        </Text>
+        <MailboxAction label="Refresh" disabled={query.isPending} onPress={refresh} />
+        <MailboxAction label="Done" accessibilityLabel="Close mailbox" onPress={close} />
       </View>
       <ScrollView
-        contentContainerStyle={{ padding: 16, gap: 20 }}
+        contentContainerStyle={{ padding: 16, gap: 24 }}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
-        <Text className="text-sm text-muted-foreground">
-          Messages wake idle agents automatically. If an agent is working, messages wait until its
-          turn finishes or it checks its inbox.
-        </Text>
+        {peerThreadId ? (
+          <View className="gap-2">
+            <Text className="font-t3-medium">
+              {threadById.get(threadId)?.title ?? "This thread"} ↔{" "}
+              {threadById.get(peerThreadId)?.title ?? "Unavailable thread"}
+            </Text>
+            <StatusBadge status={getMailboxThreadStatus(threadById.get(peerThreadId))} />
+          </View>
+        ) : (
+          <Text className="text-sm text-foreground-muted">
+            Linked threads can message each other. A message wakes an idle agent; a busy agent sees
+            it once its turn ends.
+          </Text>
+        )}
         {mutationError || query.error ? (
-          <Text accessibilityRole="alert" className="text-destructive">
-            {mutationError ?? query.error}
-          </Text>
-        ) : null}
-        <View className="flex-row items-center justify-between">
-          <Text>{query.data?.pendingCount ?? 0} pending</Text>
-          <Pressable accessibilityRole="button" onPress={refresh} className="p-2">
-            <Text className="text-primary">Refresh</Text>
-          </Pressable>
-        </View>
-        {query.data?.autoWake ? (
-          <View className="gap-2 rounded-lg border border-border p-3">
-            <Text>Automatic wake {query.data.autoWake.enabled ? "on" : "paused"}</Text>
-            {query.data.autoWake.reason ? (
-              <Text className="text-sm text-muted-foreground">{query.data.autoWake.reason}</Text>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={busy}
-              className="py-2"
-              onPress={() =>
-                void mutate({ kind: "auto-wake", enabled: !query.data!.autoWake!.enabled })
-              }
-            >
-              <Text className="text-primary">
-                {query.data.autoWake.enabled ? "Pause automatic wake" : "Resume automatic wake"}
-              </Text>
-            </Pressable>
+          <View className="rounded-lg bg-danger p-3">
+            <Text accessibilityRole="alert" className="text-sm text-danger-foreground">
+              {mutationError ?? query.error}
+            </Text>
           </View>
         ) : null}
-        <View className="gap-2">
-          <Text className="font-semibold">Collaborating threads</Text>
-          {peers.map((id) => (
-            <View key={id} className="flex-row items-center justify-between gap-2">
-              <Pressable
-                accessibilityRole="link"
-                className="flex-1 py-2"
-                onPress={() => openThread(id)}
-              >
-                <Text className="text-primary">{name(id)}</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={busy}
-                onPress={() => void mutate({ kind: "link", peerThreadId: id, linked: false })}
-                className="p-2"
-              >
-                <Text>Unlink</Text>
-              </Pressable>
+        {!peerThreadId ? (
+          <View className="gap-3">
+            <View className="flex-row items-center justify-between gap-2">
+              <Text className="flex-1 font-t3-bold">Linked threads ({peers.length})</Text>
+              {peers.length > 0 ? (
+                <MailboxAction
+                  label={pickerOpen ? "Done linking" : "Link a thread"}
+                  onPress={() => setPickerOpen((value) => !value)}
+                />
+              ) : null}
             </View>
-          ))}
-          {peers.length === 0 ? (
-            <Text className="text-sm text-muted-foreground">
-              Link a thread in this environment to let the agents exchange messages.
-            </Text>
-          ) : null}
-          <TextInput
-            accessibilityLabel="Find a collaborating thread"
-            placeholder="Find a project or thread…"
-            value={search}
-            onChangeText={(value) => {
-              setSearch(value);
-              setCandidateLimit(12);
-            }}
-            className="rounded-lg border border-border p-3 text-foreground"
-          />
-          <Text className="text-sm text-muted-foreground">
-            Available threads ({candidates.length}). Search also includes settled threads in this
-            environment.
-          </Text>
-          {visibleCandidates.map((thread) => (
-            <View key={thread.id} className="flex-row items-center justify-between gap-2">
-              <View className="flex-1">
-                <Text>{thread.title}</Text>
-                <Text className="text-sm text-muted-foreground">
-                  {projectById.get(thread.projectId)?.title ?? "Project"}
-                  {thread.settledOverride === "settled" ? " · Settled" : ""}
+            {peers.map((id) => {
+              const thread = threadById.get(id);
+              return (
+                <View key={id} className="gap-2 rounded-lg border border-border bg-card p-3">
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`Open ${thread?.title ?? "unavailable thread"}`}
+                    disabled={!thread}
+                    className="min-w-0 py-1"
+                    onPress={() => openThread(id)}
+                  >
+                    <ThreadIdentity thread={thread} project={projectName(thread)} />
+                  </Pressable>
+                  <View className="flex-row flex-wrap justify-end">
+                    <MailboxAction
+                      label="Conversation"
+                      accessibilityLabel={`View conversation with ${thread?.title ?? "unavailable thread"}`}
+                      onPress={() => showConversation(id)}
+                    />
+                    <MailboxAction
+                      label="Unlink"
+                      accessibilityLabel={`Unlink ${thread?.title ?? "unavailable thread"}`}
+                      disabled={busy}
+                      onPress={() => void mutate({ kind: "link", peerThreadId: id, linked: false })}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+            {linkedThreadIds !== undefined && peers.length === 0 ? (
+              <Text className="text-sm text-foreground-muted">
+                Nothing linked yet. Pick a thread below so the two agents can message each other.
+              </Text>
+            ) : null}
+            {showPicker ? (
+              <View className="gap-3 rounded-lg border border-border bg-subtle p-3">
+                <AppTextInput
+                  accessibilityLabel="Find a thread to link"
+                  placeholder="Find a project or unsettled thread…"
+                  keyboardAppearance={themeAppearance}
+                  autoCorrect={false}
+                  value={search}
+                  onChangeText={(value) => {
+                    setSearch(value);
+                    setCandidateLimit(8);
+                  }}
+                />
+                <Text className="text-sm text-foreground-muted">
+                  Available unsettled threads ({candidates.length})
                 </Text>
+                {visibleCandidates.map((thread) => (
+                  <View
+                    key={thread.id}
+                    className="flex-row items-center gap-2 rounded-lg border border-border bg-card p-3"
+                  >
+                    <View className="min-w-0 flex-1">
+                      <ThreadIdentity thread={thread} project={projectName(thread)} />
+                    </View>
+                    <MailboxAction
+                      label="Link"
+                      accessibilityLabel={`Link ${thread.title}`}
+                      disabled={busy}
+                      onPress={() =>
+                        void mutate({ kind: "link", peerThreadId: thread.id, linked: true })
+                      }
+                    />
+                  </View>
+                ))}
+                {linkedThreadIds !== undefined && candidates.length === 0 ? (
+                  <Text className="text-sm text-foreground-muted">
+                    {search.trim()
+                      ? "No matching unsettled threads in this environment."
+                      : "No other unsettled threads available to link."}
+                  </Text>
+                ) : null}
+                {candidates.length > candidateLimit ? (
+                  <MailboxAction
+                    label={`Show ${candidates.length - candidateLimit} more`}
+                    onPress={() => setCandidateLimit((limit) => limit + 8)}
+                  />
+                ) : null}
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Link ${thread.title}`}
-                disabled={busy}
-                onPress={() => void mutate({ kind: "link", peerThreadId: thread.id, linked: true })}
-                className="p-3"
-              >
-                <Text className="text-primary">Link</Text>
-              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {autoWake && !peerThreadId ? (
+          <View className="flex-row items-center gap-4 rounded-lg border border-border bg-card p-3">
+            <View className="min-w-0 flex-1 gap-1">
+              <Text className="font-t3-medium">Wake this agent on new mail</Text>
+              <Text className="text-sm text-foreground-muted">
+                {autoWake.enabled
+                  ? "A message starts a turn when this thread is idle."
+                  : (autoWake.reason ?? "Messages queue until you send the next turn.")}
+              </Text>
             </View>
-          ))}
-          {linkedThreadIds !== undefined && candidates.length === 0 ? (
-            <Text className="text-sm text-muted-foreground">
-              {search.trim()
-                ? "No matching threads in this environment."
-                : "No other active threads available to link."}
+            <ThemedSwitch
+              accessibilityLabel="Wake this agent on new mail"
+              value={autoWake.enabled}
+              disabled={busy}
+              onValueChange={(enabled) => void mutate({ kind: "auto-wake", enabled })}
+            />
+          </View>
+        ) : null}
+        <View className="gap-3">
+          <View className="flex-row flex-wrap items-center justify-between gap-2">
+            <Text className="font-t3-bold">{peerThreadId ? "Message history" : "Messages"}</Text>
+            {waitingCount > 0 ? (
+              <StatusBadge status={{ label: `${waitingCount} waiting`, tone: "warning" }} />
+            ) : null}
+            {messageId || peerThreadId ? (
+              <MailboxAction label="All messages" onPress={() => showConversation(undefined)} />
+            ) : null}
+          </View>
+          {peerThreadId ? (
+            <View className="gap-2">
+              <AppTextInput
+                accessibilityLabel="Search conversation messages"
+                placeholder="Search messages…"
+                value={messageSearch}
+                maxLength={500}
+                onChangeText={setMessageSearch}
+                onSubmitEditing={() => applyMessageSearch()}
+                returnKeyType="search"
+                keyboardAppearance={themeAppearance}
+                className="rounded-lg border border-border bg-card px-3 py-3 text-base"
+              />
+              <View className="flex-row flex-wrap justify-end">
+                <MailboxAction label="Search" onPress={() => applyMessageSearch()} />
+                {appliedSearch || messageSearch ? (
+                  <MailboxAction label="Clear" onPress={() => applyMessageSearch("")} />
+                ) : null}
+                <MailboxAction
+                  label={exporting ? "Exporting…" : "Export JSON"}
+                  disabled={exporting}
+                  onPress={() => void shareConversation()}
+                />
+              </View>
+              {appliedSearch ? (
+                <Text className="text-sm text-foreground-muted">
+                  Results for “{appliedSearch}” across this conversation.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+          {peerThreadId ? (
+            <Text className="text-sm text-foreground-muted">
+              {appliedSearch
+                ? "Matching messages, oldest first."
+                : before
+                  ? "Older messages, oldest first."
+                  : "Latest messages, oldest first."}{" "}
+              Opening this history does not mark messages as read by the agent.
             </Text>
           ) : null}
-          {candidates.length > candidateLimit ? (
-            <Pressable
-              accessibilityRole="button"
-              className="py-2"
-              onPress={() => setCandidateLimit((limit) => limit + 12)}
-            >
-              <Text className="text-primary">
-                Show more threads ({candidates.length - candidateLimit} remaining)
-              </Text>
-            </Pressable>
+          {query.isPending && !query.data ? (
+            <Text className="text-foreground-muted">Loading mailbox…</Text>
           ) : null}
-        </View>
-        <View className="gap-3">
-          <View className="flex-row justify-between">
-            <Text className="font-semibold">Messages</Text>
-            {messageId ? (
-              <Pressable accessibilityRole="button" onPress={() => setMessageId(undefined)}>
-                <Text className="text-primary">All messages</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {query.isPending && !query.data ? <Text>Loading mailbox…</Text> : null}
-          {query.data?.messages.length === 0 ? (
-            <Text className="text-muted-foreground">No messages yet.</Text>
+          {query.data && messages.length === 0 ? (
+            <Text className="text-sm text-foreground-muted">
+              {appliedSearch
+                ? "No messages match your search."
+                : peerThreadId
+                  ? "No messages between these threads yet."
+                  : peers.length === 0
+                    ? "Link a thread to start exchanging messages."
+                    : "No messages between this thread and its links yet."}
+            </Text>
           ) : null}
-          {query.data?.messages.map((message) => (
-            <View key={message.id} className="gap-2 rounded-lg border border-border p-3">
-              <Pressable
-                accessibilityRole="link"
-                onPress={() =>
-                  openThread(
-                    message.fromThreadId === threadId ? message.toThreadId : message.fromThreadId,
-                  )
+          {messages.map((message) => {
+            const outgoing = message.fromThreadId === threadId;
+            const peerId = outgoing ? message.toThreadId : message.fromThreadId;
+            const displayedThreadId = peerThreadId ? message.fromThreadId : peerId;
+            const displayedThread = threadById.get(displayedThreadId);
+            const incomingOpen =
+              !outgoing && message.state !== "resolved" && message.state !== "dismissed";
+            return (
+              <View
+                key={message.id}
+                className={
+                  peerThreadId
+                    ? outgoing
+                      ? "ml-6 gap-3 rounded-lg border border-border bg-update p-3"
+                      : "mr-6 gap-3 rounded-lg border border-border bg-card p-3"
+                    : "gap-3 rounded-lg border border-border bg-card p-3"
                 }
               >
-                <Text className="text-primary">
-                  {message.fromThreadId === threadId
-                    ? `To ${name(message.toThreadId)}`
-                    : `From ${name(message.fromThreadId)}`}
+                <Text className="text-xs text-foreground-muted">
+                  {peerThreadId ? "From" : outgoing ? "To" : "From"}
                 </Text>
-              </Pressable>
-              <Text className="text-xs text-muted-foreground">
-                {message.state} · {new Date(message.createdAt).toLocaleString()}
-              </Text>
-              <Text selectable>{message.body}</Text>
-              {message.toThreadId === threadId && message.state === "dismissed" ? (
                 <Pressable
-                  accessibilityRole="button"
-                  disabled={busy}
-                  onPress={() =>
-                    void mutate({ kind: "state", messageId: message.id, state: "queued" })
-                  }
-                  className="self-start py-2"
+                  accessibilityRole="link"
+                  disabled={!displayedThread}
+                  onPress={() => openThread(displayedThreadId)}
                 >
-                  <Text className="text-primary">Restore</Text>
+                  <ThreadIdentity thread={displayedThread} project={projectName(displayedThread)} />
                 </Pressable>
+                <View className="flex-row flex-wrap items-center justify-between gap-2">
+                  <StatusBadge status={mailboxMessageStatus[message.state]} />
+                  <Text className="text-xs text-foreground-muted">
+                    {formatMailboxTime(message.createdAt)}
+                  </Text>
+                </View>
+                {message.replyTo ? (
+                  <MailboxAction
+                    label="View replied-to message"
+                    onPress={() => showMessage(message.replyTo!)}
+                  />
+                ) : null}
+                <Text selectable>{message.body}</Text>
+                {message.updatedAt !== message.createdAt ? (
+                  <Text className="text-xs text-foreground-muted">
+                    State updated {formatMailboxTime(message.updatedAt)}
+                  </Text>
+                ) : null}
+                <View className="flex-row flex-wrap justify-end">
+                  {!peerThreadId ? (
+                    <MailboxAction label="Conversation" onPress={() => showConversation(peerId)} />
+                  ) : null}
+                  {outgoing ? (
+                    <MailboxAction
+                      label="Sending turn"
+                      onPress={() => {
+                        setBeforeTurn(undefined);
+                        setExecutionId(message.executionId);
+                        setHistoryOpen(true);
+                      }}
+                    />
+                  ) : null}
+                  {!outgoing && message.state === "dismissed" ? (
+                    <MailboxAction
+                      label="Restore"
+                      disabled={busy}
+                      onPress={() =>
+                        void mutate({ kind: "state", messageId: message.id, state: "queued" })
+                      }
+                    />
+                  ) : null}
+                  {incomingOpen ? (
+                    <MailboxAction
+                      label="Dismiss"
+                      disabled={busy}
+                      onPress={() =>
+                        void mutate({ kind: "state", messageId: message.id, state: "dismissed" })
+                      }
+                    />
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+          {!messageId && (before || query.data?.nextCursor) ? (
+            <View className="flex-row flex-wrap gap-2">
+              {before ? (
+                <MailboxAction label="Latest messages" onPress={() => setBefore(undefined)} />
               ) : null}
-              {message.toThreadId === threadId &&
-              message.state !== "resolved" &&
-              message.state !== "dismissed" ? (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={busy}
-                  onPress={() =>
-                    void mutate({ kind: "state", messageId: message.id, state: "dismissed" })
-                  }
-                  className="self-start py-2"
-                >
-                  <Text className="text-muted-foreground">Dismiss</Text>
-                </Pressable>
+              {query.data?.nextCursor ? (
+                <MailboxAction
+                  label="Older messages"
+                  onPress={() => setBefore(query.data!.nextCursor!)}
+                />
               ) : null}
             </View>
-          ))}
-          <View className="flex-row gap-4">
-            {before && !messageId ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setBefore(undefined)}
-                className="py-2"
-              >
-                <Text className="text-primary">Latest messages</Text>
-              </Pressable>
-            ) : null}
-            {query.data?.nextCursor && !messageId ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setBefore(query.data!.nextCursor!)}
-                className="py-2"
-              >
-                <Text className="text-primary">Older messages</Text>
-              </Pressable>
-            ) : null}
-          </View>
+          ) : null}
         </View>
-        <View className="gap-2">
-          <View className="flex-row justify-between">
-            <Text className="font-semibold">Turn communication</Text>
-            {beforeTurn ? (
-              <Pressable accessibilityRole="button" onPress={() => setBeforeTurn(undefined)}>
-                <Text className="text-primary">Recent turns</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {query.data?.turns.map((turn) => (
-            <View key={turn.executionId} className="gap-1 rounded-lg border border-border p-3">
-              <Text className="text-sm">
-                {new Date(turn.createdAt).toLocaleString()} · {turn.state}
-                {turn.source === "mailbox" ? " · automatic wake" : ""}
-              </Text>
-              <Text className="text-sm text-muted-foreground">
-                {turn.incoming.length} incoming · {turn.read.length} read · {turn.sent.length} sent
-              </Text>
+        {turns.length > 0 || executionId || beforeTurn ? (
+          <View className="gap-3">
+            <View className="flex-row flex-wrap items-center justify-between gap-2">
               <Pressable
                 accessibilityRole="button"
-                onPress={() =>
-                  setExpandedTurn(expandedTurn === turn.executionId ? null : turn.executionId)
-                }
-                className="py-2"
+                accessibilityState={{ expanded: historyOpen }}
+                onPress={() => setHistoryOpen((value) => !value)}
+                className="min-h-11 justify-center"
               >
-                <Text className="text-primary">
-                  {expandedTurn === turn.executionId ? "Hide messages" : "View messages"}
+                <Text className="font-t3-bold">
+                  {historyOpen ? "▾" : "▸"} Turn history ({turns.length})
                 </Text>
               </Pressable>
-              {expandedTurn === turn.executionId
-                ? (
+              {executionId || beforeTurn ? (
+                <MailboxAction
+                  label="Recent turns"
+                  onPress={() => {
+                    setExecutionId(undefined);
+                    setBeforeTurn(undefined);
+                  }}
+                />
+              ) : null}
+            </View>
+            {historyOpen ? (
+              <>
+                <Text className="text-sm text-foreground-muted">
+                  What each of this thread’s turns received, read, and sent.
+                </Text>
+                {turns.map((turn) => {
+                  const groups = (
                     [
-                      ["Incoming", turn.incoming],
+                      ["Received", turn.incoming],
                       ["Read", turn.read],
                       ["Sent", turn.sent],
                     ] as const
-                  ).map(([label, ids]) => (
-                    <View key={label} className="gap-1">
-                      <Text className="text-sm">
-                        {label}: {ids.length === 0 ? "None" : ""}
+                  ).filter(([, ids]) => ids.length > 0);
+                  return (
+                    <View
+                      key={turn.executionId}
+                      className="gap-2 rounded-lg border border-border bg-card p-3"
+                    >
+                      <Text className="text-xs text-foreground-muted">
+                        {formatMailboxTime(turn.createdAt)}
                       </Text>
-                      {ids.map((id, index) => (
-                        <Pressable
-                          key={id}
-                          accessibilityRole="button"
-                          onPress={() => {
-                            setBefore(undefined);
-                            setMessageId(id);
-                          }}
-                          className="py-2"
-                        >
-                          <Text className="text-primary">Message {index + 1}</Text>
-                        </Pressable>
+                      <View className="flex-row flex-wrap gap-2">
+                        <StatusBadge status={mailboxTurnStatus[turn.state]} />
+                        {turn.source === "mailbox" ? (
+                          <StatusBadge status={{ label: "Woken by mail", tone: "info" }} />
+                        ) : null}
+                      </View>
+                      {groups.length === 0 ? (
+                        <Text className="text-sm text-foreground-muted">No mail</Text>
+                      ) : null}
+                      {groups.map(([label, ids]) => (
+                        <View key={label} className="gap-1">
+                          <Text className="text-sm text-foreground-muted">
+                            {label} ({ids.length})
+                          </Text>
+                          <View className="flex-row flex-wrap">
+                            {ids.map((id, index) => (
+                              <MailboxAction
+                                key={id}
+                                label={`Message ${index + 1}`}
+                                onPress={() => showMessage(id)}
+                              />
+                            ))}
+                          </View>
+                        </View>
                       ))}
                     </View>
-                  ))
-                : null}
-            </View>
-          ))}
-          {query.data?.nextTurnCursor ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setBeforeTurn(query.data!.nextTurnCursor!)}
-              className="py-2"
-            >
-              <Text className="text-primary">Older turns</Text>
-            </Pressable>
-          ) : null}
-        </View>
+                  );
+                })}
+                {!executionId && query.data?.nextTurnCursor ? (
+                  <MailboxAction
+                    label="Older turns"
+                    onPress={() => setBeforeTurn(query.data!.nextTurnCursor!)}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </ThemedSafeAreaView>
   );
 }

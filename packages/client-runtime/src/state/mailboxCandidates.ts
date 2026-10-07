@@ -17,7 +17,7 @@ type MailboxThread = Pick<
   | "latestUserMessageAt"
 >;
 
-/** Active threads are browsable; search includes settled threads and matches project/title words. */
+/** Only unsettled threads are browsable, including when searching by project/title words. */
 export function getMailboxThreadCandidates<T extends MailboxThread>(input: {
   readonly threads: ReadonlyArray<T>;
   readonly projects: ReadonlyArray<Pick<EnvironmentProject, "id" | "environmentId" | "title">>;
@@ -41,7 +41,7 @@ export function getMailboxThreadCandidates<T extends MailboxThread>(input: {
       thread.id === input.threadId ||
       thread.archivedAt !== null ||
       linked.has(thread.id) ||
-      (!query && thread.settledOverride === "settled")
+      thread.settledOverride === "settled"
     )
       continue;
 
@@ -51,14 +51,12 @@ export function getMailboxThreadCandidates<T extends MailboxThread>(input: {
     candidates.push({
       thread,
       rank: !query || title === query ? 0 : title.includes(query) ? 1 : 2,
-      settled: thread.settledOverride === "settled" ? 1 : 0,
       timestamp: getThreadSortTimestamp(thread, "updated_at"),
     });
   }
   candidates.sort(
     (left, right) =>
       left.rank - right.rank ||
-      left.settled - right.settled ||
       right.timestamp - left.timestamp ||
       left.thread.id.localeCompare(right.thread.id),
   );

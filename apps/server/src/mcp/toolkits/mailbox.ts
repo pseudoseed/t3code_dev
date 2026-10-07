@@ -6,6 +6,7 @@ import {
   MailboxId,
   MailboxMessage,
   MailboxMessageState,
+  MailboxSearch,
   ThreadId,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
@@ -50,9 +51,11 @@ export const MailboxToolkit = Toolkit.make(
   }),
   Tool.make("mailbox_read", {
     description:
-      "Read your mailbox voluntarily. Reading records which messages this turn was supplied; it does not acknowledge or resolve their work. Use messageId to retrieve a specific older message, or before to page history.",
+      "Read your mailbox voluntarily. Reading records which messages this turn was supplied; it does not acknowledge or resolve their work. Use peerThreadId to read a conversation, search to find text across its history, messageId to retrieve a specific older message, or before to page history.",
     parameters: Schema.Struct({
       turnKey,
+      peerThreadId: Schema.optional(ThreadId),
+      search: Schema.optional(MailboxSearch),
       messageId: Schema.optional(MailboxId),
       before: Schema.optional(MailboxCursor),
     }),
@@ -131,12 +134,14 @@ export const MailboxToolkitHandlersLive = MailboxToolkit.toLayer(
         const turn = yield* mailbox.agentTurn(scope, input.turnKey);
         const page = yield* mailbox.repository.get({
           threadId: scope.threadId,
-          ...(input.before === undefined ? {} : { before: input.before }),
+          ...(input.before === undefined || input.messageId !== undefined
+            ? {}
+            : { before: input.before }),
+          ...(input.peerThreadId === undefined ? {} : { peerThreadId: input.peerThreadId }),
+          ...(input.search === undefined ? {} : { search: input.search }),
+          ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
         });
-        const messages =
-          input.messageId === undefined
-            ? page.messages
-            : yield* mailbox.repository.messages(scope.threadId, { id: input.messageId });
+        const messages = page.messages;
         yield* mailbox.dispatch(
           scope.threadId,
           {

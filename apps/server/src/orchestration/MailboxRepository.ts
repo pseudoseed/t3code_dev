@@ -35,17 +35,22 @@ export const makeMailboxRepository = Effect.gen(function* () {
     threadId: ThreadId,
     options: {
       id?: string;
+      peerThreadId?: ThreadId;
+      search?: string;
       pending?: boolean;
       before?: MailboxGetInput["before"];
       executionId?: string;
       limit?: number;
     } = {},
   ) {
+    const search = options.search?.trim();
     return yield* sql`SELECT id, from_thread_id AS "fromThreadId", to_thread_id AS "toThreadId",
       execution_id AS "executionId", body, reply_to AS "replyTo", state,
       created_at AS "createdAt", updated_at AS "updatedAt"
       FROM projection_mailbox_messages WHERE (from_thread_id = ${threadId} OR to_thread_id = ${threadId})
       ${options.id === undefined ? sql`` : sql`AND id = ${options.id}`}
+      ${options.peerThreadId === undefined ? sql`` : sql`AND ((from_thread_id = ${threadId} AND to_thread_id = ${options.peerThreadId}) OR (from_thread_id = ${options.peerThreadId} AND to_thread_id = ${threadId}))`}
+      ${search ? sql`AND instr(lower(body), lower(${search})) > 0` : sql``}
       ${options.pending ? sql`AND to_thread_id = ${threadId} AND state = 'queued' AND from_thread_id IN (SELECT peer_thread_id FROM projection_mailbox_links WHERE thread_id = ${threadId})` : sql``}
       ${options.executionId === undefined ? sql`` : sql`AND from_thread_id = ${threadId} AND execution_id = ${options.executionId}`}
       ${options.before === undefined ? sql`` : sql`AND (created_at < ${options.before.createdAt} OR (created_at = ${options.before.createdAt} AND id < ${options.before.id}))`}
@@ -145,12 +150,17 @@ export const makeMailboxRepository = Effect.gen(function* () {
   const get = Effect.fn("Mailbox.get")(function* (input: MailboxGetInput) {
     const page = yield* messages(input.threadId, {
       ...(input.messageId === undefined ? {} : { id: input.messageId }),
+      ...(input.peerThreadId === undefined ? {} : { peerThreadId: input.peerThreadId }),
+      ...(input.search === undefined || input.messageId !== undefined
+        ? {}
+        : { search: input.search }),
       ...(input.before === undefined ? {} : { before: input.before }),
     });
     const records = yield* turns(input.threadId, input.executionId, input.beforeTurn);
     const counts = yield* sql<{
       count: number;
-    }>`SELECT COUNT(*) AS count FROM projection_mailbox_messages WHERE to_thread_id = ${input.threadId} AND state = 'queued'`;
+    }>`SELECT COUNT(*) AS count FROM projection_mailbox_messages WHERE to_thread_id = ${input.threadId} AND state = 'queued'
+      ${input.peerThreadId === undefined ? sql`` : sql`AND from_thread_id = ${input.peerThreadId}`}`;
     const sent = yield* sql<{
       id: string;
       executionId: string;

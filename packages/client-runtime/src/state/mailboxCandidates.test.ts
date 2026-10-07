@@ -87,9 +87,15 @@ describe("mailbox thread candidates", () => {
     expect(candidates([staging], "Entriq / Build out Staging Env for Placrd")).toEqual([staging]);
   });
 
-  it("includes settled threads when searching, after equally matching active threads", () => {
-    expect(candidates([settled, staging], "staging")).toEqual([staging, settled]);
-    expect(candidates([settled], "nothing")).toEqual([]);
+  it("excludes settled threads even when their title or project matches the search", () => {
+    expect(candidates([settled, staging], "staging")).toEqual([staging]);
+    expect(candidates([settled], settled.title)).toEqual([]);
+    expect(candidates([settled], "pseudoapps")).toEqual([]);
+  });
+
+  it("shows a thread again after it is unsettled", () => {
+    const reopened = { ...settled, settledOverride: "active" as const };
+    expect(candidates([reopened], "staging")).toEqual([reopened]);
   });
 
   it("keeps every match available to the client for pagination", () => {

@@ -1,8 +1,11 @@
 import { WS_METHODS } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { Atom } from "effect/unstable/reactivity";
+import { request } from "../rpc/client.ts";
+import { loadMailboxConversation, type MailboxConversationInput } from "./mailboxExport.ts";
 import {
   createAtomCommandScheduler,
+  createEnvironmentCommand,
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
 } from "./runtime.ts";
@@ -27,5 +30,10 @@ export function createMailboxEnvironmentAtoms<R, E>(
         registry.refresh(detail({ environmentId, input: { threadId: input.threadId } })),
       ),
   });
-  return { detail, update };
+  const exportConversation = createEnvironmentCommand(runtime, {
+    label: "environment-data:mailbox:export",
+    execute: (input: MailboxConversationInput) =>
+      loadMailboxConversation(input, (page) => request(WS_METHODS.mailboxGet, page)),
+  });
+  return { detail, update, exportConversation };
 }

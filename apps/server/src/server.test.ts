@@ -6969,6 +6969,29 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             Effect.gen(function* () {
               const inbox = yield* client[WS_METHODS.mailboxGet]({ threadId: fixture.recipient });
               assert.deepEqual(inbox, before);
+              const conversation = {
+                threadId: fixture.recipient,
+                peerThreadId: fixture.sender,
+              };
+              assert.deepEqual(
+                (yield* client[WS_METHODS.mailboxGet]({ ...conversation, search: "API CONTRACT" }))
+                  .messages,
+                inbox.messages,
+              );
+              assert.deepEqual(
+                (yield* client[WS_METHODS.mailboxGet]({
+                  ...conversation,
+                  search: "no matching message",
+                })).messages,
+                [],
+              );
+              assert.deepEqual(
+                (yield* client[WS_METHODS.mailboxGet]({
+                  ...conversation,
+                  peerThreadId: fixture.recipient,
+                })).messages,
+                [],
+              );
               const operations = [
                 { kind: "auto-wake", enabled: false },
                 { kind: "state", messageId: "mailbox-rpc-request", state: "dismissed" },
