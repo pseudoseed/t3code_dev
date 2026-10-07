@@ -295,10 +295,31 @@ describe("durable agent mailbox", () => {
                 threadId: recipient,
                 providerSessionId: "recipient-session",
               };
+              const searched = yield* server
+                .callTool({
+                  name: "mailbox_read",
+                  arguments: {
+                    turnKey: recipientTurn.turnKey,
+                    peerThreadId: sender,
+                    search: "not in the conversation",
+                  },
+                })
+                .pipe(
+                  Effect.provideService(McpInvocationContext, recipientScope),
+                  Effect.provideService(McpSchema.McpServerClient, client),
+                );
+              expect(searched.isError).toBe(false);
+              expect(searched.structuredContent).toMatchObject({ messages: [], nextCursor: null });
+              expect((yield* mailbox.get({ threadId: recipient })).turns[0]?.read).toEqual([]);
               const read = yield* server
                 .callTool({
                   name: "mailbox_read",
-                  arguments: { turnKey: recipientTurn.turnKey, messageId: message.id },
+                  arguments: {
+                    turnKey: recipientTurn.turnKey,
+                    messageId: message.id,
+                    peerThreadId: sender,
+                    search: "not in the conversation",
+                  },
                 })
                 .pipe(
                   Effect.provideService(McpInvocationContext, recipientScope),
@@ -664,6 +685,163 @@ describe("durable agent mailbox", () => {
   );
 
   it.effect(
+    "pages a conversation in both directions without mixing other peers or changing delivery state",
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-mailbox-conversation-")),
+        );
+        const runtime = yield* runtimeAt(NodePath.join(directory, "state.sqlite"));
+        try {
+          yield* seed(runtime);
+          yield* runtime.run(
+            Effect.gen(function* () {
+              const engine = yield* OrchestrationEngineService;
+              const mailbox = yield* makeAgentMailbox;
+              const other = ThreadId.make("other-agent");
+              const recipientExecution = MessageId.make("recipient-conversation");
+              const otherExecution = MessageId.make("other-conversation");
+              yield* engine.dispatch({
+                type: "thread.create",
+                commandId: CommandId.make("conversation-other"),
+                threadId: other,
+                projectId: ProjectId.make(`project-${sender}`),
+                title: "Other agent",
+                modelSelection,
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: null,
+                worktreePath: null,
+                createdAt: now,
+              });
+              for (const threadId of [sender, recipient]) {
+                yield* mailbox.update({
+                  threadId,
+                  commandId: CommandId.make(`link-other-${threadId}`),
+                  operation: { kind: "link", peerThreadId: other, linked: true },
+                });
+              }
+              yield* mailbox.prepare(recipient, recipientExecution, null);
+              yield* mailbox.prepare(other, otherExecution, null);
+              for (let i = 0; i < 35; i++) {
+                const id = `pair-${String(i).padStart(2, "0")}`;
+                const outgoing = i % 2 === 0;
+                yield* engine.dispatch({
+                  type: "thread.mailbox",
+                  commandId: CommandId.make(id),
+                  threadId: outgoing ? sender : recipient,
+                  createdAt: now,
+                  operation: {
+                    kind: "send",
+                    id,
+                    executionId: outgoing ? sourceExecution : recipientExecution,
+                    toThreadId: outgoing ? recipient : sender,
+                    body: i === 0 ? `${id} 100%_ complete` : id,
+                    replyTo: i === 0 ? null : `pair-${String(i - 1).padStart(2, "0")}`,
+                  },
+                });
+                for (const toThreadId of [sender, recipient]) {
+                  const noiseId = `noise-${toThreadId}-${i}`;
+                  yield* engine.dispatch({
+                    type: "thread.mailbox",
+                    commandId: CommandId.make(noiseId),
+                    threadId: other,
+                    createdAt: now,
+                    operation: {
+                      kind: "send",
+                      id: noiseId,
+                      executionId: otherExecution,
+                      toThreadId,
+                      body: "Another conversation",
+                      replyTo: null,
+                    },
+                  });
+                }
+              }
+              const input = { threadId: sender, peerThreadId: recipient };
+              const first = yield* mailbox.get(input);
+              const next = yield* mailbox.get({ ...input, before: first.nextCursor! });
+              expect(first.messages.map((message) => message.id)).toEqual(
+                Array.from({ length: 30 }, (_, i) => `pair-${String(34 - i).padStart(2, "0")}`),
+              );
+              expect(next.messages.map((message) => message.id)).toEqual([
+                "pair-04",
+                "pair-03",
+                "pair-02",
+                "pair-01",
+                "pair-00",
+              ]);
+              expect(next.nextCursor).toBeNull();
+              expect(first.pendingCount).toBe(17);
+              expect(first.messages.every((message) => message.state === "queued")).toBe(true);
+              expect(
+                (yield* mailbox.get({ threadId: recipient, peerThreadId: sender })).messages,
+              ).toEqual(first.messages);
+              expect(
+                (yield* mailbox.get({ ...input, messageId: "pair-00" })).messages[0]?.body,
+              ).toBe("pair-00 100%_ complete");
+              const search = yield* mailbox.get({ ...input, search: "  PAIR-0  " });
+              expect(search.messages.map((message) => message.id)).toEqual(
+                Array.from({ length: 10 }, (_, i) => `pair-0${9 - i}`),
+              );
+              expect(search.nextCursor).toBeNull();
+              expect(search.pendingCount).toBe(17);
+              expect(search.turns.every((turn) => turn.read.length === 0)).toBe(true);
+              const searchFirst = yield* mailbox.get({ ...input, search: "pair-" });
+              const searchNext = yield* mailbox.get({
+                ...input,
+                search: "pair-",
+                before: searchFirst.nextCursor!,
+              });
+              expect(searchFirst.messages).toEqual(first.messages);
+              expect(searchNext.messages).toEqual(next.messages);
+              expect(
+                (yield* mailbox.get({ ...input, search: "%_" })).messages.map(
+                  (message) => message.id,
+                ),
+              ).toEqual(["pair-00"]);
+              expect(
+                (yield* mailbox.get({ ...input, search: "Another conversation" })).messages,
+              ).toEqual([]);
+              expect((yield* mailbox.get({ ...input, search: "   " })).messages).toEqual(
+                first.messages,
+              );
+              expect(
+                (yield* mailbox.get({ ...input, messageId: "pair-00", search: "no match" }))
+                  .messages,
+              ).toHaveLength(1);
+              expect(
+                (yield* mailbox.get({ ...input, messageId: `noise-${sender}-0` })).messages,
+              ).toEqual([]);
+              expect(
+                (yield* mailbox.get({ threadId: sender, peerThreadId: ThreadId.make("unknown") }))
+                  .messages,
+              ).toEqual([]);
+              yield* mailbox.update({
+                threadId: sender,
+                commandId: CommandId.make("conversation-ack"),
+                operation: { kind: "state", messageId: "pair-01", state: "acknowledged" },
+              });
+              expect(
+                (yield* mailbox.get({ ...input, messageId: "pair-01" })).messages[0]?.state,
+              ).toBe("acknowledged");
+              expect((yield* mailbox.get(input)).pendingCount).toBe(16);
+              yield* mailbox.update({
+                threadId: sender,
+                commandId: CommandId.make("conversation-unlink"),
+                operation: { kind: "link", peerThreadId: recipient, linked: false },
+              });
+              expect((yield* mailbox.get(input)).messages).toHaveLength(30);
+            }),
+          );
+        } finally {
+          yield* runtime.dispose();
+          yield* Effect.promise(() => NodeFSP.rm(directory, { recursive: true, force: true }));
+        }
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
     "pages identical timestamps without gaps and retrieves older turn messages directly",
     () =>
       Effect.gen(function* () {
@@ -879,6 +1057,9 @@ describe("durable agent mailbox", () => {
             });
             const outbox = yield* mailbox.get({ threadId: sender });
             expect(outbox.messages).toHaveLength(2);
+            expect(
+              (yield* mailbox.get({ threadId: sender, peerThreadId: recipient })).messages,
+            ).toEqual(outbox.messages);
             expect(outbox.peers).toEqual([]);
             yield* expectFailure(mailbox.get({ threadId: recipient }), "unavailable");
             yield* expectFailure(send("deleted-recipient"), "not linked");

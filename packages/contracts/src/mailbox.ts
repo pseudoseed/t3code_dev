@@ -127,8 +127,11 @@ export const ThreadMailboxCommand = Schema.Struct({
 export type ThreadMailboxCommand = typeof ThreadMailboxCommand.Type;
 
 export const MailboxCursor = Schema.Struct({ createdAt: IsoDateTime, id: MailboxId });
+export const MailboxSearch = Schema.String.check(Schema.isMaxLength(500));
 export const MailboxGetInput = Schema.Struct({
   threadId: ThreadId,
+  peerThreadId: Schema.optional(ThreadId),
+  search: Schema.optional(MailboxSearch),
   before: Schema.optional(MailboxCursor),
   executionId: Schema.optional(MessageId),
   beforeTurn: Schema.optional(MessageId),

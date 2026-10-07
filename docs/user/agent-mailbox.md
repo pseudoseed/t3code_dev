@@ -4,10 +4,11 @@ Agents in different threads can exchange messages, including threads in differen
 same environment. Open **Agent mailbox** from the thread header on web or desktop, or the envelope button
 in the mobile thread header. On web and desktop, you can also search for **Open agent mailbox** in the command palette.
 
-Under **Collaborating threads**, available active threads appear immediately, with recent threads
-first. Select **Link** to connect one. Use **Show more threads** to browse the rest, or search by
-words from the project and thread name. Search also includes settled threads. Already-linked
-threads appear above the picker, with an **Unlink** action. Linking works in both directions.
+Under **Linked threads**, select **Link a thread** to connect another unsettled thread in this
+environment. The picker opens automatically when nothing is linked. Search by words from the
+project and thread name, or use **Show more** to browse the rest. Settled, archived, and deleted
+threads are excluded from the picker. Existing links stay visible when settled, with their
+current status and an **Unlink** action. Linking works in both directions.
 Ask your agents to use their mailbox to coordinate dependencies, share API contracts, report blockers,
 and send results. Agents can discover the linked threads themselves.
 
@@ -16,8 +17,8 @@ mail waits until the current turn and its checkpoint finish; it never steers the
 a running test. An agent can also check its inbox voluntarily. Messages that arrive together are
 batched, and any remaining queued mail starts another turn after the current one finishes.
 
-Automatic wake is on by default. Use **Pause automatic wake** to keep incoming mail queued, and
-**Resume automatic wake** to process it again. Stopping an agent or encountering a startup error
+Automatic wake is on by default. Turn off **Wake this agent on new mail** to keep incoming mail
+queued, and turn it on to process mail again. Stopping an agent or encountering a startup error
 pauses automatic wake. Fix any reported error and resume to retry; undelivered messages remain
 queued. Pending approvals, questions, snoozed threads, and active background work hold delivery
 until they clear. Automatic turns use the thread's existing provider, model, and permission mode.
@@ -25,14 +26,26 @@ until they clear. Automatic turns use the thread's existing provider, model, and
 The sidebar and mailbox show pending counts. Opening the mailbox as a user does not mark messages
 received. Each message shows its sender or recipient, body, time, and status:
 
-- **Queued:** saved and waiting to be supplied to the recipient.
-- **Included:** supplied in turn context, sometimes as a reference to retrieve, or through an
+- **Waiting:** saved and waiting to be supplied to the recipient.
+- **Delivered:** supplied in turn context, sometimes as a reference to retrieve, or through an
   explicit inbox check; this is not proof that the agent understood or completed the request.
 - **Acknowledged:** the recipient explicitly confirmed receipt.
 - **Resolved:** the recipient marked the requested work complete.
 - **Dismissed:** you removed the message from pending work. **Restore** queues it again.
 
-Use **Turn communication** to inspect each turn's incoming snapshot, explicit reads, and sent
+Choose **Conversation** beside a linked thread or any message to view the two threads' exchange.
+Messages read oldest first within each page, with sent and received messages on opposite sides.
+Use **Older messages** to go back and **Latest** to return to recent mail. Replies link to the
+original message, and **Sending turn** opens its turn record. **All messages** returns to the
+mailbox. Conversation history remains available after unlinking, archiving, or deleting a peer;
+viewing it does not mark messages as read by an agent.
+
+Search a conversation to find message text across its full history, including older pages.
+Choose **Export JSON** to save the complete exchange with message states, timestamps, and reply
+references. Export includes every message between the two threads, regardless of the current
+search or page. On mobile, the export opens your device's save and share sheet.
+
+Use **Turn history** to inspect each turn's incoming snapshot, explicit reads, and sent
 messages, including turns with no communication. Failed starts keep their snapshot in the history
 and leave undelivered messages queued. Older messages and turns are available through the history
 controls. A turn's status describes its execution, while each message has its own status.

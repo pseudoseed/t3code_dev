@@ -183,6 +183,14 @@
       "types": "./src/state/mailboxCandidates.ts",
       "default": "./src/state/mailboxCandidates.ts"
     },
+    "./state/mailbox-presentation": {
+      "types": "./src/state/mailboxPresentation.ts",
+      "default": "./src/state/mailboxPresentation.ts"
+    },
+    "./state/mailbox-export": {
+      "types": "./src/state/mailboxExport.ts",
+      "default": "./src/state/mailboxExport.ts"
+    },
     "./state/provider-instance-display": {
       "types": "./src/state/providerInstanceDisplay.ts",
       "default": "./src/state/providerInstanceDisplay.ts"

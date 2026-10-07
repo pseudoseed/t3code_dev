@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   deleted: vi.fn(),
   download: vi.fn(),
   copy: vi.fn(),
+  write: vi.fn(),
   share: vi.fn(),
   shareFromSource: vi.fn(),
   available: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock("expo-file-system", () => {
 
   class File {
     static downloadFileAsync = mocks.download;
+    write = mocks.write;
     readonly uri: string;
 
     constructor(source: Directory | string, name?: string) {
@@ -76,6 +78,7 @@ import {
   downloadAndShareAttachment,
   downloadAttachmentForPreview,
   shareLocalAttachment,
+  shareGeneratedTextFile,
 } from "./attachmentDownload";
 import { isForegroundHandoffActive } from "./foreground-handoff";
 
@@ -94,6 +97,7 @@ beforeEach(() => {
   mocks.deleted.mockReset();
   mocks.download.mockReset();
   mocks.copy.mockReset();
+  mocks.write.mockReset();
   mocks.share.mockReset();
   mocks.shareFromSource.mockReset();
   mocks.available.mockReset();
@@ -402,6 +406,45 @@ describe("attachment preview files", () => {
     await task;
     expect(mocks.share).not.toHaveBeenCalled();
     expect(mocks.deleted).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("generated text file sharing", () => {
+  it("shares exact export bytes and retains the file after the share sheet returns", async () => {
+    const contents = '{"body":"文字\\n  preserved", "state":"resolved"}';
+    mocks.share.mockImplementation(async () => {
+      expect(isForegroundHandoffActive()).toBe(true);
+      expect(mocks.write).toHaveBeenCalledWith(contents);
+    });
+    await shareGeneratedTextFile({
+      name: "conversation.json",
+      mimeType: "application/json",
+      contents,
+      signal: new AbortController().signal,
+    });
+    expect(mocks.share).toHaveBeenCalledWith(expect.stringMatching(/\/conversation\.json$/), {
+      mimeType: "application/json",
+      dialogTitle: "conversation.json",
+    });
+    expect(mocks.deleted).not.toHaveBeenCalled();
+    expect(isForegroundHandoffActive()).toBe(false);
+  });
+
+  it("removes an unshared export when writing fails", async () => {
+    mocks.write.mockImplementation(() => {
+      throw new Error("Disk full");
+    });
+    await expect(
+      shareGeneratedTextFile({
+        name: "conversation.json",
+        mimeType: "application/json",
+        contents: "{}",
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("Disk full");
+    expect(mocks.share).not.toHaveBeenCalled();
+    expect(mocks.deleted).toHaveBeenCalledTimes(1);
+    expect(isForegroundHandoffActive()).toBe(false);
   });
 });
 
