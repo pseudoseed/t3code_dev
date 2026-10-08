@@ -1,6 +1,6 @@
 # Voice input
 
-> For maintainers. Using T3 Code? See [voice input](../user/composer.md#voice-input).
+> For maintainers. Using T3 Code? See [voice input](../user/composer.md#voice-input-on-iphone-and-ipad).
 
 Voice input produces editable composer text. Everything runs on the client device: no audio and no
 text leaves it. Web and desktop have no voice input, and Android has none either. Transcription
@@ -79,16 +79,26 @@ otherwise looks finished and fails deep inside CoreML with an error nobody can a
 Two download paths exist. Most models come from a [committed manifest][manifest] with per-file
 checksums, downloaded into a staging directory and moved into place only after everything verifies.
 FluidAudio's models are fetched by FluidAudio, because it knows which files each version needs; those
-carry no progress reporting and no checksum of ours. FluidAudio treats the directory it is handed as
-the repository folder and writes to its _parent_, so it is given a repository-named subfolder inside
-the folder the store owns.
+report fractional progress and carry no checksum of ours. FluidAudio's older recognizer/online-diarizer
+APIs take a repository-named subfolder and write to its parent; `ModelHub` and the offline diarizer
+instead take that parent directly. Mixing these conventions scatters model files outside the store's
+folder, breaking deletion and completion markers.
 
 ## Gating
 
-Models are gated on memory. `os_proc_available_memory()` is read at picker render and again at load,
-because it is an instantaneous snapshot and the two differ. It returns 0 for a process with no memory
-limit, which is every process on the Simulator; that case reports the machine's memory instead and
-flags that the number is not a device budget.
+New model choices are gated on free memory at picker render. An installed selection is retained:
+resident speech and cleanup models already occupy memory, so reapplying the cold-load budget before
+every dictation can silently replace Parakeet with Apple and turn filtering off. Preparation reuses
+a resident model. Cold loads check the current OS budget against the on-disk weights (with extra
+allocation headroom for cleanup); a failed check follows the disclosed fallback below.
+
+`os_proc_available_memory()` can return 0 both without a process limit and after an app exceeds its
+limit. Only the Simulator substitutes host memory and marks it as a non-device budget. On a real
+device, zero rejects a cold load.
+
+Offline speaker filtering also checks working-memory headroom before processing: its small weights
+do not represent the lazy CoreML graphs and long-recording buffers. The bridge evicts resident
+cleanup weights first when that headroom is low; the engine checks again before inference.
 
 A model the device cannot run is shown disabled with the reason, never hidden. A model that passes
 gating and then fails to load falls back to the bundled model for that one dictation, says so in the
@@ -121,8 +131,9 @@ map the signal onto `cancel(operationId)`, and settle only after native confirms
 Implementations settle their promises after their underlying work stops, never before. Downloads are
 not part of a voice operation and carry their own operation id.
 
-Cancelling during `cleaning` is not cancelling the dictation: the rewrite is abandoned and the raw
-transcript is committed.
+Cancelling during `cleaning` immediately commits the raw transcript and restores editing. Native
+inference is still cancelled cooperatively; its session remains locked until the work settles so a
+new dictation cannot overlap a model load or rewrite still draining.
 
 ## Durability
 
@@ -196,19 +207,26 @@ cannot see and undo.
 
 ## Speaker filtering
 
-Diarization returns speaker spans; the rule that turns those into "this one is the user" is
-[in Swift][speaker-filter], next to the audio, and is deliberately conservative. It keeps the speaker
-who did most of the talking, and only when they beat the runner-up by a clear margin. When it cannot
-tell, it keeps everything and the composer says so, because dropping the user's own words is a far
-worse failure than leaving a stray voice in.
+Diarization returns speaker spans; [the filter][speaker-filter] uses levels measured only where a
+speaker talks alone. Measuring overlapping speech assigns both speakers the foreground level and
+prevents background filtering. Completed recordings use whole-file clustering: the streaming diarizer
+can merge alternating voices before it has enough context. Models stay resident, but clustering is
+per recording; keeping embeddings between unrelated recordings changes later results. Existing
+online-diarizer installations remain usable until an explicit model update completes. The two versions
+have distinct store IDs so an old completion marker cannot authorize loading new assets or trigger
+an unrequested download during dictation.
 
-**Talking the most is not evidence of being the user.** The diarizer splits one person into two
-clusters often enough on a long recording, and when it does, the duration rule alone drops a
-block of the user's own speech, usually the end of it. Each span therefore carries its mean level,
-and a non-dominant voice is dropped only when it is clearly quieter than the dominant one: the
-person holding the phone is the loudest voice in a dictation, and a self-split produces two voices
-at the same level. Everything filtering removes is disclosed with its duration, so a wrong drop is
-seen in the composer rather than in a sent message.
+Duration does not identify the user: a television can talk longer, and the diarizer can split the
+user into several clusters. Keep all clusters near the loudest substantial voice and those without a
+reliable level; remove only clearly quieter speech. The union of measured foreground spans must
+also outlast each removed speaker by a clear margin, so a brief loud interruption cannot displace
+a longer dictation. A self-split therefore does not disable removal
+of a third, quieter voice. Each span's own level also protects foreground phrases misassigned to a
+quieter cluster. Short audio windows restore foreground-level words hidden inside a longer quiet
+segment. Remove only confirmed quiet intervals; unassigned gaps and tails can contain speech the
+diarizer missed and must remain. Loudness is a heuristic, not speaker identity. Similar-volume voices and
+simultaneous speech remain; slicing time ranges cannot separate mixed sources. Disclosed removal
+duration excludes overlap and boundary padding that the recognizer still hears.
 
 Filtering needs both a diarizing speech model and the separate diarizer model. Without either it
 stays off rather than reporting a fallback nobody can act on.

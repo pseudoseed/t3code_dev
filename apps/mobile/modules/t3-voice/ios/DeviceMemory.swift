@@ -8,25 +8,67 @@ import os
 /// made, never cache it: a value read when the picker rendered says nothing
 /// about what is free when a model loads.
 enum DeviceMemory {
+  static func hasSpeakerFilteringCapacity() -> Bool {
+    ModelLoadBudget.fitsSpeakerFiltering(availableBytes: availableMemory().bytes)
+  }
+
+  static func requireSpeakerFilteringCapacity() throws {
+    guard hasSpeakerFilteringCapacity() else {
+      throw VoiceEngineError.modelUnavailable("Not enough free memory to filter speakers.")
+    }
+  }
+
+  /// Check immediately before allocation, after the engine's resident fast path.
+  /// Use logical weight sizes: APFS compression must not shrink the memory estimate.
+  static func requireLoadCapacity(modelFolder: URL, multiplier: Double = 1) throws {
+    let keys: Set<URLResourceKey> = [.fileSizeKey, .isRegularFileKey]
+    guard
+      let files = FileManager.default.enumerator(
+        at: modelFolder, includingPropertiesForKeys: Array(keys)
+      )
+    else {
+      throw VoiceEngineError.modelUnavailable("The model's size could not be read.")
+    }
+    var bytes: Int64 = 0
+    for case let url as URL in files {
+      let values = try url.resourceValues(forKeys: keys)
+      if values.isRegularFile == true { bytes += Int64(values.fileSize ?? 0) }
+    }
+    guard
+      ModelLoadBudget.fits(
+        modelBytes: bytes, availableBytes: availableMemory().bytes,
+        multiplier: multiplier
+      )
+    else {
+      throw VoiceEngineError.modelUnavailable("Not enough free memory to load this voice model.")
+    }
+  }
+
   static func snapshot() -> [String: Any] {
     let physical = ProcessInfo.processInfo.physicalMemory
 
-    // `os_proc_available_memory` returns 0 for a process with no memory limit,
-    // which is every process on the Simulator. Reporting that verbatim gates
-    // out every model and makes the picker look broken, so an unlimited process
-    // reports the machine's memory instead. On a real device the process is
-    // always limited and this branch never runs.
-    let available = os_proc_available_memory()
-    let availableBytes = available > 0 ? UInt64(available) : physical
+    let available = availableMemory()
 
     return [
-      "availableBytes": Double(availableBytes),
+      "availableBytes": Double(available.bytes),
       "physicalBytes": Double(physical),
       // False when the value above is the machine's memory rather than a real
       // per-process budget, so callers can say the number is not a device one.
-      "isProcessLimited": available > 0,
+      "isProcessLimited": available.isProcessLimited,
       "footprintBytes": Double(footprint()),
     ]
+  }
+
+  private static func availableMemory() -> (bytes: UInt64, isProcessLimited: Bool) {
+    let available = UInt64(os_proc_available_memory())
+    // Zero also means a real app has exceeded its limit. Only the Simulator
+    // may substitute host RAM for a process without an iOS memory budget.
+    #if targetEnvironment(simulator)
+      if available == 0 {
+        return (ProcessInfo.processInfo.physicalMemory, false)
+      }
+    #endif
+    return (available, true)
   }
 
   /// Bytes this process is currently charged for.
@@ -39,7 +81,8 @@ enum DeviceMemory {
   /// into measurements instead of estimates.
   static func footprint() -> UInt64 {
     var info = task_vm_info_data_t()
-    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+    var count = mach_msg_type_number_t(
+      MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
 
     let result = withUnsafeMutablePointer(to: &info) { pointer in
       pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in

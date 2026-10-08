@@ -31,7 +31,6 @@ vi.mock("expo-file-system", () => ({
 // native module. Returning null here keeps these cases on the Apple path, which
 // is what they were written to cover.
 vi.mock("./t3Voice", () => ({
-  DIARIZER_MODEL_ID: "fluid-diarizer",
   readVoiceModelEnvironment: mocks.readVoiceModelEnvironment,
   getInstalledModelIds: mocks.getInstalledModelIds,
 }));
@@ -232,6 +231,35 @@ describe("model substitution", () => {
     });
   });
 
+  it("keeps Parakeet and speaker filtering when resident models reduce free memory", async () => {
+    mocks.isAvailable.mockReturnValue(true);
+    mocks.readVoiceModelEnvironment.mockReturnValue({
+      iosMajorVersion: 26,
+      availableMemoryBytes: 64 * 1024 * 1024,
+      supportedBackends: ["whisperKit", "fluidAudio"],
+    });
+    mocks.getInstalledModelIds.mockReturnValue(["parakeet-v3", "fluid-diarizer"]);
+    const prepare = vi.fn(async () => ({
+      locale: "en",
+      transcribe: async () => ({ text: "selected model" }),
+    }));
+    mocks.getLocalModelVoiceTranscriber.mockReturnValue({ prepare });
+
+    const transcriber = getLocalVoiceTranscriber({
+      speechModelId: "parakeet-v3",
+      speakerFiltering: true,
+    })!;
+    const options = { signal: new AbortController().signal };
+    const prepared = await transcriber.prepare(options);
+    expect((await prepared.transcribe("file:///voice.m4a", options)).text).toBe("selected model");
+    expect(mocks.getLocalModelVoiceTranscriber).toHaveBeenCalledWith({
+      modelId: "parakeet-v3",
+      locale: expect.any(String),
+      speakerFiltering: true,
+    });
+    expect(mocks.prepare).not.toHaveBeenCalled();
+  });
+
   it("uses the built-in model when the chosen one will not load, and says so", async () => {
     const selected = {
       prepare: vi.fn(async () => {
@@ -287,27 +315,25 @@ describe("model substitution", () => {
     expect(bundled.prepare).not.toHaveBeenCalled();
   });
 
-  it("keeps speaker filtering off until the separation model is installed", () => {
-    const selected = { prepare: vi.fn() };
-    mocks.getLocalModelVoiceTranscriber.mockReturnValue(selected);
-    mocks.getInstalledModelIds.mockReturnValue(["parakeet-v3"]);
+  it.each([
+    { label: "fresh install", ids: [], expected: false },
+    { label: "legacy model awaiting update", ids: ["fluid-diarizer"], expected: true },
+    { label: "current model", ids: ["fluid-diarizer-offline"], expected: true },
+    {
+      label: "completed update retaining the legacy model",
+      ids: ["fluid-diarizer", "fluid-diarizer-offline"],
+      expected: true,
+    },
+  ])("preserves requested filtering for $label", ({ ids, expected }) => {
+    mocks.getLocalModelVoiceTranscriber.mockReturnValue({ prepare: vi.fn() });
+    mocks.getInstalledModelIds.mockReturnValue(["parakeet-v3", ...ids]);
 
     getLocalVoiceTranscriber({ speechModelId: "parakeet-v3", speakerFiltering: true });
 
     expect(mocks.getLocalModelVoiceTranscriber).toHaveBeenCalledWith({
       modelId: "parakeet-v3",
       locale: expect.any(String),
-      speakerFiltering: false,
-    });
-
-    mocks.getLocalModelVoiceTranscriber.mockClear();
-    mocks.getInstalledModelIds.mockReturnValue(["parakeet-v3", "fluid-diarizer"]);
-    getLocalVoiceTranscriber({ speechModelId: "parakeet-v3", speakerFiltering: true });
-
-    expect(mocks.getLocalModelVoiceTranscriber).toHaveBeenCalledWith({
-      modelId: "parakeet-v3",
-      locale: expect.any(String),
-      speakerFiltering: true,
+      speakerFiltering: expected,
     });
   });
 });

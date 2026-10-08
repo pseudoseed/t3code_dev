@@ -69,6 +69,7 @@ export function SettingsVoiceRouteScreen() {
   const speakerFiltering = resolveSpeakerFilteringPresentation({
     selectedSpeechModelId: preferences?.voiceSpeechModelId ?? null,
     diarizerInstalled: models.diarizerInstalled,
+    diarizerNeedsUpdate: models.diarizerNeedsUpdate,
     diarizerSizeText: formatModelSize(models.diarizerBytes),
   });
 
@@ -133,12 +134,15 @@ export function SettingsVoiceRouteScreen() {
             value={speakerFiltering.enabled && (preferences?.voiceSpeakerFilteringEnabled ?? false)}
             onValueChange={(value) => savePreferences({ voiceSpeakerFilteringEnabled: value })}
           />
-          {speakerFiltering.needsDiarizer ? (
+          {speakerFiltering.needsDiarizer ||
+          (speakerFiltering.enabled && models.diarizerNeedsUpdate) ? (
             <ActionRow
               label={
                 models.snapshot.downloads[DIARIZER_MODEL_ID] !== undefined
-                  ? "Downloading voice separation"
-                  : "Download voice separation"
+                  ? "Downloading speaker filtering"
+                  : models.diarizerNeedsUpdate
+                    ? "Update speaker filtering"
+                    : "Download speaker filtering"
               }
               value={formatModelSize(models.diarizerBytes)}
               busy={models.snapshot.downloads[DIARIZER_MODEL_ID] !== undefined}
@@ -146,6 +150,9 @@ export function SettingsVoiceRouteScreen() {
             />
           ) : null}
         </SettingsSection>
+        {models.snapshot.failures[DIARIZER_MODEL_ID] ? (
+          <Footnote>{models.snapshot.failures[DIARIZER_MODEL_ID]}</Footnote>
+        ) : null}
 
         <SettingsSection title="Keyboard shortcut">
           {DICTATION_SHORTCUTS.map((option, index) => (

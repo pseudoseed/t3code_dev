@@ -96,6 +96,7 @@ import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
 import {
   ComposerDictationCancelAction,
+  ComposerDictationFeedback,
   ComposerDictationDraftContent,
   ComposerDictationPrimaryAction,
   ComposerDictationStartAction,
@@ -409,7 +410,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     voiceInput.state,
     voiceInput.elapsedSeconds,
   );
-  const isVoiceInputPresented = voicePresentation.statusLabel !== null;
+  const isVoiceInputPresented = voicePresentation.showsDictation;
   // An open draft stays visible; only a collapsed composer becomes a voice strip.
   const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const showsCompactDictation = isVoiceInputPresented && !isExpanded;
@@ -698,6 +699,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           </Pressable>
         ) : null}
 
+        <ComposerDictationFeedback
+          presentation={voicePresentation}
+          recoverableTranscript={voiceInput.recoverableTranscript}
+          onInsertRecovery={voiceInput.insertRecoverableTranscript}
+          onDiscardRecovery={voiceInput.discardRecoverableTranscript}
+          onDismiss={voiceInput.cancel}
+        />
         <ComposerSurface
           style={
             isExpanded
@@ -910,6 +918,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 <ComposerDictationStartAction
                   state={voiceInput.state}
                   isAvailable={voiceInput.isAvailable}
+                  hasPendingRecovery={voiceInput.recoverableTranscript !== null}
                   onStart={voiceInput.start}
                   onCancel={voiceInput.cancel}
                 />
@@ -970,7 +979,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     elapsedSeconds={voiceInput.elapsedSeconds}
                     phase={voiceInput.state.phase}
                     presentation={voicePresentation}
-                    onDismissError={voiceInput.cancel}
                   />
                 ) : (
                   <View className="min-w-0 flex-1 flex-row items-center justify-between">
@@ -1008,6 +1016,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     state={voiceInput.state}
                     presentation={voicePresentation}
                     isAvailable={voiceInput.isAvailable}
+                    hasPendingRecovery={voiceInput.recoverableTranscript !== null}
                     onStart={voiceInput.start}
                     onConfirm={voiceInput.stop}
                     onCancel={voiceInput.cancel}

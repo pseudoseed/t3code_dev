@@ -42,11 +42,24 @@ actor FluidAudioEngine {
   ///
   /// Not a user-selectable model. It is a dependency of speaker filtering, so
   /// it is downloaded when that is switched on and deleted with it.
-  static let diarizerModelId = "fluid-diarizer"
+  static let diarizerModelId = "fluid-diarizer-offline"
+  static let legacyDiarizerModelId = "fluid-diarizer"
+
+  private enum LoadedDiarizer {
+    case offline(OfflineDiarizerModels)
+    case legacy(DiarizerManager)
+
+    var modelId: String {
+      switch self {
+      case .offline: return FluidAudioEngine.diarizerModelId
+      case .legacy: return FluidAudioEngine.legacyDiarizerModelId
+      }
+    }
+  }
 
   private var loadedModelId: String?
   private var asrManager: AsrManager?
-  private var diarizer: DiarizerManager?
+  private var diarizer: LoadedDiarizer?
 
   /// Maps a catalog id to the FluidAudio recognizer behind it.
   static func asrVersion(forModelId modelId: String) -> AsrModelVersion? {
@@ -70,7 +83,7 @@ actor FluidAudioEngine {
   private static func repositoryFolder(forModelId modelId: String, in folder: URL) -> URL? {
     let repo: Repo
     switch modelId {
-    case diarizerModelId: repo = .diarizer
+    case diarizerModelId, legacyDiarizerModelId: repo = .diarizer
     case "parakeet-v3": repo = .parakeetV3
     default: return nil
     }
@@ -88,6 +101,7 @@ actor FluidAudioEngine {
       throw VoiceEngineError.modelUnavailable("\(modelId) is not a FluidAudio model.")
     }
 
+    try DeviceMemory.requireLoadCapacity(modelFolder: modelFolder)
     let models = try await AsrModels.load(from: directory, version: version)
     let manager = AsrManager(config: .default, models: models)
     // Replaced only once the new one is loaded, so a failed switch leaves
@@ -97,17 +111,30 @@ actor FluidAudioEngine {
   }
 
   func prepareDiarizer(modelFolder: URL) async throws {
-    if diarizer != nil { return }
+    let modelId = modelFolder.lastPathComponent
+    if diarizer?.modelId == modelId { return }
 
-    guard let directory = Self.repositoryFolder(forModelId: Self.diarizerModelId, in: modelFolder)
+    guard let directory = Self.repositoryFolder(forModelId: modelId, in: modelFolder),
+      modelId == Self.diarizerModelId || modelId == Self.legacyDiarizerModelId
     else {
       throw VoiceEngineError.modelUnavailable("The voice separation model is not installed.")
     }
 
-    let models = try await DiarizerModels.load(from: directory)
-    let manager = DiarizerManager()
-    manager.initialize(models: models)
-    diarizer = manager
+    try DeviceMemory.requireLoadCapacity(modelFolder: modelFolder)
+    if modelId == Self.diarizerModelId {
+      try DeviceMemory.requireSpeakerFilteringCapacity()
+      // Completed recordings benefit from clustering the whole file. The online
+      // diarizer can merge alternating voices before it has enough context.
+      // Unlike the older load API, this one takes the repository's parent.
+      let models = try await OfflineDiarizerModels.load(from: modelFolder)
+      diarizer = .offline(models)
+    } else {
+      // Keep existing filtering available until the user downloads the update.
+      let models = try await DiarizerModels.load(from: directory)
+      let manager = DiarizerManager()
+      manager.initialize(models: models)
+      diarizer = .legacy(manager)
+    }
   }
 
   /// Downloads a FluidAudio model into our store.
@@ -131,6 +158,10 @@ actor FluidAudioEngine {
     let handler: ProgressHandler = { progress in onProgress(progress.fractionCompleted) }
 
     if modelId == diarizerModelId {
+      try await ModelHub.download(.diarizer, to: folder, variant: "offline", progressHandler: handler)
+      return
+    }
+    if modelId == legacyDiarizerModelId {
       _ = try await DiarizerModels.download(to: directory, progressHandler: handler)
       return
     }
@@ -166,11 +197,11 @@ actor FluidAudioEngine {
       return VoiceTranscriptionOutput(text: text, speakerFiltering: .notRequested)
     }
 
-    let decision = try Self.decideSpeaker(for: samples, using: diarizer)
+    let decision = try await decideSpeaker(for: samples, using: diarizer)
     try Task.checkCancellation()
 
     switch decision {
-    case let .filter(_, ranges, removedSeconds):
+    case .filter(_, let ranges, let removedSeconds):
       let filtered = Self.slice(samples, to: ranges)
       let text = try await Self.transcribe(filtered, with: asrManager, locale: locale)
       return VoiceTranscriptionOutput(
@@ -182,7 +213,7 @@ actor FluidAudioEngine {
           removedSeconds: removedSeconds
         )
       )
-    case let .passThrough(reason):
+    case .passThrough(let reason):
       let text = try await Self.transcribe(samples, with: asrManager, locale: locale)
       return VoiceTranscriptionOutput(
         text: text,
@@ -203,7 +234,9 @@ actor FluidAudioEngine {
   }
 
   func isLoaded(modelId: String) -> Bool {
-    if modelId == Self.diarizerModelId { return diarizer != nil }
+    if modelId == Self.diarizerModelId || modelId == Self.legacyDiarizerModelId {
+      return diarizer?.modelId == modelId
+    }
     return asrManager != nil && loadedModelId == modelId
   }
 
@@ -222,27 +255,63 @@ actor FluidAudioEngine {
     return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  private static func decideSpeaker(
+  private func decideSpeaker(
     for samples: [Float],
-    using diarizer: DiarizerManager
-  ) throws -> SpeakerFilterDecision {
-    let result = try diarizer.performCompleteDiarization(samples, sampleRate: sampleRate)
-    let spans = result.segments.map { segment in
+    using diarizer: LoadedDiarizer
+  ) async throws -> SpeakerFilterDecision {
+    let result: DiarizationResult
+    switch diarizer {
+    case .offline(let models):
+      try DeviceMemory.requireSpeakerFilteringCapacity()
+      // The resident models are Sendable; each call owns its clustering manager.
+      let manager = OfflineDiarizerManager()
+      manager.initialize(models: models)
+      result = try await manager.process(audio: samples)
+    case .legacy(let manager):
+      // Keep the expensive models resident, not the previous recording's
+      // embeddings. The offline manager already clusters each file separately.
+      manager.speakerManager.reset()
+      defer { manager.speakerManager.reset() }
+      result = try manager.performCompleteDiarization(samples, sampleRate: Self.sampleRate)
+    }
+    let unmeasured = result.segments.map { segment in
       let start = Double(segment.startTimeSeconds)
       let end = Double(segment.endTimeSeconds)
       return SpeakerSpan(
         speakerId: segment.speakerId,
         startSeconds: start,
-        endSeconds: end,
-        levelDb: Self.level(of: samples, from: start, to: end)
+        endSeconds: end
       )
     }
 
-    let decision = SpeakerFilter.decide(spans: spans)
+    let soloRanges = Dictionary(
+      uniqueKeysWithValues: Set(unmeasured.map(\.speakerId)).map { id in
+        (id, SpeakerFilter.soloRanges(speakerId: id, spans: unmeasured))
+      })
+    let spans = unmeasured.map { span in
+      // A foreground phrase can land in an otherwise quiet cluster. Its local
+      // level must still protect it; the cluster average is not its volume.
+      let ranges = (soloRanges[span.speakerId] ?? []).compactMap { range -> KeptRange? in
+        let start = max(span.startSeconds, range.startSeconds)
+        let end = min(span.endSeconds, range.endSeconds)
+        return start < end ? KeptRange(startSeconds: start, endSeconds: end) : nil
+      }
+      return SpeakerSpan(
+        speakerId: span.speakerId, startSeconds: span.startSeconds, endSeconds: span.endSeconds,
+        levelDb: Self.level(of: samples, ranges: ranges)
+      )
+    }
+
+    let levels = SpeakerFilter.levelBySpeaker(spans)
+    var decision = SpeakerFilter.decide(
+      spans: spans, audioDurationSeconds: Double(samples.count) / Double(Self.sampleRate))
+    if case .filter(let id, _, _) = decision, let level = levels[id] {
+      decision = SpeakerFilter.protectingLoudAudio(
+        decision, samples: samples, sampleRate: Self.sampleRate, foregroundLevel: level)
+    }
     // What the diarizer heard, per voice, so a wrong drop can be traced to the
     // duration or level that caused it and the thresholds tuned from a real
     // recording rather than a guess.
-    let levels = SpeakerFilter.levelBySpeaker(spans)
     var seconds: [String: Double] = [:]
     for span in spans { seconds[span.speakerId, default: 0] += span.duration }
     let voices = seconds.keys.sorted().map { id in
@@ -257,19 +326,24 @@ actor FluidAudioEngine {
     return decision
   }
 
-  /// Mean level of one stretch in dBFS, the evidence for how far a voice was
-  /// from the microphone. Nil for an empty stretch.
+  /// Mean level across solo speech, without double-counting overlapping windows.
   private static func level(
-    of samples: [Float], from startSeconds: Double, to endSeconds: Double
+    of samples: [Float], ranges: [KeptRange]
   ) -> Double? {
-    let start = max(0, Int(startSeconds * Double(sampleRate)))
-    let end = min(samples.count, Int(endSeconds * Double(sampleRate)))
-    guard start < end else { return nil }
     var power = 0.0
-    for sample in samples[start..<end] {
-      power += Double(sample) * Double(sample)
+    var count = 0
+    for range in ranges {
+      let start = max(0, Int(range.startSeconds * Double(sampleRate)))
+      let end = min(samples.count, Int(range.endSeconds * Double(sampleRate)))
+      guard start < end else { continue }
+      for sample in samples[start..<end] {
+        power += Double(sample) * Double(sample)
+      }
+      count += end - start
     }
-    let mean = power / Double(end - start)
+    // Tiny solo fragments give unreliable levels and must not authorize a drop.
+    guard count >= sampleRate / 10 else { return nil }
+    let mean = power / Double(count)
     return 10 * log10(max(mean, 1e-12))
   }
 
