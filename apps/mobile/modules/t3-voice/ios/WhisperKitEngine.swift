@@ -29,6 +29,8 @@ actor WhisperKitEngine {
       return try await loadTask.value
     }
 
+    try DeviceMemory.requireLoadCapacity(modelFolder: modelFolder)
+
     // A different model was asked for. Drop the old one only once the new one
     // is in hand, so a failed switch leaves dictation working rather than
     // leaving the user with nothing loaded.
@@ -82,10 +84,7 @@ actor WhisperKitEngine {
     let results = try await whisperKit.transcribe(audioPath: audioPath, decodeOptions: options)
     try Task.checkCancellation()
 
-    return results
-      .map(\.text)
-      .joined(separator: " ")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return WhisperTranscript.normalize(results.map(\.text).joined(separator: " "))
   }
 
   /// Releases the resident model under memory pressure. The next dictation

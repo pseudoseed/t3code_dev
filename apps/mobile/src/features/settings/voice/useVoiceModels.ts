@@ -3,7 +3,6 @@ import * as Network from "expo-network";
 
 import {
   DIARIZER_DOWNLOAD_BYTES,
-  DIARIZER_MODEL_ID,
   cancelOperation,
   deleteModel,
   downloadModel,
@@ -11,6 +10,7 @@ import {
   getStorageUsageBytes,
   onModelDownloadProgress,
 } from "../../../native/t3Voice";
+import { resolveDiarizerInstallation } from "../../../native/speakerFilteringModel";
 import { readVoiceModelEnvironmentForApp } from "../../../native/voiceTranscription";
 import type { VoiceModelsSnapshot } from "./voiceSettings";
 
@@ -136,10 +136,13 @@ export function useVoiceModels(input: {
     failures,
   };
 
+  const diarizer = resolveDiarizerInstallation(installedModelIds);
+
   return {
     snapshot,
     storageBytes,
-    diarizerInstalled: installedModelIds.includes(DIARIZER_MODEL_ID),
+    diarizerInstalled: diarizer.installedModelId !== null,
+    diarizerNeedsUpdate: diarizer.needsUpdate,
     diarizerBytes: DIARIZER_DOWNLOAD_BYTES,
     startDownload,
     cancelDownload,

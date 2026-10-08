@@ -250,6 +250,7 @@ export class VoiceInputController {
   private recordingConfigured = false;
   private finishing = false;
   private cleanupAbortController: AbortController | null = null;
+  private commitUncleanedTranscript: (() => void) | null = null;
   private pendingTranscriptPersisted = false;
   private stopRequested = false;
   private retryRecording: { uri: string; ownerKey: string } | null = null;
@@ -388,9 +389,11 @@ export class VoiceInputController {
         this.setState(IDLE_STATE);
         return;
       case "cleaning":
-        // Cancelling the rewrite is not cancelling the dictation. The raw
-        // transcript is what the user said, so it still gets committed.
+        // Restore editing immediately, even when native is still loading the
+        // cleanup model. Keep the inference session locked until it drains.
+        this.invalidateOperation();
         this.cleanupAbortController?.abort();
+        this.commitUncleanedTranscript?.();
         return;
     }
   }
@@ -461,7 +464,10 @@ export class VoiceInputController {
   }
 
   ownerChanged(): void {
-    if (this.state.phase === "idle") return;
+    if (this.state.phase === "idle") {
+      this.setState(IDLE_STATE);
+      return;
+    }
     if (this.state.phase === "cleaning") {
       // The draft this transcript belongs to is gone, so unlike a user cancel
       // there is nothing left to commit it into.
@@ -535,7 +541,7 @@ export class VoiceInputController {
       // spinner over a model that has not loaded.
       let transcription: PreparedVoiceTranscription;
       try {
-        transcription = await this.awaitModel(this.transcription);
+        transcription = await this.awaitModel(this.transcription, operationToken);
       } catch (error) {
         if (this.isCurrent(operationToken)) this.setError(preparationErrorMessage(error), "retry");
         return;
@@ -591,8 +597,17 @@ export class VoiceInputController {
         if (!this.isCurrent(operationToken)) return;
       }
       if (cleanup && transcript.trim().length > 0) {
+        const transcriptionNotice = notice;
+        this.commitUncleanedTranscript = () =>
+          this.commitTranscript(
+            capturedDraft,
+            transcript,
+            transcription.locale,
+            transcriptionNotice,
+          );
         this.setState({ phase: "cleaning", error: null, errorAction: null, notice: null });
         const outcome = await this.runCleanup(cleanup, transcript);
+        this.commitUncleanedTranscript = null;
         committedTranscript = outcome.text;
         if (outcome.kind === "raw") {
           notice = [
@@ -605,46 +620,56 @@ export class VoiceInputController {
         if (!this.isCurrent(operationToken)) return;
       }
 
-      const result = resolveTranscriptCommit(
-        capturedDraft,
-        this.dependencies.readDraft(),
-        committedTranscript,
-        transcription.locale,
-      );
-      if (result.kind === "stale") {
-        this.setError(
-          "The draft changed while voice input was running. The transcript was not added.",
-          "retry",
-        );
-        return;
-      }
-      if (result.kind === "empty") {
-        this.setError("No speech was detected.", "retry");
-        return;
-      }
-
-      this.dependencies.commitDraft(result.text, result.selection);
-      this.retryRecording = null;
-      if (this.pendingTranscriptPersisted) {
-        this.pendingTranscriptPersisted = false;
-        this.dependencies.clearPendingTranscript?.();
-      }
-      this.dependencies.onDictationCommitted?.({
-        ownerKey: capturedDraft.ownerKey,
-        revision: capturedDraft.revision,
-        before: result.text.slice(0, result.insertedRange.start),
-        insertedText: result.text.slice(result.insertedRange.start, result.insertedRange.end),
-        after: result.text.slice(result.insertedRange.end),
-      });
-      this.setState({ phase: "idle", error: null, errorAction: null, notice });
+      this.commitTranscript(capturedDraft, committedTranscript, transcription.locale, notice);
     } catch {
       if (this.isCurrent(operationToken)) {
         this.setError("Could not finish voice recording.", "retry");
       }
     } finally {
+      this.commitUncleanedTranscript = null;
       this.finishing = false;
       await this.releaseResources();
     }
+  }
+
+  private commitTranscript(
+    capturedDraft: VoiceDraftSnapshot,
+    transcript: string,
+    locale: string,
+    notice: string | null,
+  ): void {
+    const result = resolveTranscriptCommit(
+      capturedDraft,
+      this.dependencies.readDraft(),
+      transcript,
+      locale,
+    );
+    if (result.kind === "stale") {
+      this.setError(
+        "The draft changed while voice input was running. The transcript was not added.",
+        "retry",
+      );
+      return;
+    }
+    if (result.kind === "empty") {
+      this.setError("No speech was detected.", "retry");
+      return;
+    }
+
+    this.dependencies.commitDraft(result.text, result.selection);
+    this.retryRecording = null;
+    if (this.pendingTranscriptPersisted) {
+      this.pendingTranscriptPersisted = false;
+      this.dependencies.clearPendingTranscript?.();
+    }
+    this.dependencies.onDictationCommitted?.({
+      ownerKey: capturedDraft.ownerKey,
+      revision: capturedDraft.revision,
+      before: result.text.slice(0, result.insertedRange.start),
+      insertedText: result.text.slice(result.insertedRange.start, result.insertedRange.end),
+      after: result.text.slice(result.insertedRange.end),
+    });
+    this.setState({ phase: "idle", error: null, errorAction: null, notice });
   }
 
   /**
@@ -655,6 +680,7 @@ export class VoiceInputController {
    */
   private async awaitModel(
     pending: Promise<PreparedVoiceTranscription>,
+    operationToken: number,
   ): Promise<PreparedVoiceTranscription> {
     let settled = false;
     void pending.then(
@@ -668,14 +694,14 @@ export class VoiceInputController {
 
     await Promise.resolve();
     const waited = !settled;
-    if (waited) {
+    if (waited && this.isCurrent(operationToken)) {
       this.setState({ phase: "waitingForModel", error: null, errorAction: null, notice: null });
     }
 
     const prepared = await pending;
     // Only when the phase actually changed. A load that finished during
     // recording should not emit a second identical state.
-    if (waited) {
+    if (waited && this.isCurrent(operationToken)) {
       this.setState({ phase: "transcribing", error: null, errorAction: null, notice: null });
     }
     return prepared;

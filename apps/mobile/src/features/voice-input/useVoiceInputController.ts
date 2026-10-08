@@ -12,7 +12,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Alert, AppState } from "react-native";
+import { AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
@@ -106,6 +106,16 @@ export function useVoiceInputController(input: {
   const persistPreferencesRef = useRef(persistPreferences);
   persistPreferencesRef.current = persistPreferences;
   const preferences = AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value : null;
+  const recoverableTranscript = preferences
+    ? resolveRecoverableTranscript(
+        preferences,
+        { ownerKey: input.ownerKey, text: input.draftMessage },
+        SESSION_STARTED_AT,
+      )
+    : null;
+
+  const recoveryPendingRef = useRef(recoverableTranscript !== null);
+  recoveryPendingRef.current = recoverableTranscript !== null;
   const cleanupSettings = useMemo(
     () => (preferences ? resolveVoiceCleanupSettings(preferences) : null),
     [preferences],
@@ -302,7 +312,7 @@ export function useVoiceInputController(input: {
   }, [audioLevels, controller, recorder, state.phase]);
 
   const start = useCallback(() => {
-    if (!latestInputRef.current.disabled) void controller.start();
+    if (!latestInputRef.current.disabled && !recoveryPendingRef.current) void controller.start();
   }, [controller]);
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
@@ -313,7 +323,7 @@ export function useVoiceInputController(input: {
   const shortcut = preferences?.voiceDictationShortcut ?? "hold";
 
   const canStart = useCallback(() => {
-    if (latestInputRef.current.disabled) return false;
+    if (latestInputRef.current.disabled || recoveryPendingRef.current) return false;
     const { phase } = controller.currentState;
     return phase === "idle" || phase === "error";
   }, [controller]);
@@ -351,14 +361,6 @@ export function useVoiceInputController(input: {
   useHardwareKeyboardCommand("dictationHoldStart", startHold, shortcut === "hold");
   useHardwareKeyboardCommand("dictationHoldEnd", endHold, shortcut === "hold");
 
-  const recoverableTranscript = preferences
-    ? resolveRecoverableTranscript(
-        preferences,
-        { ownerKey: input.ownerKey, text: input.draftMessage },
-        SESSION_STARTED_AT,
-      )
-    : null;
-
   const discardRecoverableTranscript = useCallback(() => {
     savePreferencesRef.current({ voicePendingTranscript: undefined });
   }, []);
@@ -374,22 +376,14 @@ export function useVoiceInputController(input: {
     savePreferencesRef.current({ voicePendingTranscript: undefined });
   }, [recoverableTranscript]);
 
-  // Offered once, when the composer that owns the transcript appears. Only a
-  // process that died between transcription and cleanup leaves one behind, so
-  // this is rare enough to interrupt for and too valuable to drop silently.
-  const offeredRecoveryRef = useRef(false);
+  // Informational feedback never needs acknowledgement before editing or sending.
   useEffect(() => {
-    if (!recoverableTranscript || offeredRecoveryRef.current) return;
-    offeredRecoveryRef.current = true;
-    Alert.alert(
-      "Add what you said?",
-      `PseudoCode closed before this was added to the draft.\n\n"${recoverableTranscript}"`,
-      [
-        { text: "Discard", style: "destructive", onPress: discardRecoverableTranscript },
-        { text: "Add", onPress: insertRecoverableTranscript },
-      ],
-    );
-  }, [discardRecoverableTranscript, insertRecoverableTranscript, recoverableTranscript]);
+    if (state.phase !== "idle" || !state.notice) return;
+    const timeout = setTimeout(() => {
+      if (controller.currentState === state) controller.cancel();
+    }, 8_000);
+    return () => clearTimeout(timeout);
+  }, [controller, state]);
 
   /**
    * Learns from what the user changed in the words this dictation inserted.
@@ -400,6 +394,7 @@ export function useVoiceInputController(input: {
    * typing and then apply it to every future transcript.
    */
   const learnFromSubmission = useCallback(() => {
+    if (controller.currentState.phase === "idle") controller.cancel();
     const anchor = anchorRef.current;
     anchorRef.current = null;
     if (!anchor) return;
@@ -419,7 +414,7 @@ export function useVoiceInputController(input: {
         learned,
       ),
     });
-  }, []);
+  }, [controller]);
 
   return {
     // Store screenshots show the dictation button even on simulators, whose

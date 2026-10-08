@@ -70,6 +70,7 @@ final class CleanupEngine: @unchecked Sendable {
         }
 
         do {
+          try DeviceMemory.requireLoadCapacity(modelFolder: modelFolder, multiplier: 1.5)
           let loaded = try LlamaCleanupSession(
             weights: weights,
             contextLength: Self.contextLength

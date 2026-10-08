@@ -14,7 +14,7 @@ let package = Package(
     .target(
       name: "T3VoiceLogic",
       path: "ios",
-      sources: ["SpeakerFilter.swift", "ReasoningText.swift"]
+      sources: ["SpeakerFilter.swift", "ReasoningText.swift", "ModelLoadBudget.swift", "WhisperTranscript.swift"]
     ),
     .testTarget(
       name: "T3VoiceLogicTests",

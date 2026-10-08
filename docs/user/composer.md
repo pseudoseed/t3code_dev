@@ -128,14 +128,14 @@ Stashes containing uploaded files must be restored in their original environment
 Those files are retained for 24 hours. After an upload expires, restore the prompt
 and use **Attach again** or remove the missing file before sending.
 
-## Voice input on iPhone
+## Voice input on iPhone and iPad
 
-On supported iPhones with iOS 26 or later, use the composer's microphone to record,
+On iPhone and iPad, use the composer's microphone to record,
 then confirm to transcribe. Text is inserted where your selection was when
 recording started, ready for you to review and edit before sending.
 
-The first use may download Apple's speech model and needs a network connection.
-Later transcription works offline for that language. While recording, the screen stays awake; it can sleep normally once recording stops.
+Apple's recognizer requires iOS 26 or later and may download its language model on first use.
+The built-in English model works offline without a download. While recording, the screen stays awake; it can sleep normally once recording stops.
 
 A recording can be up to 15 minutes long; if it reaches that limit, PseudoCode transcribes what it
 captured and tells you it stopped. If the microphone is interrupted or the app moves to
@@ -161,22 +161,22 @@ voice settings.
 
 ### Ignoring other voices
 
-Some speech models can tell voices apart. With one of those selected, turn on **Ignore other voices**
-and PseudoCode keeps only the voice that did most of the talking, so a conversation nearby does not end
-up in your message. This needs one extra small download.
+With Parakeet v3 selected, turn on **Ignore other voices** to remove clearly quieter background
+speech. This needs one extra download. If you already use filtering, **Settings → Voice** offers
+**Update speaker filtering** for the newer 22 MB model. Current filtering stays active until you
+install it, and the update follows your cellular download setting.
 
-It only drops a voice that is clearly farther from the phone than yours. When another voice is as
-close as you are, or it cannot tell which voice is yours, it transcribes the whole recording and
-tells you it did. Losing your own words would be worse than leaving a stray voice in. When it does
-drop something, the composer says how many seconds went, so you can check that nothing of yours
-is missing.
+Voices at similar volume may remain, and voices talking over each other cannot be separated.
+The composer reports how much speech was removed so you can check the transcript before sending.
+These notices do not block editing or sending and disappear automatically.
 
 ### Cleaning up transcripts
 
 Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
 written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed.
 Long messages are cleaned up a few sentences at a time. If cleanup fails or stops before finishing,
-PseudoCode keeps the original transcription for that part and tells you.
+PseudoCode keeps the original transcription for that part and tells you. Cancel cleanup to use the
+original transcription immediately and continue editing.
 
 Three cleanup models are available, trading speed for quality. You can edit the instructions they
 follow and reset them to the default at any time.

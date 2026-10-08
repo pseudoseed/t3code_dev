@@ -422,6 +422,37 @@ describe("VoiceInputController", () => {
     expect(harness.controller.currentState.phase).toBe("idle");
   });
 
+  it.each(["cancel", "dispose", "ownerChanged"] as const)(
+    "does not freeze the editor again when model loading finishes after %s",
+    async (action) => {
+      const preparation = deferred<PreparedVoiceTranscription>();
+      const waiting = deferred<void>();
+      const transcribe = vi.fn(async () => ({ text: "late words" }));
+      const harness = createHarness({
+        getTranscriber: () => ({ prepare: () => preparation.promise }),
+        onStateChange: (state) => {
+          if (state.phase === "waitingForModel") waiting.resolve();
+        },
+      });
+      await harness.controller.start();
+      const stopping = harness.controller.stop();
+      await waiting.promise;
+      harness.controller[action]();
+      expect(voiceInputBlocksSubmission(harness.controller.currentState)).toBe(false);
+
+      preparation.resolve(preparedTranscription(transcribe));
+      await stopping;
+      expect(harness.controller.currentState.phase).toBe("idle");
+      expect(voiceInputBlocksSubmission(harness.controller.currentState)).toBe(false);
+      expect(transcribe).not.toHaveBeenCalled();
+      expect(harness.commits).toEqual([]);
+
+      await harness.controller.start();
+      expect(harness.controller.currentState.phase).toBe("recording");
+      await harness.controller.stop();
+    },
+  );
+
   it("releases the microphone before transcription starts", async () => {
     const events: string[] = [];
     const harness = createHarness({
@@ -924,6 +955,47 @@ describe("VoiceInputController cleanup stage", () => {
     ]);
     expect(harness.controller.currentState.phase).toBe("idle");
   });
+
+  it.each(["loading", "rewriting"] as const)(
+    "restores typing and sending immediately when cleanup is cancelled during %s",
+    async (stage) => {
+      const entered = deferred<void>();
+      const nativeFinished = deferred<void>();
+      const clean = vi.fn(async () => {
+        entered.resolve();
+        await nativeFinished.promise;
+        return { text: "late rewritten text", complete: true };
+      });
+      const harness = createHarness({
+        getCleanup: () => ({
+          prepare: async () => {
+            if (stage === "loading") {
+              entered.resolve();
+              await nativeFinished.promise;
+            }
+            return { clean };
+          },
+        }),
+      });
+      await harness.controller.start();
+      const stopping = harness.controller.stop();
+      await entered.promise;
+      harness.controller.cancel();
+
+      expect(harness.controller.currentState.phase).toBe("idle");
+      expect(voiceInputBlocksSubmission(harness.controller.currentState)).toBe(false);
+      expect(harness.commits).toEqual([
+        { text: "hello new text", selection: { start: 14, end: 14 } },
+      ]);
+      harness.setDraft(draft({ text: "typed after cancelling", revision: 2 }));
+      nativeFinished.resolve();
+      await stopping;
+      expect(harness.controller.currentState.phase).toBe("idle");
+      expect(harness.commits).toHaveLength(1);
+      if (stage === "loading") expect(clean).not.toHaveBeenCalled();
+      expect(harness.deleted).toEqual(["file:///voice.m4a"]);
+    },
+  );
 
   it("retains the transcript for recovery when the draft owner changes during the rewrite", async () => {
     const cleaning = deferred<VoiceCleanupResult>();
