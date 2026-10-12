@@ -89,11 +89,12 @@ public class T3VoiceModule: Module {
           return true
         }
 
-        try await self.fluidAudio.prepare(modelId: modelId, modelFolder: folder)
+        try await self.prepareFluidAudio(
+          modelId: modelId, folder: folder, speakerFiltering: speakerFiltering)
         // The diarizer is a second model. Loading it only when filtering is on
         // keeps its memory off every dictation that does not need it.
         if speakerFiltering,
-          let diarizerFolder = try Self.resolveModelFolder(FluidAudioEngine.diarizerModelId) {
+          let diarizerFolder = try Self.resolveDiarizerFolder() {
           try await self.fluidAudio.prepareDiarizer(modelFolder: diarizerFolder)
         }
         return true
@@ -115,12 +116,14 @@ public class T3VoiceModule: Module {
           return Self.encode(VoiceTranscriptionOutput(text: text, speakerFiltering: .notRequested))
         }
 
+        try await self.prepareFluidAudio(
+          modelId: modelId, folder: folder, speakerFiltering: speakerFiltering)
         let output = try await self.fluidAudio.transcribe(
           audioPath: audioPath,
           locale: locale,
           speakerFiltering: speakerFiltering,
           model: (id: modelId, folder: folder),
-          diarizerFolder: speakerFiltering ? try Self.resolveModelFolder(FluidAudioEngine.diarizerModelId) : nil
+          diarizerFolder: speakerFiltering ? try Self.resolveDiarizerFolder() : nil
         )
         return Self.encode(output)
       }
@@ -192,6 +195,19 @@ public class T3VoiceModule: Module {
     }
   }
 
+  private func prepareFluidAudio(modelId: String, folder: URL, speakerFiltering: Bool) async throws {
+    await releaseCleanupForSpeakerFilteringIfNeeded(speakerFiltering)
+    try await fluidAudio.prepare(modelId: modelId, modelFolder: folder)
+    // A cold recognizer can consume the headroom that was free before loading.
+    await releaseCleanupForSpeakerFilteringIfNeeded(speakerFiltering)
+  }
+
+  private func releaseCleanupForSpeakerFilteringIfNeeded(_ requested: Bool) async {
+    if requested, !DeviceMemory.hasSpeakerFilteringCapacity() {
+      await cleanupEngine.evict()
+    }
+  }
+
   /// Logs what loading a model actually cost.
   ///
   /// The catalog gates on a per-model memory figure, and a figure nobody has
@@ -252,6 +268,13 @@ public class T3VoiceModule: Module {
         "removedSeconds": output.speakerFiltering.removedSeconds,
       ],
     ]
+  }
+
+  /// Prefer the completed-file diarizer while preserving existing installations
+  /// until their explicit model update finishes. Loading never initiates migration.
+  private static func resolveDiarizerFolder() throws -> URL? {
+    if let folder = try resolveModelFolder(FluidAudioEngine.diarizerModelId) { return folder }
+    return try resolveModelFolder(FluidAudioEngine.legacyDiarizerModelId)
   }
 
   /// Finds a model wherever it lives: bundled inside the app, or downloaded.

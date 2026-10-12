@@ -1,10 +1,10 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useRef } from "react";
-import { Alert } from "react-native";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import {
   voiceInputBlocksSubmission,
+  voiceInputFreezesEditor,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
 
@@ -36,6 +36,18 @@ export function useVoiceInputController(input: {
   const focused = useRef(false);
   const latestInput = useRef(input);
   latestInput.current = input;
+  const recoverableTranscript = preferences
+    ? resolveRecoverableTranscript(
+        preferences,
+        {
+          ownerKey: input.ownerKey,
+          text: input.readDraftMessage() ?? "",
+        },
+        VOICE_SESSION_STARTED_AT,
+      )
+    : null;
+  const recoveryPending = useRef(recoverableTranscript !== null);
+  recoveryPending.current = recoverableTranscript !== null;
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -59,7 +71,7 @@ export function useVoiceInputController(input: {
 
   const start = useCallback(() => {
     const captured = latestInput.current;
-    if (!captured.ownerKey || captured.disabled) return;
+    if (!captured.ownerKey || captured.disabled || recoveryPending.current) return;
     void session.start({
       ...createVoiceInputTarget(
         captured.ownerKey,
@@ -78,7 +90,12 @@ export function useVoiceInputController(input: {
   }, [session]);
 
   const startFromKeyboard = useCallback(() => {
-    if (!focused.current || latestInput.current.disabled || !latestInput.current.ownerKey)
+    if (
+      !focused.current ||
+      latestInput.current.disabled ||
+      !latestInput.current.ownerKey ||
+      recoveryPending.current
+    )
       return false;
     if (voiceInputBlocksSubmission(session.controller.currentState)) return false;
     start();
@@ -100,16 +117,6 @@ export function useVoiceInputController(input: {
   useHardwareKeyboardCommand("dictationHoldStart", startFromKeyboard, shortcut === "hold");
   useHardwareKeyboardCommand("dictationHoldEnd", endHold, shortcut === "hold");
 
-  const recoverableTranscript = preferences
-    ? resolveRecoverableTranscript(
-        preferences,
-        {
-          ownerKey: input.ownerKey,
-          text: input.readDraftMessage() ?? "",
-        },
-        VOICE_SESSION_STARTED_AT,
-      )
-    : null;
   const discardRecoverableTranscript = useCallback(() => {
     savePreferences({ voicePendingTranscript: undefined });
   }, [savePreferences]);
@@ -123,25 +130,6 @@ export function useVoiceInputController(input: {
     current.onChangeSelection({ start: insertion.length, end: insertion.length });
     discardRecoverableTranscript();
   }, [discardRecoverableTranscript, recoverableTranscript]);
-  const offeredRecovery = useRef<string | null>(null);
-  useEffect(() => {
-    if (!recoverableTranscript || !input.ownerKey || offeredRecovery.current === input.ownerKey)
-      return;
-    offeredRecovery.current = input.ownerKey;
-    Alert.alert(
-      "Add what you said?",
-      `PseudoCode closed before this was added to the draft.\n\n"${recoverableTranscript}"`,
-      [
-        { text: "Discard", style: "destructive", onPress: discardRecoverableTranscript },
-        { text: "Add", onPress: insertRecoverableTranscript },
-      ],
-    );
-  }, [
-    discardRecoverableTranscript,
-    input.ownerKey,
-    insertRecoverableTranscript,
-    recoverableTranscript,
-  ]);
   const learnFromSubmission = useCallback(() => {
     const current = latestInput.current;
     const text = current.readDraftMessage();
@@ -160,7 +148,7 @@ export function useVoiceInputController(input: {
     audioLevels: global.audioLevels,
     elapsedSeconds: global.elapsedSeconds,
     isBusy,
-    freezesEditor: isBusy,
+    freezesEditor: voiceInputFreezesEditor(state),
     blocksSubmission: isBusy,
     start,
     stop: global.stop,

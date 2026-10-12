@@ -16,7 +16,8 @@ import {
   supportsSpeakerFiltering,
 } from "@t3tools/client-runtime/voice-input";
 
-import { DIARIZER_MODEL_ID, getInstalledModelIds, readVoiceModelEnvironment } from "./t3Voice";
+import { getInstalledModelIds, readVoiceModelEnvironment } from "./t3Voice";
+import { resolveDiarizerInstallation } from "./speakerFilteringModel";
 import { getLocalModelVoiceTranscriber } from "./localModelTranscription.ios";
 import type { LocalVoiceTranscriptionSettings } from "./voiceTranscription";
 import type { VoiceModelEnvironment } from "@t3tools/client-runtime/voice-input";
@@ -160,7 +161,7 @@ function withBundledFallback(
   };
 }
 
-/** The user's saved choice, or null when it no longer runs here. */
+/** Preserve the saved model across changes in free memory during a session. */
 function resolveSelectedSpeechModelId(
   selectedId: string | null,
   environment: ReturnType<typeof readVoiceModelEnvironment>,
@@ -168,7 +169,13 @@ function resolveSelectedSpeechModelId(
   if (!selectedId || !environment) return null;
   const model = SPEECH_MODELS.find((candidate) => candidate.id === selectedId);
   if (!model) return null;
-  return resolveModelAvailability(model, environment).available ? selectedId : null;
+  const availability = resolveModelAvailability(model, environment);
+  // The picker budgets a cold load. During dictation the selected speech and
+  // cleanup models may already occupy that memory. Reapplying the picker gate
+  // here silently switched Parakeet to Apple (and disabled speaker filtering)
+  // on subsequent recordings. Native preparation reuses a resident model;
+  // an actual load failure follows the explicit, disclosed fallback below.
+  return availability.available || availability.reason === "not-enough-memory" ? selectedId : null;
 }
 
 /**
@@ -183,7 +190,7 @@ function canFilterSpeakers(
   requested: boolean,
 ): boolean {
   if (!requested || !model || !supportsSpeakerFiltering(model)) return false;
-  return getInstalledModelIds().includes(DIARIZER_MODEL_ID);
+  return resolveDiarizerInstallation(getInstalledModelIds()).installedModelId !== null;
 }
 
 function getAppleVoiceTranscriber(locale: string): VoiceTranscriber | null {

@@ -201,6 +201,15 @@ function useVoiceInputRuntime() {
   const controller = session.controller;
   const recorder = recorderRef.current;
 
+  // Feedback outlives the dictation, including when its composer is off screen.
+  useEffect(() => {
+    if (state.phase !== "idle" || !state.notice) return;
+    const timeout = setTimeout(() => {
+      if (controller.currentState === state) controller.cancel();
+    }, 8_000);
+    return () => clearTimeout(timeout);
+  }, [controller, state]);
+
   useEffect(() => {
     const subscription = AppState.addEventListener("memoryWarning", () => {
       void evictResidentModels();
@@ -208,21 +217,27 @@ function useVoiceInputRuntime() {
     return () => subscription.remove();
   }, []);
 
-  const learnFromSubmission = useCallback((ownerKey: string | null, text: string) => {
-    const anchor = anchorRef.current;
-    if (!anchor || anchor.ownerKey !== ownerKey) return;
-    anchorRef.current = null;
-    const edited = resolveEditedSpan(anchor, text);
-    if (edited === null) return;
-    const learned = diffCorrections(anchor.insertedText, edited);
-    if (learned.length === 0) return;
-    savePreferencesRef.current({
-      voiceLearnedCorrections: addLearnedCorrections(
-        preferencesRef.current?.voiceLearnedCorrections ?? [],
-        learned,
-      ),
-    });
-  }, []);
+  const learnFromSubmission = useCallback(
+    (ownerKey: string | null, text: string) => {
+      if (session.ownerKey === ownerKey && controller.currentState.phase === "idle") {
+        controller.cancel();
+      }
+      const anchor = anchorRef.current;
+      if (!anchor || anchor.ownerKey !== ownerKey) return;
+      anchorRef.current = null;
+      const edited = resolveEditedSpan(anchor, text);
+      if (edited === null) return;
+      const learned = diffCorrections(anchor.insertedText, edited);
+      if (learned.length === 0) return;
+      savePreferencesRef.current({
+        voiceLearnedCorrections: addLearnedCorrections(
+          preferencesRef.current?.voiceLearnedCorrections ?? [],
+          learned,
+        ),
+      });
+    },
+    [controller, session],
+  );
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {

@@ -14,6 +14,7 @@ describe("resolveVoiceComposerPresentation", () => {
       leadingAction: null,
       trailingAction: "mic",
       showsSend: true,
+      showsDictation: false,
       statusKind: null,
       statusLabel: null,
       confirmationEnabled: false,
@@ -27,6 +28,7 @@ describe("resolveVoiceComposerPresentation", () => {
       leadingAction: "cancel",
       trailingAction: "confirm",
       showsSend: false,
+      showsDictation: true,
       statusLabel: "Preparing",
       confirmationEnabled: false,
     });
@@ -39,6 +41,7 @@ describe("resolveVoiceComposerPresentation", () => {
       leadingAction: "cancel",
       trailingAction: "confirm",
       showsSend: false,
+      showsDictation: true,
       statusLabel: "Recording 1:04",
       confirmationEnabled: true,
     });
@@ -59,6 +62,7 @@ describe("resolveVoiceComposerPresentation", () => {
     ).toMatchObject({
       leadingAction: "cancel",
       showsSend: false,
+      showsDictation: true,
       statusLabel: "Loading speech model",
       confirmationEnabled: false,
     });
@@ -71,6 +75,7 @@ describe("resolveVoiceComposerPresentation", () => {
       leadingAction: "cancel",
       trailingAction: "confirm",
       showsSend: false,
+      showsDictation: true,
       statusLabel: "Cleaning up",
       confirmationEnabled: false,
     });
@@ -83,6 +88,7 @@ describe("resolveVoiceComposerPresentation", () => {
       leadingAction: null,
       trailingAction: "mic",
       showsSend: true,
+      showsDictation: false,
       statusKind: "error",
       statusLabel: "Microphone unavailable",
     });
@@ -121,6 +127,7 @@ describe("resolveVoiceComposerPresentation", () => {
       leadingAction: null,
       trailingAction: "mic",
       showsSend: true,
+      showsDictation: false,
       statusKind: "notice",
       statusLabel: notice,
       confirmationEnabled: false,

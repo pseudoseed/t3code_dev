@@ -78,7 +78,14 @@ function rowFor(
   }
 
   const availability = resolveModelAvailability(model, snapshot.environment);
-  if (!availability.available) {
+  const installed =
+    model.delivery.kind !== "download" || snapshot.installedModelIds.includes(model.id);
+  // Selected models may already account for the memory missing from this snapshot.
+  const keepingSelection = installed && selectedId === model.id;
+  if (
+    !availability.available &&
+    !(keepingSelection && availability.reason === "not-enough-memory")
+  ) {
     return {
       ...base,
       state: { kind: "unavailable", reason: describeUnavailableReason(availability.reason) },
@@ -95,8 +102,6 @@ function rowFor(
   const failure = snapshot.failures[model.id];
   if (failure) return { ...base, state: { kind: "failed", message: failure } };
 
-  const installed =
-    model.delivery.kind !== "download" || snapshot.installedModelIds.includes(model.id);
   if (!installed) return { ...base, state: { kind: "downloadable" } };
 
   return { ...base, state: { kind: selectedId === model.id ? "selected" : "installed" } };
@@ -127,6 +132,7 @@ export type SpeakerFilteringPresentation = {
 export function resolveSpeakerFilteringPresentation(input: {
   readonly selectedSpeechModelId: string | null;
   readonly diarizerInstalled: boolean;
+  readonly diarizerNeedsUpdate?: boolean;
   readonly diarizerSizeText: string;
 }): SpeakerFilteringPresentation {
   const model = SPEECH_MODELS.find((candidate) => candidate.id === input.selectedSpeechModelId);
@@ -152,7 +158,9 @@ export function resolveSpeakerFilteringPresentation(input: {
 
   return {
     enabled: true,
-    subtitle: "Keeps only the voice that did most of the talking.",
+    subtitle: input.diarizerNeedsUpdate
+      ? `A ${input.diarizerSizeText} update improves identifying speakers. Current filtering stays active until installed.`
+      : "Removes clearly quieter background voices. Similar-volume and overlapping speech may remain.",
     needsDiarizer: false,
   };
 }

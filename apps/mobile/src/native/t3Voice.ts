@@ -181,22 +181,7 @@ export function cancelOperation(operationId: string): Promise<void> {
   return nativeModule?.cancel(operationId) ?? Promise.resolve();
 }
 
-/**
- * The store id of the diarizer speaker filtering needs.
- *
- * Not a selectable model: it is downloaded when filtering is switched on and
- * deleted with it.
- */
-export const DIARIZER_MODEL_ID = "fluid-diarizer";
-
-/**
- * What the diarizer costs to download.
- *
- * Not in the manifest because FluidAudio fetches it, so this is measured from
- * the two files it actually pulls rather than from the repository, which holds
- * several variants it never touches.
- */
-export const DIARIZER_DOWNLOAD_BYTES = 14 * 1024 * 1024;
+export { DIARIZER_MODEL_ID, DIARIZER_DOWNLOAD_BYTES } from "./speakerFilteringModel";
 
 /** The files that make up a model, or null when it has no download manifest. */
 export function getModelFiles(modelId: string): readonly ModelFileSpec[] | null {

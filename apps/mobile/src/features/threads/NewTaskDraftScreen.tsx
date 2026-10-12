@@ -72,6 +72,7 @@ import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
 import {
   ComposerDictationCancelAction,
+  ComposerDictationFeedback,
   ComposerDictationPrimaryAction,
   ComposerDictationStatus,
   ComposerDictationToolbar,
@@ -518,7 +519,7 @@ export function NewTaskDraftScreen(props: {
     voiceInput.state,
     voiceInput.elapsedSeconds,
   );
-  const isVoiceInputPresented = voicePresentation.statusLabel !== null;
+  const isVoiceInputPresented = voicePresentation.showsDictation;
   const preventRemove =
     (isIncomingShareTransferPending && !isProjectPickerReturnActive) ||
     isCancellingShareImport ||
@@ -1688,6 +1689,13 @@ export function NewTaskDraftScreen(props: {
         </Pressable>
       ) : null}
 
+      <ComposerDictationFeedback
+        presentation={voicePresentation}
+        recoverableTranscript={voiceInput.recoverableTranscript}
+        onInsertRecovery={voiceInput.insertRecoverableTranscript}
+        onDiscardRecovery={voiceInput.discardRecoverableTranscript}
+        onDismiss={voiceInput.cancel}
+      />
       <ComposerSurface
         style={{
           borderRadius: 26,
@@ -1751,7 +1759,6 @@ export function NewTaskDraftScreen(props: {
                   elapsedSeconds={voiceInput.elapsedSeconds}
                   phase={voiceInput.state.phase}
                   presentation={voicePresentation}
-                  onDismissError={voiceInput.cancel}
                 />
               ) : (
                 <>
@@ -1808,6 +1815,7 @@ export function NewTaskDraftScreen(props: {
                 state={voiceInput.state}
                 presentation={voicePresentation}
                 isAvailable={voiceInput.isAvailable}
+                hasPendingRecovery={voiceInput.recoverableTranscript !== null}
                 disabled={isIncomingShareTransferPending || isImportingShare || flow.submitting}
                 onStart={voiceInput.start}
                 onConfirm={voiceInput.stop}

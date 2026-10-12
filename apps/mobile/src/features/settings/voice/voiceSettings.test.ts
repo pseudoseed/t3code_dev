@@ -1,3 +1,4 @@
+import { resolveDiarizerInstallation } from "../../../native/speakerFilteringModel";
 import { describe, expect, it } from "vite-plus/test";
 import type { VoiceModelEnvironment } from "@t3tools/client-runtime/voice-input";
 
@@ -43,6 +44,24 @@ describe("model rows", () => {
     expect(row.state).toEqual({ kind: "downloadable" });
     expect(row.sizeText).toBe("467 MB");
     expect(row.canDelete).toBe(false);
+  });
+
+  it("keeps installed selections visible after their models consume free memory", () => {
+    const current = snapshot({
+      environment: { ...roomyDevice, availableMemoryBytes: 64 * 1024 * 1024 },
+      installedModelIds: ["parakeet-v3", "qwen-4b"],
+      selectedSpeechModelId: "parakeet-v3",
+      selectedCleanupModelId: "qwen-4b",
+    });
+    expect(rowFor(resolveSpeechModelRows(current), "parakeet-v3").state.kind).toBe("selected");
+    expect(rowFor(resolveCleanupModelRows(current), "qwen-4b").state.kind).toBe("selected");
+    expect(rowFor(resolveSpeechModelRows(current), "whisper-small-en").state.kind).toBe(
+      "unavailable",
+    );
+    expect(
+      rowFor(resolveSpeechModelRows({ ...current, installedModelIds: [] }), "parakeet-v3").state
+        .kind,
+    ).toBe("unavailable");
   });
 
   it("treats a bundled model as always present and never deletable", () => {
@@ -116,6 +135,52 @@ describe("model rows", () => {
 });
 
 describe("resolveSpeakerFilteringPresentation", () => {
+  it.each([
+    { label: "fresh install", ids: [], enabled: false, needsDownload: true, needsUpdate: false },
+    {
+      label: "legacy install",
+      ids: ["fluid-diarizer"],
+      enabled: true,
+      needsDownload: false,
+      needsUpdate: true,
+    },
+    {
+      label: "current install",
+      ids: ["fluid-diarizer-offline"],
+      enabled: true,
+      needsDownload: false,
+      needsUpdate: false,
+    },
+    {
+      label: "completed update",
+      ids: ["fluid-diarizer", "fluid-diarizer-offline"],
+      enabled: true,
+      needsDownload: false,
+      needsUpdate: false,
+    },
+  ])(
+    "offers the right download without disabling $label",
+    ({ ids, enabled, needsDownload, needsUpdate }) => {
+      const installation = resolveDiarizerInstallation(ids);
+      const presentation = resolveSpeakerFilteringPresentation({
+        selectedSpeechModelId: "parakeet-v3",
+        diarizerInstalled: installation.installedModelId !== null,
+        diarizerNeedsUpdate: installation.needsUpdate,
+        diarizerSizeText: "22 MB",
+      });
+      expect(presentation.enabled).toBe(enabled);
+      expect(presentation.needsDiarizer).toBe(needsDownload);
+      expect(installation.needsUpdate).toBe(needsUpdate);
+      if (needsUpdate) {
+        expect(presentation.subtitle).toContain("22 MB update");
+        expect(presentation.subtitle).toContain("Current filtering stays active");
+      }
+      if (ids.includes("fluid-diarizer-offline")) {
+        expect(installation.installedModelId).toBe("fluid-diarizer-offline");
+      }
+    },
+  );
+
   it("stays off for a model whose backend cannot tell voices apart", () => {
     const presentation = resolveSpeakerFilteringPresentation({
       selectedSpeechModelId: "whisper-tiny-en",
