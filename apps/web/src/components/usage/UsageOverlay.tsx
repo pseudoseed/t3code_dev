@@ -16,7 +16,7 @@ import { useState } from "react";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { getDriverOption } from "../settings/providerDriverMeta";
+import { providerClients } from "../settings/providerDriverMeta";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -225,7 +225,7 @@ function UsageOverlayBody({ onRefreshed }: { readonly onRefreshed: () => void })
                       driver={provider.driver}
                       title={providerLimitsLabel(
                         provider,
-                        (driver) => getDriverOption(driver)?.label,
+                        (driver) => providerClients.get(driver)?.label,
                       )}
                       plan={provider.auth.label}
                       subtitle={provider.auth.email}

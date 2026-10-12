@@ -1,13 +1,13 @@
+import { ForgejoTransportError } from "@t3tools/source-control-forgejo/server/ForgejoTransport";
 import { assert, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { ForgejoTransport } from "../sourceControl/ForgejoTransport.ts";
-import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
+import { ForgejoTransport } from "@t3tools/source-control-forgejo/server/ForgejoTransport";
 import * as ForgejoIssueProvider from "./ForgejoIssueProvider.ts";
 
-const request = vi.fn<ForgejoApi.ForgejoApi["Service"]["request"]>();
-const resolveLocator = vi.fn<ForgejoApi.ForgejoApi["Service"]["resolveLocator"]>(() =>
+const request = vi.fn<ForgejoTransport["Service"]["request"]>();
+const resolveLocator = vi.fn<ForgejoTransport["Service"]["resolveLocator"]>(() =>
   Effect.succeed({ host: "git.example.org", owner: "acme", repo: "web", scheme: "https" as const }),
 );
 
@@ -25,7 +25,7 @@ function routes(table: Record<string, unknown>) {
       if (input.path === path || input.path.startsWith(`${path}?`)) return ok(body);
     }
     return Effect.fail(
-      new ForgejoApi.ForgejoApiError({
+      new ForgejoTransportError({
         operation: input.operation,
         detail: `unexpected ${input.method} ${input.path}`,
         status: 404,
@@ -213,7 +213,7 @@ layer("classifies failures", (it) => {
     Effect.gen(function* () {
       request.mockImplementation((input) =>
         Effect.fail(
-          new ForgejoApi.ForgejoApiError({
+          new ForgejoTransportError({
             operation: input.operation,
             detail: "Forgejo returned HTTP 403.",
             status: 403,

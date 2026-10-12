@@ -1,3 +1,4 @@
+import * as HostProcess from "@t3tools/shared/HostProcess";
 /**
  * Codex sign-in, driven through the Codex CLI's own login command.
  *
@@ -27,7 +28,7 @@ import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
 import { ChildProcessSpawner } from "effect/process";
 
-import { expandHomePath } from "../../pathExpansion.ts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { makeCliLoginAuth, runCliInvocation, type CliInvocation } from "../CliLoginAuth.ts";
 import type { ProviderAuthController } from "../ProviderAuthService.ts";
 
@@ -68,7 +69,7 @@ export const makeCodexAuthController = Effect.fn("makeCodexAuthController")(func
   // CODEX_HOME would reach codex verbatim and fail as a missing path.
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const resolvedHomePath = input.config.homePath
-    ? expandHomePath(input.config.homePath)
+    ? expandHomePath(input.config.homePath, yield* HostProcess.HomeDirectory)
     : undefined;
   const base = {
     command: input.config.binaryPath || "codex",

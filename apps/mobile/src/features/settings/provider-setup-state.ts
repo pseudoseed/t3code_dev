@@ -1,7 +1,6 @@
 import {
   ANTIGRAVITY_AUTH_METHODS,
   type AntigravityAuthMethod,
-  DEFAULT_SERVER_SETTINGS,
   type ProviderAuthState,
   type ServerProvider,
   type ServerSettings,
@@ -32,33 +31,17 @@ export function resolveProviderSignInPresentation(
   };
 }
 
-/** Drivers whose settings still carry a legacy per-driver `enabled` flag. */
-const LEGACY_PROVIDER_KEYS = ["antigravity", "claudeAgent", "codex"] as const;
-type LegacyProviderKey = (typeof LEGACY_PROVIDER_KEYS)[number];
+const SETUP_PROVIDER_KEYS = ["antigravity", "claudeAgent", "codex"] as const;
 
-function legacyProviderKey(driver: string): LegacyProviderKey | null {
-  return LEGACY_PROVIDER_KEYS.find((key) => key === driver) ?? null;
-}
-
-/**
- * Keep one enabled flag when a legacy provider becomes an explicit instance.
- *
- * The instance whose id equals its driver kind is the migrated one; clearing
- * its legacy `providers.<driver>` block is what stops the old flag from
- * fighting the new per-instance one.
- */
+/** Enable the configured instance without replacing its credentials or environment. */
 export function providerEnabledPatch(
   settings: ServerSettings,
   provider: ServerProvider,
   enabled: boolean,
 ): ServerSettingsPatch | null {
-  const key = legacyProviderKey(provider.driver);
-  if (key === null) return null;
-
-  const { enabled: _legacyEnabled, ...legacyConfig } = settings.providers[key];
+  if (!supportsProviderSetupScreen(provider.driver)) return null;
   const instance = settings.providerInstances[provider.instanceId] ?? {
     driver: provider.driver,
-    config: legacyConfig,
   };
   const config =
     instance.config !== null &&
@@ -70,9 +53,6 @@ export function providerEnabledPatch(
       : instance.config;
 
   return {
-    ...(provider.instanceId === key
-      ? { providers: { [key]: DEFAULT_SERVER_SETTINGS.providers[key] } }
-      : {}),
     providerInstances: {
       ...settings.providerInstances,
       [provider.instanceId]: { ...instance, enabled, config },
@@ -82,7 +62,7 @@ export function providerEnabledPatch(
 
 /** Providers whose setup screen PseudoCode can drive. */
 export function supportsProviderSetupScreen(driver: string): boolean {
-  return legacyProviderKey(driver) !== null;
+  return SETUP_PROVIDER_KEYS.some((key) => key === driver);
 }
 
 export interface MobileProviderSetupCopy {

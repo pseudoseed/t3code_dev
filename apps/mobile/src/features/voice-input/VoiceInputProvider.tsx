@@ -1,3 +1,4 @@
+import { RegistryContext, useAtomMount, useAtomSet } from "@effect/atom-react";
 import {
   AudioModule,
   RecordingPresets,
@@ -20,19 +21,23 @@ import {
   type ReactNode,
 } from "react";
 import { AppState, Platform } from "react-native";
-import { useSharedValue } from "react-native-reanimated";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
+import { useSharedValue } from "react-native-reanimated";
 
+import {
+  microphoneOrder,
+  preferredMicrophoneInput,
+  rememberMicrophones,
+} from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
 import { getLocalVoiceCleanup } from "../../native/voiceCleanup";
 import { evictResidentModels } from "../../native/t3Voice";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
   resolveVoiceCleanupSettings,
   resolveVoiceTranscriptionSettings,
 } from "./voiceCleanupSettings";
-import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
   VOICE_RECORDING_LIMIT_SECONDS,
   voiceInputBlocksSubmission,
@@ -111,10 +116,10 @@ export function useGlobalVoiceInput() {
 }
 
 function useVoiceInputRuntime() {
-  const preferencesResult = useAtomValue(mobilePreferencesAtom);
-  const preferences = AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value : null;
-  const preferencesRef = useRef(preferences);
-  preferencesRef.current = preferences;
+  const registry = use(RegistryContext);
+  // Dictation reads and records microphones without subscribing the provider to preferences.
+  useAtomMount(mobilePreferencesAtom);
+  useAtomMount(updateMobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const persistPreferences = useAtomSet(updateMobilePreferencesAtom, { mode: "promise" });
   const savePreferencesRef = useRef(savePreferences);
@@ -157,18 +162,35 @@ function useVoiceInputRuntime() {
           url: status.url,
         });
       },
+      // Read when recording starts so preference changes do not re-render every composer.
+      selectInput: (inputs) => {
+        const preferences = registry.get(mobilePreferencesAtom);
+        if (!AsyncResult.isSuccess(preferences)) return null;
+        const known = microphoneOrder(preferences.value.microphones);
+        const order = rememberMicrophones(known, inputs);
+        if (order !== known) {
+          registry.set(updateMobilePreferencesAtom, {
+            transform: (current) => ({
+              microphones: rememberMicrophones(microphoneOrder(current.microphones), inputs),
+            }),
+          });
+        }
+        return preferredMicrophoneInput(inputs, order);
+      },
     });
     recorderRef.current = recorder;
     sessionRef.current = new VoiceInputSession({
       recorder,
       getTranscriber: () => {
-        const settings = preferencesRef.current;
+        const result = registry.get(mobilePreferencesAtom);
+        const settings = AsyncResult.isSuccess(result) ? result.value : null;
         return settings
           ? getLocalVoiceTranscriber(resolveVoiceTranscriptionSettings(settings))
           : null;
       },
       getCleanup: () => {
-        const settings = preferencesRef.current;
+        const result = registry.get(mobilePreferencesAtom);
+        const settings = AsyncResult.isSuccess(result) ? result.value : null;
         return settings ? getLocalVoiceCleanup(resolveVoiceCleanupSettings(settings)) : null;
       },
       persistPendingTranscript: async (pending) => {
@@ -230,10 +252,12 @@ function useVoiceInputRuntime() {
       const learned = diffCorrections(anchor.insertedText, edited);
       if (learned.length === 0) return;
       savePreferencesRef.current({
-        voiceLearnedCorrections: addLearnedCorrections(
-          preferencesRef.current?.voiceLearnedCorrections ?? [],
-          learned,
-        ),
+        transform: (current) => ({
+          voiceLearnedCorrections: addLearnedCorrections(
+            current.voiceLearnedCorrections ?? [],
+            learned,
+          ),
+        }),
       });
     },
     [controller, session],
@@ -315,14 +339,12 @@ function useVoiceInputRuntime() {
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
+  const preferences = registry.get(mobilePreferencesAtom);
   return {
-    // Store screenshots show the dictation button even on simulators, whose
-    // on-device transcription is unavailable.
     isAvailable:
-      (preferences !== null &&
-        getLocalVoiceTranscriber(resolveVoiceTranscriptionSettings(preferences)) !== null) ||
+      (AsyncResult.isSuccess(preferences) &&
+        getLocalVoiceTranscriber(resolveVoiceTranscriptionSettings(preferences.value)) !== null) ||
       getNativeShowcaseScene() !== null,
-    cleanupEnabled: preferences ? resolveVoiceCleanupSettings(preferences).enabled : false,
     learnFromSubmission,
     state,
     audioLevels,

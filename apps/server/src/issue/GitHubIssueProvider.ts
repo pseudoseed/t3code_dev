@@ -1,9 +1,10 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { IssueActor, IssueComment } from "@t3tools/contracts";
-import * as GitHubApi from "../sourceControl/GitHubApi.ts";
+import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
 import { IssueProviderError, type IssueProviderApi, type ProviderIssue } from "./IssueProvider.ts";
 
 const Actor = Schema.Struct({
@@ -86,7 +87,7 @@ export const make = Effect.gen(function* () {
   const api = yield* GitHubApi.GitHubApi;
   const fail = (operation: string) => (cause: GitHubApi.GitHubApiError) =>
     new IssueProviderError({
-      provider: "github",
+      provider: SourceControlProviderKind.make("github"),
       operation,
       reason:
         cause._tag === "GitHubCliMissingError"
@@ -111,7 +112,7 @@ export const make = Effect.gen(function* () {
           Effect.mapError(
             (cause) =>
               new IssueProviderError({
-                provider: "github",
+                provider: SourceControlProviderKind.make("github"),
                 operation: input.operation,
                 reason: "failed",
                 detail: "GitHub returned an invalid issue response.",
@@ -131,7 +132,7 @@ export const make = Effect.gen(function* () {
       Repository,
     );
   return {
-    kind: "github",
+    kind: SourceControlProviderKind.make("github"),
     capabilities: { comment: true, create: true, close: true, search: true },
     getViewer: (input) =>
       read({ host: input.host ?? "github.com", operation: "getViewer", path: "user" }, Actor).pipe(

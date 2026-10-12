@@ -1,0 +1,495 @@
+import { assert, describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import { ChildProcessSpawner } from "effect/process";
+import type { ForgejoApiInput } from "./ForgejoCli.ts";
+
+import { ForgejoCli, ForgejoCliError } from "./ForgejoCli.ts";
+import * as ForgejoPullRequestApi from "./ForgejoPullRequestApi.ts";
+import * as ForgejoPullRequestProvider from "./ForgejoPullRequestProvider.ts";
+
+const layer = it.layer(Layer.mock(ForgejoCli)({}));
+
+function apiError(status?: number) {
+  return new ForgejoPullRequestApi.ForgejoPullRequestApiError({
+    operation: "listChangeRequests",
+    detail: "Forgejo said no.",
+    ...(status === undefined ? {} : { status }),
+  });
+}
+
+it("treats a refused token as the instance not being set up", () => {
+  // A token with too few scopes is refused with 403, and the fix is the same as for 401: sign
+  // in again with the access this needs. Both therefore report as unauthenticated rather than
+  // as one request having gone wrong.
+  assert.deepStrictEqual(ForgejoPullRequestProvider.forgejoProviderFailure(apiError(401)), {
+    reason: "unauthenticated",
+  });
+  assert.deepStrictEqual(ForgejoPullRequestProvider.forgejoProviderFailure(apiError(403)), {
+    reason: "unauthenticated",
+  });
+  assert.deepStrictEqual(ForgejoPullRequestProvider.forgejoProviderFailure(apiError(429)), {
+    reason: "rate-limited",
+  });
+  assert.deepStrictEqual(ForgejoPullRequestProvider.forgejoProviderFailure(apiError(404)), {
+    reason: "failed",
+  });
+  assert.deepStrictEqual(ForgejoPullRequestProvider.forgejoProviderFailure(apiError()), {
+    reason: "failed",
+  });
+});
+
+it.effect(
+  "keeps draft conversion, automatic merge and line replies on the shared fj/tea transport",
+  () => {
+    const requests: ForgejoApiInput[] = [];
+    return Effect.gen(function* () {
+      const provider = yield* ForgejoPullRequestProvider.make;
+      const target = { cwd: "/repo", host: "forgejo.test", repository: "acme/web", number: 7 };
+      yield* provider.runAction({ ...target, action: "ready" });
+      yield* provider.runAction({ ...target, action: "enable-auto-merge", mergeMethod: "squash" });
+      yield* provider.runAction({ ...target, action: "disable-auto-merge" });
+      yield* provider.replyToThread({ ...target, threadId: "12:src/app.ts", body: "Follow-up" });
+      const writes = requests.filter((request) => request.method !== "GET");
+      assert.deepStrictEqual(
+        writes.map(({ method, path, body }) => ({ method, path, body })),
+        [
+          {
+            method: "PATCH",
+            path: "repos/acme/web/pulls/7",
+            body: { title: "Keep review features" },
+          },
+          {
+            method: "POST",
+            path: "repos/acme/web/pulls/7/merge",
+            body: { Do: "squash", merge_when_checks_succeed: true },
+          },
+          { method: "DELETE", path: "repos/acme/web/pulls/7/merge", body: undefined },
+          {
+            method: "POST",
+            path: "repos/acme/web/pulls/7/reviews",
+            body: {
+              event: "COMMENT",
+              body: "",
+              comments: [{ path: "src/app.ts", body: "Follow-up", new_position: 12 }],
+            },
+          },
+        ],
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mock(ForgejoCli)({
+          api: (input) => {
+            requests.push(input);
+            return Effect.succeed({
+              exitCode: ChildProcessSpawner.ExitCode(0),
+              stdout: JSON.stringify({ number: 7, title: "WIP: Keep review features" }),
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            });
+          },
+        }),
+      ),
+    );
+  },
+);
+
+it.effect(
+  "searches pull request descriptions without repeating filtered rows on the next page",
+  () => {
+    const rows = [1, 2, 3].map((number) => ({
+      number,
+      title: "Change",
+      body: number === 2 ? "Repair reconnect" : "Unrelated",
+      state: "open",
+      merged: false,
+      html_url: `https://forgejo.test/acme/web/pulls/${number}`,
+      user: { login: "chris" },
+      head: { ref: "feature", sha: "head", repo: null },
+      base: { ref: "main", sha: "base", repo: null },
+      created_at: "2026-09-01T00:00:00Z",
+      updated_at: "2026-09-01T00:00:00Z",
+      closed_at: null,
+      merged_at: null,
+      labels: [],
+    }));
+    return Effect.gen(function* () {
+      const provider = yield* ForgejoPullRequestProvider.make;
+      const target = {
+        cwd: "/repo",
+        host: "forgejo.test",
+        repository: "acme/web",
+        state: "open" as const,
+        involvement: "all" as const,
+        viewer: "chris",
+        query: "reconnect",
+        limit: 2,
+      };
+      const first = yield* provider.listChangeRequests(target);
+      assert.deepStrictEqual(
+        first.items.map((row) => row.number),
+        [2],
+      );
+      assert.strictEqual(first.cursorAdvance, 2);
+      const second = yield* provider.listChangeRequests({
+        ...target,
+        cursor: { delivered: 2, updatedBefore: "2026-09-01T00:00:00Z" },
+      });
+      assert.deepStrictEqual(second.items, []);
+      assert.strictEqual(second.cursorAdvance, 1);
+      assert.strictEqual(second.truncated, false);
+    }).pipe(
+      Effect.provide(
+        Layer.mock(ForgejoCli)({
+          api: () =>
+            Effect.succeed({
+              exitCode: ChildProcessSpawner.ExitCode(0),
+              stdout: JSON.stringify(rows),
+              stderr: 'link: <https://forgejo.test/>; rel="last"',
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }),
+        }),
+      ),
+    );
+  },
+);
+
+layer("declares what Forgejo can do", (it) => {
+  it.effect("offers no conversation resolution, because Forgejo exposes no route for it", () =>
+    Effect.gen(function* () {
+      const provider = yield* ForgejoPullRequestProvider.make;
+      assert.strictEqual(provider.kind, "forgejo");
+      assert.strictEqual(provider.capabilities.review.resolve, false);
+      // Everything else on a review is there.
+      assert.strictEqual(provider.capabilities.review.inlineComment, true);
+      assert.strictEqual(provider.capabilities.review.reply, true);
+      assert.deepStrictEqual(provider.capabilities.review.verdicts, [
+        "comment",
+        "approve",
+        "request-changes",
+      ]);
+    }),
+  );
+
+  it.effect("offers both ways of bringing a stale branch up to date", () =>
+    Effect.gen(function* () {
+      const provider = yield* ForgejoPullRequestProvider.make;
+      assert.deepStrictEqual(provider.capabilities.updateMethods, ["merge", "rebase"]);
+      assert.deepStrictEqual(provider.capabilities.mergeMethods, ["merge", "squash", "rebase"]);
+      assert.ok(provider.capabilities.actions.includes("enable-auto-merge"));
+      assert.strictEqual(provider.capabilities.reactions, true);
+    }),
+  );
+
+  it.effect("refuses to resolve a conversation if it is ever asked to", () =>
+    Effect.gen(function* () {
+      const provider = yield* ForgejoPullRequestProvider.make;
+      const exit = yield* Effect.exit(
+        provider.setThreadResolution({
+          cwd: "/repo",
+          host: "git.example.org",
+          repository: "acme/web",
+          number: 7,
+          threadId: "12:src/app.ts",
+          resolved: true,
+        }),
+      );
+      assert.strictEqual(exit._tag, "Failure");
+    }),
+  );
+});
+
+const reference = {
+  cwd: "/repo",
+  repository: "acme/project",
+  host: "https://forgejo.example.com",
+  number: 42,
+};
+const output = (stdout: string) => ({
+  exitCode: ChildProcessSpawner.ExitCode(0),
+  stdout,
+  stderr: "",
+  stdoutTruncated: false,
+  stderrTruncated: false,
+});
+const cliError = (detail: string, httpStatus?: number) =>
+  new ForgejoCliError({
+    command: "fj",
+    cwd: reference.cwd,
+    detail,
+    ...(httpStatus === undefined ? {} : { httpStatus }),
+    ...(httpStatus === 403 ? { reason: "forbidden" as const } : {}),
+  });
+const repository = (deleteBranch: boolean | undefined) => ({
+  full_name: "acme/project",
+  default_branch: "main",
+  default_delete_branch_after_merge: deleteBranch,
+});
+const headRepository = { full_name: "acme/project", default_branch: "main", push: true };
+const pullRequest = (input: {
+  readonly merged?: boolean;
+  readonly ref?: string;
+  readonly head?: { full_name: string; default_branch: string; push: boolean } | null;
+}) => {
+  const head = input.head === undefined ? headRepository : input.head;
+  return {
+    number: reference.number,
+    title: "Change",
+    body: null,
+    html_url: "https://forgejo.example.com/acme/project/pulls/42",
+    user: { login: "author" },
+    state: input.merged ? "closed" : "open",
+    merged: input.merged ?? false,
+    head: {
+      ref: input.ref ?? "feature",
+      sha: "head",
+      repo:
+        head === null
+          ? null
+          : {
+              full_name: head.full_name,
+              default_branch: head.default_branch,
+              permissions: { push: head.push, admin: false },
+            },
+    },
+    base: { ref: "main", sha: "base", repo: { full_name: "acme/project" } },
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    closed_at: null,
+    merged_at: null,
+    labels: [],
+  };
+};
+const isForgejoCliError = Schema.is(ForgejoCliError);
+const REPO_PATH = "repos/acme/project";
+const PULL_PATH = "repos/acme/project/pulls/42";
+const MERGE_PATH = "repos/acme/project/pulls/42/merge";
+
+/** Serves the repository, the pull request, and the merge, recording every request. */
+const forgejo = (input: {
+  readonly repository?: unknown;
+  readonly pullRequest?: ReturnType<typeof pullRequest>;
+  readonly afterMerge?: ReturnType<typeof pullRequest> | ForgejoCliError;
+  readonly merge?: ForgejoCliError;
+}) => {
+  const requests: ForgejoApiInput[] = [];
+  let merged = false;
+  const layer = Layer.mock(ForgejoCli)({
+    api: (request) => {
+      requests.push(request);
+      switch (request.path) {
+        case REPO_PATH:
+          return Effect.succeed(output(JSON.stringify(input.repository ?? repository(true))));
+        case PULL_PATH: {
+          const pull = merged
+            ? (input.afterMerge ?? pullRequest({ merged: true }))
+            : (input.pullRequest ?? pullRequest({}));
+          return isForgejoCliError(pull)
+            ? Effect.fail(pull)
+            : Effect.succeed(output(JSON.stringify(pull)));
+        }
+        case MERGE_PATH:
+          merged = true;
+          return input.merge ? Effect.fail(input.merge) : Effect.succeed(output(""));
+        default:
+          return Effect.die(`unexpected request ${request.path}`);
+      }
+    },
+  });
+  return { requests, layer };
+};
+
+describe("Forgejo merge branch deletion", () => {
+  for (const mergeMethod of [undefined, "merge", "squash", "rebase"] as const) {
+    it.effect.each([true, false, undefined])(
+      `respects repository deletion setting %s when merging with ${mergeMethod ?? "the default"}`,
+      (deleteBranch) =>
+        Effect.gen(function* () {
+          const host = forgejo({ repository: repository(deleteBranch) });
+          const provider = yield* ForgejoPullRequestProvider.make.pipe(Effect.provide(host.layer));
+
+          yield* provider.runAction({
+            ...reference,
+            action: "merge",
+            ...(mergeMethod === undefined ? {} : { mergeMethod }),
+          });
+
+          expect(host.requests.map((request) => request.path)).toEqual(
+            deleteBranch ? [REPO_PATH, PULL_PATH, MERGE_PATH] : [REPO_PATH, MERGE_PATH],
+          );
+          expect(host.requests[0]).toMatchObject({ ...reference, path: REPO_PATH });
+          expect(host.requests[0]?.method ?? "GET").toBe("GET");
+          expect(host.requests.at(-1)).toMatchObject({
+            ...reference,
+            path: MERGE_PATH,
+            method: "POST",
+            body: {
+              Do: mergeMethod ?? "merge",
+              delete_branch_after_merge: deleteBranch ?? false,
+            },
+          });
+        }),
+    );
+  }
+
+  it.effect.each([
+    {
+      name: "a fork the viewer cannot push to",
+      pullRequest: pullRequest({
+        head: { full_name: "contributor/project", default_branch: "main", push: false },
+      }),
+    },
+    {
+      name: "the head repository's default branch",
+      pullRequest: pullRequest({
+        ref: "main",
+        head: { full_name: "contributor/project", default_branch: "main", push: true },
+      }),
+    },
+    { name: "a deleted head repository", pullRequest: pullRequest({ head: null }) },
+  ])("keeps the head branch when it is $name", ({ pullRequest }) =>
+    Effect.gen(function* () {
+      const host = forgejo({ pullRequest });
+      const provider = yield* ForgejoPullRequestProvider.make.pipe(Effect.provide(host.layer));
+
+      yield* provider.runAction({ ...reference, action: "merge" });
+
+      expect(host.requests.at(-1)).toMatchObject({
+        path: MERGE_PATH,
+        body: { Do: "merge", delete_branch_after_merge: false },
+      });
+    }),
+  );
+
+  it.effect("deletes a branch in a fork the viewer can push to", () =>
+    Effect.gen(function* () {
+      const host = forgejo({
+        pullRequest: pullRequest({
+          head: { full_name: "contributor/project", default_branch: "main", push: true },
+        }),
+      });
+      const provider = yield* ForgejoPullRequestProvider.make.pipe(Effect.provide(host.layer));
+
+      yield* provider.runAction({ ...reference, action: "merge" });
+
+      expect(host.requests.at(-1)).toMatchObject({
+        path: MERGE_PATH,
+        body: { delete_branch_after_merge: true },
+      });
+    }),
+  );
+
+  it.effect("reports a merge that landed when Forgejo refuses to delete the branch", () =>
+    Effect.gen(function* () {
+      const host = forgejo({ merge: cliError("the head branch is protected", 403) });
+      const provider = yield* ForgejoPullRequestProvider.make.pipe(Effect.provide(host.layer));
+
+      yield* provider.runAction({ ...reference, action: "merge" });
+
+      expect(host.requests.map((request) => request.path)).toEqual([
+        REPO_PATH,
+        PULL_PATH,
+        MERGE_PATH,
+        PULL_PATH,
+      ]);
+    }),
+  );
+
+  it.effect.each([
+    { name: "the pull request is still open", afterMerge: pullRequest({ merged: false }) },
+    { name: "the merge cannot be confirmed", afterMerge: cliError("Unavailable", 503) },
+  ])("reports a failed merge when $name", ({ afterMerge }) =>
+    Effect.gen(function* () {
+      const host = forgejo({ afterMerge, merge: cliError("Merge conflict", 409) });
+      const provider = yield* ForgejoPullRequestProvider.make.pipe(Effect.provide(host.layer));
+
+      const result = yield* Effect.result(provider.runAction({ ...reference, action: "merge" }));
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "PullRequestProviderError",
+          operation: MERGE_PATH,
+          detail: "Merge conflict",
+        },
+      });
+      expect(host.requests.map((request) => request.path)).toEqual([
+        REPO_PATH,
+        PULL_PATH,
+        MERGE_PATH,
+        PULL_PATH,
+      ]);
+    }),
+  );
+
+  it.effect("does not reread a failed merge that never asked to delete the branch", () =>
+    Effect.gen(function* () {
+      const host = forgejo({
+        repository: repository(false),
+        merge: cliError("Merge conflict", 409),
+      });
+      const provider = yield* ForgejoPullRequestProvider.make.pipe(Effect.provide(host.layer));
+
+      const result = yield* Effect.result(provider.runAction({ ...reference, action: "merge" }));
+
+      expect(result).toMatchObject({ _tag: "Failure", failure: { detail: "Merge conflict" } });
+      expect(host.requests.map((request) => request.path)).toEqual([REPO_PATH, MERGE_PATH]);
+    }),
+  );
+
+  it.effect.each([
+    "repository request failure",
+    "invalid repository",
+    "truncated repository",
+    "pull request request failure",
+  ] as const)("does not merge when reading branch deletion settings fails: %s", (failure) =>
+    Effect.gen(function* () {
+      const requests: ForgejoApiInput[] = [];
+      const provider = yield* ForgejoPullRequestProvider.make.pipe(
+        Effect.provide(
+          Layer.mock(ForgejoCli)({
+            api: (input) => {
+              requests.push(input);
+              if (
+                failure ===
+                (input.path === REPO_PATH
+                  ? "repository request failure"
+                  : "pull request request failure")
+              ) {
+                return Effect.fail(cliError("Repository settings unavailable"));
+              }
+              return Effect.succeed({
+                ...output(
+                  JSON.stringify(
+                    input.path === REPO_PATH
+                      ? {
+                          ...repository(true),
+                          default_delete_branch_after_merge:
+                            failure === "invalid repository" ? "true" : true,
+                        }
+                      : pullRequest({}),
+                  ),
+                ),
+                stdoutTruncated: failure === "truncated repository",
+              });
+            },
+          }),
+        ),
+      );
+
+      const result = yield* Effect.result(provider.runAction({ ...reference, action: "merge" }));
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "PullRequestProviderError", provider: "forgejo", operation: "merge" },
+      });
+      expect(result._tag === "Failure" && result.failure.detail).toMatch(
+        /^The pull request was not merged because its branch deletion setting could not be read\./,
+      );
+      expect(requests.map((request) => request.path)).not.toContain(MERGE_PATH);
+    }),
+  );
+});

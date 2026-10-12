@@ -4,7 +4,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
 import type { CliInvocation } from "../provider/CliLoginAuth.ts";
-import { PtyAdapter } from "../terminal/PtyAdapter.ts";
+import { PtyAdapter } from "@t3tools/shared/PtyAdapter";
 
 /** Claude's headless MCP flow still requires a TTY to accept a pasted redirect. */
 export const runMcpPtyLogin = Effect.fn("runMcpPtyLogin")(function* (

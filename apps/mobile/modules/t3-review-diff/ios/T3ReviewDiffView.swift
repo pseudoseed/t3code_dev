@@ -367,7 +367,6 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     scrollView.showsHorizontalScrollIndicator = false
     scrollView.backgroundColor = contentView.theme.background
     pullRefreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
-    scrollView.refreshControl = pullRefreshControl
     addSubview(scrollView)
 
     contentView.backgroundColor = contentView.theme.background
@@ -412,8 +411,13 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
       let view = SourceTextView()
       sourceView = view
       scrollView.isHidden = true
+      view.contentInset = scrollView.contentInset
+      view.verticalScrollIndicatorInsets = scrollView.verticalScrollIndicatorInsets
+      view.contentOffset.y = -view.contentInset.top
+      view.isScrollEnabled = scrollView.isScrollEnabled
+      view.bounces = scrollView.bounces
+      view.refreshControl = scrollView.refreshControl
       scrollView.refreshControl = nil
-      view.refreshControl = pullRefreshControl
       addSubview(view)
     }
     sourceView?.setSource(text)
@@ -595,6 +599,33 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     ])
   }
 
+  // Code surfaces fill the screen so UIKit can sample content below the glass bar.
+  // Keep the same visible row when header or safe-area reservations change.
+  func setContentInsetTop(_ inset: CGFloat) {
+    scrollView.automaticallyAdjustsScrollIndicatorInsets = false
+    let inset = max(0, inset)
+    if let sourceView {
+      let sourceDelta = inset - sourceView.contentInset.top
+      sourceView.contentInset.top = inset
+      sourceView.verticalScrollIndicatorInsets.top = inset
+      sourceView.contentOffset.y -= sourceDelta
+    }
+    let delta = inset - scrollView.contentInset.top
+    guard delta != 0 else { return }
+    scrollView.contentInset.top = inset
+    contentView.topContentInset = inset
+    scrollView.verticalScrollIndicatorInsets.top = inset
+    scrollView.contentOffset.y -= delta
+    updateViewportFrame()
+  }
+
+  func setContentInsetBottom(_ inset: CGFloat) {
+    sourceView?.contentInset.bottom = max(0, inset)
+    sourceView?.verticalScrollIndicatorInsets.bottom = max(0, inset)
+    scrollView.contentInset.bottom = max(0, inset)
+    scrollView.verticalScrollIndicatorInsets.bottom = max(0, inset)
+  }
+
   func setContentResetKey(_ contentResetKey: String) {
     guard contentResetKey != self.contentResetKey else {
       return
@@ -610,7 +641,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     hasAppliedInitialRowIndex = false
     pendingScrollFileId = nil
     isProgrammaticScrollActive = false
-    scrollView.setContentOffset(.zero, animated: false)
+    scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.contentInset.top), animated: false)
     updateContentMetrics()
     updateViewportFrame()
     lastVisibleFileId = nil
@@ -633,8 +664,12 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     if let scrollAnchor,
        let headerOffset = contentView.fileHeaderOffset(forFileId: scrollAnchor.fileId) {
       let targetOffset = headerOffset - scrollAnchor.screenY
-      let maxOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
-      let clampedOffset = min(max(targetOffset, 0), maxOffset)
+      let minOffset = -scrollView.contentInset.top
+      let maxOffset = max(
+        scrollView.contentSize.height - scrollView.bounds.height + scrollView.contentInset.bottom,
+        minOffset
+      )
+      let clampedOffset = min(max(targetOffset, minOffset), maxOffset)
       scrollView.setContentOffset(CGPoint(x: 0, y: clampedOffset), animated: false)
       updateViewportFrame()
     }
@@ -716,14 +751,14 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     applyPendingScrollIfNeeded()
     emitVisibleFileIfNeeded()
 
-    let debugKey = "\(rows.count):\(Int(bounds.width)):\(Int(bounds.height)):\(Int(height))"
+    let debugKey = "\(rows.count):\(Int(bounds.width)):\(Int(bounds.height)):\(Int(contentView.contentHeight))"
     if debugKey != lastMetricsDebugKey {
       lastMetricsDebugKey = debugKey
       emitDebug("metrics", [
         "rows": rows.count,
         "boundsWidth": Double(bounds.width),
         "boundsHeight": Double(bounds.height),
-        "contentHeight": Double(height),
+        "contentHeight": Double(contentView.contentHeight),
         "contentWidth": Double(style.contentWidth),
         "fileHeaderHeight": Double(style.fileHeaderHeight),
         "rowHeight": Double(style.rowHeight),
@@ -755,7 +790,8 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     // The top of the combined diff is the explicit "All files" destination.
     // Treat it as a first-class selection instead of immediately resolving the
     // first file header and undoing the navigator's optimistic selection.
-    if scrollView.contentOffset.y <= 0.5 {
+    let visibleTop = scrollView.contentOffset.y + scrollView.contentInset.top
+    if visibleTop <= 0.5 {
       guard lastVisibleFileId != nil else {
         return
       }
@@ -764,7 +800,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
       return
     }
 
-    guard let fileId = contentView.visibleFileId(atVerticalOffset: scrollView.contentOffset.y),
+    guard let fileId = contentView.visibleFileId(atVerticalOffset: visibleTop),
           fileId != lastVisibleFileId else {
       return
     }
@@ -857,6 +893,27 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     setVerticalContentOffset(0, animated: animated)
   }
 
+  func setScrollEnabled(_ enabled: Bool) {
+    sourceView?.isScrollEnabled = enabled
+    scrollView.isScrollEnabled = enabled
+  }
+
+  func setBounces(_ bounces: Bool) {
+    sourceView?.bounces = bounces
+    sourceView?.alwaysBounceVertical = bounces
+    scrollView.bounces = bounces
+    scrollView.alwaysBounceVertical = bounces
+  }
+
+  func setRefreshEnabled(_ enabled: Bool) {
+    if !enabled { pullRefreshControl.endRefreshing() }
+    if let sourceView {
+      sourceView.refreshControl = enabled ? pullRefreshControl : nil
+    } else {
+      scrollView.refreshControl = enabled ? pullRefreshControl : nil
+    }
+  }
+
   @objc private func handlePullToRefresh() {
     onPullToRefresh([:])
   }
@@ -911,8 +968,12 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
   }
 
   private func setVerticalContentOffset(_ targetOffset: CGFloat, animated: Bool) {
-    let maxOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
-    let clampedOffset = min(max(targetOffset, 0), maxOffset)
+    let topInset = scrollView.contentInset.top
+    let maxOffset = max(
+      scrollView.contentSize.height - scrollView.bounds.height + scrollView.contentInset.bottom,
+      -topInset
+    )
+    let clampedOffset = min(max(targetOffset - topInset, -topInset), maxOffset)
     let shouldAnimate = animated && abs(scrollView.contentOffset.y - clampedOffset) > 0.5
     isProgrammaticScrollActive = shouldAnimate
     contentView.isVerticalScrollActive = shouldAnimate
@@ -930,12 +991,10 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
       return
     }
 
-    let targetScreenY = max(0, (bounds.height - rowFrame.height) * 0.3)
-    let maxOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
-    let targetOffset = min(max(rowFrame.minY - targetScreenY, 0), maxOffset)
+    let visibleHeight = bounds.height - scrollView.contentInset.top - scrollView.contentInset.bottom
+    let targetScreenY = max(0, (visibleHeight - rowFrame.height) * 0.3)
     hasAppliedInitialRowIndex = true
-    scrollView.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: false)
-    updateViewportFrame()
+    setVerticalContentOffset(rowFrame.minY - targetScreenY, animated: false)
   }
 }
 
@@ -1046,6 +1105,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     }
   }
   var verticalOffset: CGFloat = 0
+  var topContentInset: CGFloat = 0
   var theme = ReviewDiffNativeTheme.resolve("light") {
     didSet {
       tokenColorsByHex.removeAll()
@@ -1516,7 +1576,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
 
     let rowIndex = stickyHeader.rowIndex
     let headerTop = rowOffsets[rowIndex]
-    guard headerTop < verticalOffset else {
+    guard headerTop < verticalOffset + topContentInset else {
       return nil
     }
 
@@ -1526,12 +1586,12 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       : nil
     let pushedY: CGFloat
     if let nextHeaderRowIndex {
-      pushedY = min(0, rowOffsets[nextHeaderRowIndex] - verticalOffset - style.fileHeaderHeight)
+      pushedY = min(topContentInset, rowOffsets[nextHeaderRowIndex] - verticalOffset - style.fileHeaderHeight)
     } else {
-      pushedY = 0
+      pushedY = topContentInset
     }
 
-    guard pushedY > -style.fileHeaderHeight else {
+    guard pushedY > topContentInset - style.fileHeaderHeight else {
       return nil
     }
 
@@ -1554,7 +1614,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     while lowerBound < upperBound {
       let midpoint = (lowerBound + upperBound) / 2
       let rowIndex = fileHeaderRowIndices[midpoint]
-      if rowOffsets[rowIndex] <= verticalOffset {
+      if rowOffsets[rowIndex] <= verticalOffset + topContentInset {
         lowerBound = midpoint + 1
       } else {
         upperBound = midpoint
@@ -1571,7 +1631,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   func scrollAnchor(forFileId fileId: String) -> ReviewDiffScrollAnchor? {
     if let stickyHeader = stickyFileHeaderTarget(),
        resolvedFileId(for: stickyHeader.row) == fileId {
-      return ReviewDiffScrollAnchor(fileId: fileId, screenY: 0)
+      return ReviewDiffScrollAnchor(fileId: fileId, screenY: topContentInset)
     }
 
     guard let headerOffset = fileHeaderOffset(forFileId: fileId) else {
@@ -2443,10 +2503,7 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
       return
     }
 
-    let selectionColor = theme.hunkText.withAlphaComponent(0.22)
-    selectionColor.setFill()
-    context.fill(rect)
-
+    // Keep the diff and syntax colors intact; selection lives in the gutter.
     theme.hunkText.withAlphaComponent(0.95).setFill()
     context.fill(CGRect(x: 0, y: rect.minY, width: style.changeBarWidth, height: rect.height))
   }
@@ -2837,7 +2894,7 @@ private final class SourceTextView: UITextView {
     sourceLayout.gutterWidth = max(style.gutterWidth, digits + 24)
     textContainerInset = UIEdgeInsets(
       top: 8, left: sourceLayout.gutterWidth,
-      bottom: 96 + safeAreaInsets.bottom, right: 16
+      bottom: 8, right: 16
     )
     wraps = style.contentWidth < 32_000
     textContainer.widthTracksTextView = wraps
@@ -2849,11 +2906,6 @@ private final class SourceTextView: UITextView {
       selectedRange = savedRange
     }
     setContentOffset(savedOffset, animated: false)
-  }
-
-  override func safeAreaInsetsDidChange() {
-    super.safeAreaInsetsDidChange()
-    textContainerInset.bottom = 96 + safeAreaInsets.bottom
   }
 
   func jumpToLineIfNeeded(_ line: Int?) {

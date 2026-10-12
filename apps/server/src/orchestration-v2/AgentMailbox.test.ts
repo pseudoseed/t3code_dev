@@ -8,7 +8,7 @@ import {
   ThreadId,
   type ThreadMailboxCommand,
 } from "@t3tools/contracts";
-import { randomUuidV4 } from "./RandomUuid.ts";
+import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

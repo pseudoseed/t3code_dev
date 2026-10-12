@@ -9,7 +9,7 @@ import {
   type DesktopServerExposureMode,
   type DesktopServerExposureState,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isTailscaleIpv4Address, readTailscaleStatus } from "@t3tools/tailscale";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -144,7 +144,7 @@ const defaultRouteCommand = (platform: string): ChildProcess.Command | null => {
 };
 
 const readDefaultRouteInterface = Effect.gen(function* () {
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   const command = defaultRouteCommand(platform);
   if (command === null) return null;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;

@@ -65,6 +65,12 @@ const runtimeSpawnArguments = (paths: ReturnType<typeof runtimePaths>) => ({
 /** SQLite persists across the main file plus its WAL and shared-memory sidecars. */
 const DB_FILE_SUFFIXES = ["", "-wal", "-shm"] as const;
 const RESTORE_MARKER = ".restore-pending";
+const V2_ABSENT_MARKER = ".v2-database-absent";
+
+const v2DatabasePath = (dbPath: string) =>
+  NodePath.basename(dbPath) === "state.sqlite"
+    ? NodePath.join(NodePath.dirname(dbPath), "statev2.sqlite")
+    : undefined;
 
 const databaseBackupDir = (baseDir: string, updateId: string) =>
   NodePath.join(baseDir, "runtime", "db-backup", updateId);
@@ -126,6 +132,20 @@ async function backupDatabaseOnce(baseDir: string, pending: PendingServiceUpdate
       await NodeFSP.copyFile(source, destination);
       await syncFile(destination);
     }
+    // A V1 update reports its own database path, while the trial seeds a separate
+    // V2 database. Record absence before it starts; existing V2 work is not ours.
+    const v2Path = v2DatabasePath(pending.dbPath);
+    if (
+      v2Path !== undefined &&
+      !(await Promise.all(DB_FILE_SUFFIXES.map((suffix) => pathExists(`${v2Path}${suffix}`)))).some(
+        Boolean,
+      )
+    ) {
+      const markerPath = NodePath.join(stagingDir, V2_ABSENT_MARKER);
+      await NodeFSP.writeFile(markerPath, "", { mode: 0o600 });
+      await syncFile(markerPath);
+    }
+    await syncDirectory(stagingDir);
     await NodeFSP.rename(stagingDir, backupDir);
     await syncDirectory(NodePath.dirname(backupDir));
   } catch (cause) {
@@ -171,6 +191,14 @@ async function restoreDatabaseBackup(
       await syncFile(target);
     } else {
       await NodeFSP.rm(target, { force: true });
+    }
+  }
+  const v2Path = v2DatabasePath(pending.dbPath);
+  if (v2Path !== undefined && (await pathExists(NodePath.join(backupDir, V2_ABSENT_MARKER)))) {
+    // Leave the restore marker until this cleanup and the V1 restore are durable.
+    // A retry must seed from any new V1 work, not reuse the failed trial's copy.
+    for (const suffix of DB_FILE_SUFFIXES) {
+      await NodeFSP.rm(`${v2Path}${suffix}`, { force: true });
     }
   }
   await syncDirectory(NodePath.dirname(pending.dbPath));

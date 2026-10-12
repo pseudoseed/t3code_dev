@@ -90,16 +90,17 @@ describe("resolveProviderSignInPresentation", () => {
 });
 
 describe("providerEnabledPatch", () => {
-  it("enables a legacy instance without losing its executable path or models", () => {
+  it("enables a migrated instance without losing its executable path or models", () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,
-      providers: {
-        ...DEFAULT_SERVER_SETTINGS.providers,
-        antigravity: {
-          ...DEFAULT_SERVER_SETTINGS.providers.antigravity,
+      providerInstances: {
+        [provider.instanceId]: {
+          driver: provider.driver,
           enabled: false,
-          binaryPath: "/opt/google/agy-acp",
-          customModels: ["gemini-native"],
+          config: {
+            binaryPath: "/opt/google/agy-acp",
+            customModels: ["gemini-native"],
+          },
         },
       },
     };
@@ -112,7 +113,7 @@ describe("providerEnabledPatch", () => {
     });
     expect(instance?.config).not.toHaveProperty("enabled");
     expect(instance && resolveProviderInstanceEnabled(instance)).toBe(true);
-    expect(settings.providers.antigravity.enabled).toBe(false);
+    expect(settings.providerInstances[provider.instanceId]?.enabled).toBe(false);
   });
 
   it("keeps separate accounts and environment overrides when enabling a custom instance", () => {
@@ -141,10 +142,9 @@ describe("providerEnabledPatch", () => {
       config: { binaryPath: "/work/agy-acp", futureSetting: "keep" },
       environment: [{ name: "WORK_PROXY", value: "http://proxy", sensitive: false }],
     });
-    expect(patch?.providers).toBeUndefined();
   });
 
-  it("does not change a driver without a legacy enabled flag", () => {
+  it("does not change a driver without a supported setup screen", () => {
     expect(
       providerEnabledPatch(
         DEFAULT_SERVER_SETTINGS,

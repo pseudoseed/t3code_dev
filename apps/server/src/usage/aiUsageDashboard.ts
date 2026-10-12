@@ -29,7 +29,7 @@ import {
   clampPercent,
   makeUsageLimits,
   makeUnavailableUsageLimits,
-} from "../provider/providerUsageLimits.ts";
+} from "@t3tools/provider-core/server/usageLimits";
 
 /**
  * Only the fields the Limits view needs. The dashboard sends much more per

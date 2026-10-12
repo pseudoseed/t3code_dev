@@ -167,8 +167,7 @@ function ProviderSetupScreen({ environmentId, instanceId }: ProviderSetupRoutePa
     message: authMessage,
   } = resolveProviderSignInPresentation(provider, auth);
   const authMethod = readAntigravityAuthMethod(
-    config?.settings.providerInstances[instanceId]?.config ??
-      (instanceId === "antigravity" ? config?.settings.providers.antigravity : undefined),
+    config?.settings.providerInstances[instanceId]?.config,
   );
   const copy = resolveMobileProviderSetupCopy({
     driver: provider?.driver ?? "antigravity",

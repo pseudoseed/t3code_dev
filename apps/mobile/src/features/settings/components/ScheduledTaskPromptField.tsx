@@ -4,6 +4,7 @@ import { AppText as Text } from "../../../components/AppText";
 import type { ComposerEditorSelection } from "../../../components/ComposerEditor";
 import {
   ComposerDictationCancelAction,
+  ComposerDictationFeedback,
   ComposerDictationPrimaryAction,
   ComposerDictationStartAction,
   ComposerDictationStatus,
@@ -22,12 +23,19 @@ export function ScheduledTaskPromptField(props: {
 }) {
   const voice = props.voiceInput;
   const presentation = resolveVoiceComposerPresentation(voice.state, voice.elapsedSeconds);
-  const showsDictation = presentation.statusLabel !== null;
+  const showsDictation = presentation.showsDictation;
   const showsIdleTrigger = voice.isAvailable && !showsDictation;
 
   return (
     <View className="gap-2 border-t border-border-subtle px-4 py-3">
       <Text className="text-sm text-foreground-muted">Prompt</Text>
+      <ComposerDictationFeedback
+        presentation={presentation}
+        recoverableTranscript={voice.recoverableTranscript}
+        onInsertRecovery={voice.insertRecoverableTranscript}
+        onDiscardRecovery={voice.discardRecoverableTranscript}
+        onDismiss={voice.cancel}
+      />
       <View className="relative">
         <TextInput
           accessibilityLabel="Prompt"
@@ -48,6 +56,7 @@ export function ScheduledTaskPromptField(props: {
             <ComposerDictationStartAction
               state={voice.state}
               isAvailable={voice.isAvailable}
+              hasPendingRecovery={voice.recoverableTranscript !== null}
               disabled={props.disabled}
               onStart={voice.start}
               onCancel={voice.cancel}
@@ -64,12 +73,12 @@ export function ScheduledTaskPromptField(props: {
               elapsedSeconds={voice.elapsedSeconds}
               phase={voice.state.phase}
               presentation={presentation}
-              onDismissError={voice.cancel}
             />
             <ComposerDictationPrimaryAction
               state={voice.state}
               presentation={presentation}
               isAvailable={voice.isAvailable}
+              hasPendingRecovery={voice.recoverableTranscript !== null}
               disabled={props.disabled}
               onStart={voice.start}
               onConfirm={voice.stop}

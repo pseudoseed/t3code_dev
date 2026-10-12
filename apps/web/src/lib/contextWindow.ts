@@ -7,6 +7,7 @@
 export {
   type ContextWindowSnapshot,
   deriveLatestContextWindowSnapshot,
+  latestProviderTurnTokenUsage,
   deriveThreadCostSnapshot,
   formatContextWindowPercentage,
   formatContextWindowTokens,

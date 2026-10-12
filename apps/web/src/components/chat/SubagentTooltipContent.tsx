@@ -37,6 +37,7 @@ export function SubagentTooltipContent(props: {
   taskMetadata?: OrchestrationV2Subagent["taskMetadata"];
   providerInstanceId: ProviderInstanceId;
   origin: OrchestrationV2Subagent["origin"];
+  modelSelection?: OrchestrationV2Subagent["modelSelection"];
   provider?: ServerProvider | undefined;
   /** The environment's instances; with several accounts on one provider, the card names this one. */
   providers?: ReadonlyArray<ServerProvider> | undefined;
@@ -59,7 +60,9 @@ export function SubagentTooltipContent(props: {
     ? resolveSelectableModel(props.provider.driver, model, props.provider.models)
     : model;
   const providerModel = props.provider?.models.find((candidate) => candidate.slug === modelSlug);
-  const childSelection = props.childThread?.modelSelection;
+  const childSelection =
+    props.modelSelection ??
+    (props.origin === "app_owned" ? props.childThread?.modelSelection : undefined);
   const childModel = props.provider
     ? (resolveSelectableModel(
         props.provider.driver,
@@ -69,16 +72,13 @@ export function SubagentTooltipContent(props: {
     : childSelection?.model.trim();
   const provider = props.provider;
   const matchingSelection =
-    props.origin === "app_owned" &&
-    childModel === (modelSlug ?? model) &&
-    childSelection?.instanceId === props.providerInstanceId
+    childModel === (modelSlug ?? model) && childSelection?.instanceId === props.providerInstanceId
       ? childSelection
       : undefined;
   const effort =
-    props.taskMetadata?.effort ??
     ["reasoningEffort", "effort", "reasoning", "variant"]
       .map((id) => getModelSelectionStringOptionValue(matchingSelection, id))
-      .find(Boolean);
+      .find(Boolean) ?? props.taskMetadata?.effort;
   const speed = provider
     ? providerModel?.capabilities?.optionDescriptors
         ?.map((descriptor) => {
@@ -176,6 +176,9 @@ export function SubagentTooltipContent(props: {
       {props.taskMetadata?.role &&
       props.taskMetadata.role.toLocaleLowerCase() !== props.title.toLocaleLowerCase() ? (
         <div className="text-2xs text-muted-foreground">{props.taskMetadata.role}</div>
+      ) : null}
+      {(props.taskMetadata?.attempt ?? 0) > 1 ? (
+        <div className="text-2xs text-muted-foreground">Attempt {props.taskMetadata?.attempt}</div>
       ) : null}
       {props.taskMetadata?.usage ? (
         <div className="flex items-center gap-3 text-2xs tabular-nums text-muted-foreground">

@@ -12,7 +12,13 @@ import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { useGlobalVoiceInput, VOICE_SESSION_STARTED_AT } from "./VoiceInputProvider";
 import { createVoiceInputTarget } from "./voiceInputSession";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
-import { resolveRecoverableTranscript } from "./voiceCleanupSettings";
+import {
+  resolveRecoverableTranscript,
+  resolveVoiceCleanupSettings,
+  resolveVoiceTranscriptionSettings,
+} from "./voiceCleanupSettings";
+import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null, notice: null };
@@ -138,8 +144,12 @@ export function useVoiceInputController(input: {
   const state = global.ownerKey === input.ownerKey ? global.state : IDLE_STATE;
   const isBusy = voiceInputBlocksSubmission(state);
   return {
-    isAvailable: global.isAvailable && (!global.isBusy || global.ownerKey === input.ownerKey),
-    cleanupEnabled: global.cleanupEnabled,
+    isAvailable:
+      ((preferences !== null &&
+        getLocalVoiceTranscriber(resolveVoiceTranscriptionSettings(preferences)) !== null) ||
+        getNativeShowcaseScene() !== null) &&
+      (!global.isBusy || global.ownerKey === input.ownerKey),
+    cleanupEnabled: preferences ? resolveVoiceCleanupSettings(preferences).enabled : false,
     recoverableTranscript,
     insertRecoverableTranscript,
     discardRecoverableTranscript,

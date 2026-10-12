@@ -8,7 +8,7 @@ import * as Stream from "effect/Stream";
 import { makeCliLoginAuth } from "../provider/CliLoginAuth.ts";
 import { findMcpAuthorizationUrl } from "../provider/cliLoginOutput.ts";
 import * as NodePtyAdapter from "../terminal/NodePtyAdapter.ts";
-import { PtyAdapter } from "../terminal/PtyAdapter.ts";
+import { PtyAdapter } from "@t3tools/shared/PtyAdapter";
 import { runMcpPtyLogin } from "./McpPtyLogin.ts";
 
 it.layer(NodeServices.layer)("MCP terminal authorization", (it) => {

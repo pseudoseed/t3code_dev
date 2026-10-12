@@ -20,7 +20,7 @@ import {
   type IssueListResult,
   type IssueProviderSummary,
   type ProjectId,
-  type SourceControlProviderKind,
+  SourceControlProviderKind,
 } from "@t3tools/contracts";
 
 import { ProjectService } from "../project/ProjectService.ts";
@@ -131,8 +131,13 @@ const make = Effect.gen(function* () {
           declared !== "unknown"
             ? Effect.succeed(declared)
             : sourceControlProviders.resolveHandle({ cwd: project.workspaceRoot }).pipe(
-                Effect.map((handle) => handle.context?.provider.kind ?? "unknown"),
-                Effect.orElseSucceed((): SourceControlProviderKind => "unknown"),
+                Effect.map(
+                  (handle) =>
+                    handle.context?.provider.kind ?? SourceControlProviderKind.make("unknown"),
+                ),
+                Effect.orElseSucceed((): SourceControlProviderKind =>
+                  SourceControlProviderKind.make("unknown"),
+                ),
               );
 
         return refined.pipe(

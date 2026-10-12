@@ -8,10 +8,10 @@ import {
   type ThreadId,
   type ThreadMailboxCommand,
 } from "@t3tools/contracts";
-import { randomUuidV4 } from "./RandomUuid.ts";
+import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import { readMcpProviderSession } from "../mcp/McpProviderSession.ts";
+import { McpProviderSessions } from "@t3tools/provider-core/server/McpProviderSessions";
 import { EventSinkV2 } from "./EventSink.ts";
 import { makeMailboxRepository } from "./MailboxRepository.ts";
 import { encodeMailboxSnapshot } from "./MailboxContext.ts";
@@ -20,6 +20,7 @@ import { mailboxTurnContext } from "./AgentMailbox.ts";
 /** Provider delivery persists its snapshot before starting and acceptance afterward. */
 export const makeMailboxDelivery = Effect.gen(function* () {
   const repository = yield* makeMailboxRepository;
+  const mcpSessions = yield* McpProviderSessions;
   const sink = yield* EventSinkV2;
   const dispatch = Effect.fn("MailboxDelivery.dispatch")(function* (
     threadId: ThreadId,
@@ -60,7 +61,7 @@ export const makeMailboxDelivery = Effect.gen(function* () {
     threadId: ThreadId,
     executionId: MessageId,
   ) {
-    const providerSessionId = readMcpProviderSession(threadId)?.providerSessionId ?? null;
+    const providerSessionId = (yield* mcpSessions.read(threadId))?.providerSessionId ?? null;
     if (providerSessionId === null) return { context: "", accepted: Effect.void };
     const previous = (yield* repository.turns(threadId, executionId))[0];
     const turnKey = previous?.turnKey ?? (yield* randomUuidV4);

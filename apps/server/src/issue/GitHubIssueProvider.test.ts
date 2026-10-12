@@ -1,7 +1,7 @@
 import { assert, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as GitHubApi from "../sourceControl/GitHubApi.ts";
+import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
 import * as GitHubIssueProvider from "./GitHubIssueProvider.ts";
 const rest = vi.fn<GitHubApi.GitHubApi["Service"]["rest"]>();
 const layer = Layer.mock(GitHubApi.GitHubApi)({ rest });

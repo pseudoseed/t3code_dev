@@ -1,7 +1,8 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 /**
  * Forgejo's issues, over its v1 REST API.
  *
- * Sits on `ForgejoApi.request` for credentials and transport, the same way the change request
+ * Sits on `ForgejoTransport.request` for credentials and transport, the same way the change request
  * reader does. Gitea speaks the same API, so one provider serves both. Schemas and normalization
  * live here rather than in a file of their own: an issue is small enough that splitting it would
  * cost more to follow than it saves.
@@ -22,8 +23,7 @@ import type {
   IssueListState,
 } from "@t3tools/contracts";
 
-import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
-import * as ForgejoTransport from "../sourceControl/ForgejoTransport.ts";
+import * as ForgejoTransport from "@t3tools/source-control-forgejo/server/ForgejoTransport";
 import {
   IssueProviderError,
   type IssueProviderApi,
@@ -176,7 +176,7 @@ function repositoryPath(
   return parts.length !== 2 || owner === undefined || repo === undefined
     ? Effect.fail(
         new IssueProviderError({
-          provider: "forgejo",
+          provider: SourceControlProviderKind.make("forgejo"),
           operation,
           reason: "failed",
           detail: `Forgejo repositories are addressed as owner/repository; got "${repository}".`,
@@ -194,9 +194,9 @@ export const make = Effect.gen(function* () {
 
   const fail =
     (operation: string) =>
-    (error: ForgejoApi.ForgejoApiError): IssueProviderError =>
+    (error: ForgejoTransport.ForgejoTransportError): IssueProviderError =>
       new IssueProviderError({
-        provider: "forgejo",
+        provider: SourceControlProviderKind.make("forgejo"),
         operation,
         // A token with too few scopes is refused with 403, and the fix is the same as for 401.
         reason:
@@ -242,7 +242,7 @@ export const make = Effect.gen(function* () {
             }).pipe(Effect.as(decoded.success))
           : Effect.fail(
               new IssueProviderError({
-                provider: "forgejo",
+                provider: SourceControlProviderKind.make("forgejo"),
                 operation: input.operation,
                 reason: "failed",
                 detail: "Forgejo returned a payload this could not read.",
@@ -275,7 +275,7 @@ export const make = Effect.gen(function* () {
       const login = text(user.login).trim();
       if (login.length === 0) {
         return yield* new IssueProviderError({
-          provider: "forgejo",
+          provider: SourceControlProviderKind.make("forgejo"),
           operation: "getViewer",
           reason: "unauthenticated",
           detail: "Forgejo did not name the signed-in account.",
@@ -427,7 +427,7 @@ export const make = Effect.gen(function* () {
     });
 
   return {
-    kind: "forgejo",
+    kind: SourceControlProviderKind.make("forgejo"),
     capabilities: CAPABILITIES,
     getViewer,
     listIssues,

@@ -15,7 +15,7 @@ import { projectThreadAwarenessV2 } from "@t3tools/shared/agentAwareness";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import type { ProjectionRecords } from "../orchestration-v2/ProjectionStore.ts";
 import { makeActivitySummaries } from "./ActivitySummaries.ts";
-import { cleanActivitySummary } from "./activitySummary.ts";
+import { cleanActivitySummary } from "@t3tools/provider-core/server/textGenerationUtils";
 
 function fixture() {
   const project = {

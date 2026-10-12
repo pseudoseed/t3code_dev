@@ -1,7 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { ProviderInstanceId, ServerSettings } from "@t3tools/contracts";
-import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import {
+  Environment as HostProcessEnvironment,
+  Platform as HostProcessPlatform,
+} from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
@@ -10,7 +13,7 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import { ProcessRunner, type ProcessRunOutput } from "../processRunner.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { PtyAdapter } from "../terminal/PtyAdapter.ts";
+import { PtyAdapter } from "@t3tools/shared/PtyAdapter";
 import { make } from "./ProviderMcpServers.ts";
 
 const decodeSettings = Schema.decodeEffect(ServerSettings);

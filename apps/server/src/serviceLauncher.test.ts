@@ -356,4 +356,229 @@ if (context.update?.status === "pending") {
       assert.isFalse(yield* fs.exists(path.join(root, "runtime", "db-backup", updateId)));
     }),
   );
+  it.effect("seeds a retried V2 upgrade from V1 work added after a failed trial", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-service-launcher-v2-retry-" });
+      const statePath = path.join(root, "runtime", "service-state.json");
+      const databasePath = path.join(root, "userdata", "state.sqlite");
+      const v2Path = path.join(path.dirname(databasePath), "statev2.sqlite");
+      const attemptPath = path.join(root, "first-trial-started");
+      yield* fs.makeDirectory(path.dirname(databasePath), { recursive: true });
+      yield* fs.writeFileString(databasePath, "V1 before upgrade");
+      const childSource = `
+import { copyFileSync, existsSync, writeFileSync } from "node:fs";
+const context = JSON.parse(process.env.T3_SERVICE_LAUNCHER_CONTEXT);
+const databasePath = ${JSON.stringify(databasePath)};
+const v2Path = ${JSON.stringify(v2Path)};
+const attemptPath = ${JSON.stringify(attemptPath)};
+process.on("message", (message) => {
+  if (message.type === "update-accepted" || message.type === "committed") process.exit(0);
+});
+if (context.update?.status === "pending") {
+  // Like initializeV2Database, a trial seeds V2 only when it does not exist.
+  if (!existsSync(v2Path)) copyFileSync(databasePath, v2Path);
+  if (!existsSync(attemptPath)) {
+    writeFileSync(attemptPath, "started");
+    writeFileSync(v2Path + "-wal", "failed trial WAL");
+    writeFileSync(v2Path + "-shm", "failed trial SHM");
+    process.exit(1);
+  }
+  process.send({ type: "prepared", updateId: context.update.id });
+} else {
+  if (context.update?.status === "rolled-back") {
+    writeFileSync(databasePath, "V1 work after rollback");
+  }
+  process.send({ type: "request-update", targetVersion: "1.1.0", dbPath: databasePath });
+}
+`;
+      for (const version of ["1.0.0", "1.1.0"]) {
+        yield* writeFakeRuntime(
+          fs,
+          path,
+          path.join(root, "runtime", "versions", version),
+          childSource,
+        );
+      }
+      yield* Effect.promise(() =>
+        writeServiceState(statePath, {
+          protocol: SERVICE_LAUNCHER_PROTOCOL,
+          activeVersion: "1.0.0",
+        }),
+      );
+      const launcher = new Launcher(root, yield* Effect.promise(() => readServiceState(statePath)));
+      yield* Effect.promise(() =>
+        launcher.run().then(
+          () => Promise.reject(new Error("launcher unexpectedly completed")),
+          () => Promise.resolve(),
+        ),
+      );
+
+      const state = yield* Effect.promise(() => readServiceState(statePath));
+      assert.equal(state.activeVersion, "1.1.0");
+      assert.equal(state.update?.status, "committed");
+      assert.equal(yield* fs.readFileString(v2Path), "V1 work after rollback");
+      assert.isFalse(yield* fs.exists(`${v2Path}-wal`));
+      assert.isFalse(yield* fs.exists(`${v2Path}-shm`));
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "preexisting V2 work",
+      dbFile: "state.sqlite",
+      preservedSuffixes: ["", "-wal", "-shm"],
+    },
+    {
+      name: "preexisting V2 sidecars",
+      dbFile: "state.sqlite",
+      preservedSuffixes: ["-wal", "-shm"],
+    },
+    { name: "an ordinary V2 database", dbFile: "statev2.sqlite", preservedSuffixes: [] },
+  ])("preserves $name on rollback", (scenario) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-service-launcher-v2-preserve-",
+      });
+      const statePath = path.join(root, "runtime", "service-state.json");
+      const databasePath = path.join(root, "userdata", scenario.dbFile);
+      const v2Path = path.join(path.dirname(databasePath), "statev2.sqlite");
+      yield* fs.makeDirectory(path.dirname(databasePath), { recursive: true });
+      yield* fs.writeFileString(databasePath, "database before trial");
+      for (const suffix of scenario.preservedSuffixes) {
+        yield* fs.writeFileString(`${v2Path}${suffix}`, `existing V2${suffix}`);
+      }
+      const childSource = `
+import { writeFileSync } from "node:fs";
+const context = JSON.parse(process.env.T3_SERVICE_LAUNCHER_CONTEXT);
+if (context.update?.status === "pending") {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    writeFileSync(context.update.dbPath + suffix, "failed trial" + suffix);
+  }
+  process.exit(1);
+}
+process.exit(0);
+`;
+      for (const version of ["1.0.0", "1.1.0"]) {
+        yield* writeFakeRuntime(
+          fs,
+          path,
+          path.join(root, "runtime", "versions", version),
+          childSource,
+        );
+      }
+      yield* Effect.promise(() =>
+        writeServiceState(statePath, {
+          protocol: SERVICE_LAUNCHER_PROTOCOL,
+          activeVersion: "1.0.0",
+          update: {
+            id: "preserve-v2",
+            fromVersion: "1.0.0",
+            targetVersion: "1.1.0",
+            dbPath: databasePath,
+            status: "pending",
+          },
+        }),
+      );
+      const launcher = new Launcher(root, yield* Effect.promise(() => readServiceState(statePath)));
+      yield* Effect.promise(() =>
+        launcher.run().then(
+          () => Promise.reject(new Error("launcher unexpectedly completed")),
+          () => Promise.resolve(),
+        ),
+      );
+
+      const state = yield* Effect.promise(() => readServiceState(statePath));
+      assert.equal(state.activeVersion, "1.0.0");
+      assert.equal(state.update?.status, "rolled-back");
+      assert.equal(yield* fs.readFileString(databasePath), "database before trial");
+      assert.isFalse(yield* fs.exists(`${databasePath}-wal`));
+      assert.isFalse(yield* fs.exists(`${databasePath}-shm`));
+      for (const suffix of scenario.preservedSuffixes) {
+        assert.equal(yield* fs.readFileString(`${v2Path}${suffix}`), `existing V2${suffix}`);
+      }
+    }),
+  );
+
+  it.effect.each([
+    { name: "finishes trial-owned V2 cleanup after an interrupted rollback", v2WasAbsent: true },
+    {
+      name: "preserves V2 when recovering a legacy backup without absence provenance",
+      v2WasAbsent: false,
+    },
+  ])("$name", ({ v2WasAbsent }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-service-launcher-v2-recover-",
+      });
+      const statePath = path.join(root, "runtime", "service-state.json");
+      const databasePath = path.join(root, "userdata", "state.sqlite");
+      const v2Path = path.join(path.dirname(databasePath), "statev2.sqlite");
+      const backupDir = path.join(root, "runtime", "db-backup", "interrupted-rollback");
+      yield* fs.makeDirectory(path.dirname(databasePath), { recursive: true });
+      yield* fs.makeDirectory(backupDir, { recursive: true });
+      yield* fs.writeFileString(databasePath, "partial restore");
+      yield* fs.writeFileString(path.join(backupDir, "database"), "V1 before trial");
+      yield* fs.writeFileString(path.join(backupDir, ".restore-pending"), "");
+      if (v2WasAbsent) {
+        yield* fs.writeFileString(path.join(backupDir, ".v2-database-absent"), "");
+        // The previous rollback removed the main file but died before its sidecars.
+      } else {
+        yield* fs.writeFileString(v2Path, "V2 of unknown origin");
+      }
+      for (const suffix of ["-wal", "-shm"]) {
+        yield* fs.writeFileString(`${v2Path}${suffix}`, `V2${suffix}`);
+      }
+      yield* writeFakeRuntime(
+        fs,
+        path,
+        path.join(root, "runtime", "versions", "1.0.0"),
+        "process.exit(0);",
+      );
+      yield* Effect.promise(() =>
+        writeServiceState(statePath, {
+          protocol: SERVICE_LAUNCHER_PROTOCOL,
+          activeVersion: "1.0.0",
+          update: {
+            id: "interrupted-rollback",
+            fromVersion: "1.0.0",
+            targetVersion: "1.1.0",
+            dbPath: databasePath,
+            status: "pending",
+          },
+        }),
+      );
+      const launcher = new Launcher(root, yield* Effect.promise(() => readServiceState(statePath)));
+      yield* Effect.promise(() =>
+        launcher.run().then(
+          () => Promise.reject(new Error("launcher unexpectedly completed")),
+          () => Promise.resolve(),
+        ),
+      );
+
+      const state = yield* Effect.promise(() => readServiceState(statePath));
+      assert.equal(state.activeVersion, "1.0.0");
+      assert.equal(state.update?.status, "failed");
+      assert.equal(
+        state.update?.status === "failed" ? state.update.reason : null,
+        "rollback-interrupted",
+      );
+      assert.equal(yield* fs.readFileString(databasePath), "V1 before trial");
+      for (const suffix of ["", "-wal", "-shm"]) {
+        assert.equal(yield* fs.exists(`${v2Path}${suffix}`), !v2WasAbsent);
+      }
+      if (!v2WasAbsent) {
+        assert.equal(yield* fs.readFileString(v2Path), "V2 of unknown origin");
+        for (const suffix of ["-wal", "-shm"]) {
+          assert.equal(yield* fs.readFileString(`${v2Path}${suffix}`), `V2${suffix}`);
+        }
+      }
+      assert.isFalse(yield* fs.exists(backupDir));
+    }),
+  );
 });

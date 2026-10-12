@@ -33,13 +33,13 @@ import {
   type ServerSettingsError,
 } from "@t3tools/contracts";
 import * as NodeOS from "node:os";
-import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import { Environment as HostProcessEnvironment } from "@t3tools/shared/HostProcess";
 import * as Crypto from "effect/Crypto";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/process";
-import { PtyAdapter } from "../terminal/PtyAdapter.ts";
+import { PtyAdapter } from "@t3tools/shared/PtyAdapter";
 import { runMcpPtyLogin } from "./McpPtyLogin.ts";
 import { makeCliLoginAuth } from "../provider/CliLoginAuth.ts";
 import { findMcpAuthorizationUrl } from "../provider/cliLoginOutput.ts";
@@ -64,7 +64,7 @@ import * as Schema from "effect/Schema";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
+import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import { resolveProviderCredentialHome } from "../provider/providerCredentialHome.ts";
 import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import {
@@ -196,7 +196,7 @@ const resolveClaudeInstances = Effect.fn("ProviderMcpServers.resolveClaudeInstan
       configuredPath: config.homePath,
       providerHomesDir,
     });
-    const environment = mergeProviderInstanceEnvironment(entry.environment);
+    const environment = yield* mergeProviderInstanceEnvironment(entry.environment);
     const effectiveDir = configDir || environment.CLAUDE_CONFIG_DIR || "";
     const resolvedHome = yield* resolveClaudeHomePath({ homePath: effectiveDir });
     resolved.push({
@@ -244,7 +244,7 @@ const resolveCodexInstances = Effect.fn("ProviderMcpServers.resolveCodexInstance
       binaryPath: config.binaryPath,
       configDir: layout.effectiveHomePath ?? "",
       resolvedHome: layout.sharedHomePath,
-      environment: mergeProviderInstanceEnvironment(entry.environment),
+      environment: yield* mergeProviderInstanceEnvironment(entry.environment),
       requiredEnvNames: (entry.environment ?? []).map((variable) => variable.name),
     });
   }

@@ -6,7 +6,7 @@ import { HttpServer } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-import * as McpProviderSession from "./McpProviderSession.ts";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 
 const environmentId = EnvironmentId.make("environment-1");
@@ -33,251 +33,259 @@ const makeRegistry = (now: () => number, httpServer = fakeHttpServer) =>
       Effect.provide(NodeServices.layer),
     );
 
-it.effect("a mailbox-only credential authenticates but cannot authorize preview tools", () =>
-  Effect.gen(function* () {
-    const registry = yield* makeRegistry(() => 1_000);
-    const issued = yield* registry.issue({
-      threadId: ThreadId.make("mailbox-only"),
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      previewEnabled: false,
-      capabilities: new Set(),
-    });
-    const scope = yield* registry.resolve(
-      issued.config.authorizationHeader.replace(/^Bearer\s+/, ""),
-    );
-    expect(scope?.capabilities.has("mailbox")).toBe(true);
-    expect(scope?.capabilities.has("preview")).toBe(false);
-    expect(issued.config.browserToolsAvailable).toBe(false);
-  }),
-);
-
-it.effect("stores only a token hash, resolves the bearer token, and revokes by thread", () =>
-  Effect.gen(function* () {
-    let timestamp = 1_000;
-    const registry = yield* makeRegistry(() => timestamp);
-    const threadId = ThreadId.make("thread-1");
-    const issued = yield* registry.issue({
-      threadId,
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      capabilities: new Set(["preview"]),
-    });
-    expect(issued.config.endpoint).toBe("http://127.0.0.1:43123/mcp");
-    const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
-    expect(token.length).toBeGreaterThan(20);
-
-    const resolved = yield* registry.resolve(token);
-    expect(resolved?.thread.threadId).toBe(threadId);
-    expect(resolved?.capabilities).toEqual(
-      new Set(["preview", "orchestration", "worktree", "pull-requests", "issues", "mailbox"]),
-    );
-
-    yield* registry.revokeThread(threadId);
-    expect(yield* registry.resolve(token)).toBeUndefined();
-
-    timestamp += 2_000;
-  }),
-);
-
-it.effect("always grants pull-requests and gates browser and device access independently", () =>
-  Effect.gen(function* () {
-    const registry = yield* makeRegistry(() => 1_000);
-    const withPreview = yield* registry.issue({
-      threadId: ThreadId.make("thread-preview"),
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      capabilities: new Set(["preview"]),
-    });
-    const withoutPreview = yield* registry.issue({
-      threadId: ThreadId.make("thread-no-preview"),
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      capabilities: new Set(),
-    });
-    const withDevice = yield* registry.issue({
-      threadId: ThreadId.make("thread-device"),
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      capabilities: new Set(["device"]),
-    });
-    const capabilitiesOf = (issued: typeof withPreview) =>
-      registry
-        .resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, ""))
-        .pipe(Effect.map((scope) => [...(scope?.capabilities ?? [])].sort()));
-
-    expect(yield* capabilitiesOf(withPreview)).toEqual([
-      "issues",
-      "mailbox",
-      "orchestration",
-      "preview",
-      "pull-requests",
-      "worktree",
-    ]);
-    expect(yield* capabilitiesOf(withoutPreview)).toEqual([
-      "issues",
-      "mailbox",
-      "orchestration",
-      "pull-requests",
-      "worktree",
-    ]);
-    expect(yield* capabilitiesOf(withDevice)).toEqual([
-      "device",
-      "issues",
-      "mailbox",
-      "orchestration",
-      "pull-requests",
-      "worktree",
-    ]);
-  }),
-);
-
-it.effect("builds MCP endpoints from the bound server host", () =>
-  Effect.gen(function* () {
-    const cases = [
-      ["100.64.0.40", "http://100.64.0.40:43123/mcp"],
-      ["0.0.0.0", "http://127.0.0.1:43123/mcp"],
-      ["::", "http://127.0.0.1:43123/mcp"],
-      ["::1", "http://[::1]:43123/mcp"],
-      ["127.0.0.1", "http://127.0.0.1:43123/mcp"],
-    ] as const;
-
-    for (const [hostname, expectedEndpoint] of cases) {
-      const registry = yield* makeRegistry(() => 1_000, makeFakeHttpServer(hostname));
+it.layer(McpProviderSessions.layer)((it) => {
+  it.effect("a mailbox-only credential authenticates but cannot authorize preview tools", () =>
+    Effect.gen(function* () {
+      const registry = yield* makeRegistry(() => 1_000);
       const issued = yield* registry.issue({
-        threadId: ThreadId.make(`thread-${hostname}`),
+        threadId: ThreadId.make("mailbox-only"),
         providerInstanceId: ProviderInstanceId.make("codex"),
-        capabilities: new Set(["preview"]),
+        previewEnabled: false,
+        capabilities: new Set(),
       });
-      expect(issued.config.endpoint).toBe(expectedEndpoint);
-    }
-  }),
-);
+      const scope = yield* registry.resolve(
+        issued.config.authorizationHeader.replace(/^Bearer\s+/, ""),
+      );
+      expect(scope?.capabilities.has("mailbox")).toBe(true);
+      expect(scope?.capabilities.has("preview")).toBe(false);
+      expect(issued.config.browserToolsAvailable).toBe(false);
+    }),
+  );
 
-it.effect("expires credentials once their session stops showing signs of life", () =>
-  Effect.gen(function* () {
-    let timestamp = 1_000;
-    const registry = yield* makeRegistry(() => timestamp);
-    const issued = yield* registry.issue({
-      threadId: ThreadId.make("thread-2"),
-      providerInstanceId: ProviderInstanceId.make("claude"),
-      capabilities: new Set(["preview"]),
-    });
-    const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
-    timestamp += 101;
-    expect(yield* registry.resolve(token)).toBeUndefined();
-  }),
-);
-
-it.effect("keeps a credential alive across turns that never touch an MCP tool", () =>
-  Effect.gen(function* () {
-    let timestamp = 1_000;
-    const registry = yield* makeRegistry(() => timestamp);
-    const threadId = ThreadId.make("thread-3");
-    const issued = yield* registry.issue({
-      threadId,
-      providerInstanceId: ProviderInstanceId.make("claude"),
-      capabilities: new Set(["preview"]),
-    });
-    const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
-
-    // Well past the liveness window in total, but each turn reports in before
-    // it lapses — this is the long-session case that used to lose the toolkit.
-    for (let turn = 0; turn < 10; turn += 1) {
-      timestamp += 99;
-      yield* registry.touch(threadId);
-    }
-
-    expect((yield* registry.resolve(token))?.thread.threadId).toBe(threadId);
-  }),
-);
-
-it.effect("does not keep credentials of other threads alive", () =>
-  Effect.gen(function* () {
-    let timestamp = 1_000;
-    const registry = yield* makeRegistry(() => timestamp);
-    const issued = yield* registry.issue({
-      threadId: ThreadId.make("thread-4"),
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      capabilities: new Set(["preview"]),
-    });
-    const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
-
-    timestamp += 99;
-    yield* registry.touch(ThreadId.make("thread-unrelated"));
-    timestamp += 2;
-
-    expect(yield* registry.resolve(token)).toBeUndefined();
-  }),
-);
-
-it.effect(
-  "renews a still-owned idle credential after unrelated traffic prunes expired credentials",
-  () =>
+  it.effect("stores only a token hash, resolves the bearer token, and revokes by thread", () =>
     Effect.gen(function* () {
       let timestamp = 1_000;
       const registry = yield* makeRegistry(() => timestamp);
-      const threadId = ThreadId.make("idle-provider-thread");
+      const threadId = ThreadId.make("thread-1");
       const issued = yield* registry.issue({
         threadId,
         providerInstanceId: ProviderInstanceId.make("codex"),
-        capabilities: new Set(),
+        capabilities: new Set(["preview"]),
       });
-      yield* Effect.acquireRelease(
-        Effect.sync(() => McpProviderSession.setMcpProviderSession(issued.config)),
-        () => Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId)),
-      );
+      expect(issued.config.endpoint).toBe("http://127.0.0.1:43123/mcp");
       const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
-      const abandoned = yield* registry.issue({
-        threadId: ThreadId.make("abandoned-provider-thread"),
-        providerInstanceId: ProviderInstanceId.make("claude"),
-        capabilities: new Set(),
-      });
-      const abandonedToken = abandoned.config.authorizationHeader.replace(/^Bearer\s+/, "");
+      expect(token.length).toBeGreaterThan(20);
 
-      timestamp += 101;
-      const otherThreadId = ThreadId.make("new-provider-thread");
-      const other = yield* registry.issue({
-        threadId: otherThreadId,
+      const resolved = yield* registry.resolve(token);
+      expect(resolved?.thread.threadId).toBe(threadId);
+      expect(resolved?.capabilities).toEqual(
+        new Set(["preview", "orchestration", "worktree", "pull-requests", "issues", "mailbox"]),
+      );
+
+      yield* registry.revokeThread(threadId);
+      expect(yield* registry.resolve(token)).toBeUndefined();
+
+      timestamp += 2_000;
+    }),
+  );
+
+  it.effect("always grants pull-requests and gates browser and device access independently", () =>
+    Effect.gen(function* () {
+      const registry = yield* makeRegistry(() => 1_000);
+      const withPreview = yield* registry.issue({
+        threadId: ThreadId.make("thread-preview"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        capabilities: new Set(["preview"]),
+      });
+      const withoutPreview = yield* registry.issue({
+        threadId: ThreadId.make("thread-no-preview"),
         providerInstanceId: ProviderInstanceId.make("codex"),
         capabilities: new Set(),
       });
-      expect(
-        yield* registry.resolve(other.config.authorizationHeader.replace(/^Bearer\s+/, "")),
-      ).toBeDefined();
-      yield* registry.touch(otherThreadId);
-      expect(yield* registry.resolve(token)).toBeUndefined();
-      expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
+      const withDevice = yield* registry.issue({
+        threadId: ThreadId.make("thread-device"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        capabilities: new Set(["device"]),
+      });
+      const capabilitiesOf = (issued: typeof withPreview) =>
+        registry
+          .resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, ""))
+          .pipe(Effect.map((scope) => [...(scope?.capabilities ?? [])].sort()));
 
-      yield* registry.touch(threadId);
-      const renewed = yield* registry.resolve(token);
-      expect(renewed?.thread.providerSessionId).toBe(issued.config.providerSessionId);
-      expect(renewed?.capabilities.has("mailbox")).toBe(true);
-      yield* registry.touch(ThreadId.make("abandoned-provider-thread"));
-      expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
+      expect(yield* capabilitiesOf(withPreview)).toEqual([
+        "issues",
+        "mailbox",
+        "orchestration",
+        "preview",
+        "pull-requests",
+        "worktree",
+      ]);
+      expect(yield* capabilitiesOf(withoutPreview)).toEqual([
+        "issues",
+        "mailbox",
+        "orchestration",
+        "pull-requests",
+        "worktree",
+      ]);
+      expect(yield* capabilitiesOf(withDevice)).toEqual([
+        "device",
+        "issues",
+        "mailbox",
+        "orchestration",
+        "pull-requests",
+        "worktree",
+      ]);
     }),
-);
+  );
 
-it.effect(
-  "never renews a revoked credential even while its provider still owns the cached config",
-  () =>
+  it.effect("builds MCP endpoints from the bound server host", () =>
     Effect.gen(function* () {
-      const registry = yield* makeRegistry(() => 1_000);
-      for (const revoke of ["thread", "session", "all"] as const) {
-        const threadId = ThreadId.make(`revoked-idle-${revoke}`);
+      const cases = [
+        ["100.64.0.40", "http://100.64.0.40:43123/mcp"],
+        ["0.0.0.0", "http://127.0.0.1:43123/mcp"],
+        ["::", "http://127.0.0.1:43123/mcp"],
+        ["::1", "http://[::1]:43123/mcp"],
+        ["127.0.0.1", "http://127.0.0.1:43123/mcp"],
+      ] as const;
+
+      for (const [hostname, expectedEndpoint] of cases) {
+        const registry = yield* makeRegistry(() => 1_000, makeFakeHttpServer(hostname));
+        const issued = yield* registry.issue({
+          threadId: ThreadId.make(`thread-${hostname}`),
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          capabilities: new Set(["preview"]),
+        });
+        expect(issued.config.endpoint).toBe(expectedEndpoint);
+      }
+    }),
+  );
+
+  it.effect("expires credentials once their session stops showing signs of life", () =>
+    Effect.gen(function* () {
+      let timestamp = 1_000;
+      const registry = yield* makeRegistry(() => timestamp);
+      const issued = yield* registry.issue({
+        threadId: ThreadId.make("thread-2"),
+        providerInstanceId: ProviderInstanceId.make("claude"),
+        capabilities: new Set(["preview"]),
+      });
+      const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+      timestamp += 101;
+      expect(yield* registry.resolve(token)).toBeUndefined();
+    }),
+  );
+
+  it.effect("keeps a credential alive across turns that never touch an MCP tool", () =>
+    Effect.gen(function* () {
+      let timestamp = 1_000;
+      const registry = yield* makeRegistry(() => timestamp);
+      const threadId = ThreadId.make("thread-3");
+      const issued = yield* registry.issue({
+        threadId,
+        providerInstanceId: ProviderInstanceId.make("claude"),
+        capabilities: new Set(["preview"]),
+      });
+      const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+
+      // Well past the liveness window in total, but each turn reports in before
+      // it lapses — this is the long-session case that used to lose the toolkit.
+      for (let turn = 0; turn < 10; turn += 1) {
+        timestamp += 99;
+        yield* registry.touch(threadId);
+      }
+
+      expect((yield* registry.resolve(token))?.thread.threadId).toBe(threadId);
+    }),
+  );
+
+  it.effect("does not keep credentials of other threads alive", () =>
+    Effect.gen(function* () {
+      let timestamp = 1_000;
+      const registry = yield* makeRegistry(() => timestamp);
+      const issued = yield* registry.issue({
+        threadId: ThreadId.make("thread-4"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        capabilities: new Set(["preview"]),
+      });
+      const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+
+      timestamp += 99;
+      yield* registry.touch(ThreadId.make("thread-unrelated"));
+      timestamp += 2;
+
+      expect(yield* registry.resolve(token)).toBeUndefined();
+    }),
+  );
+
+  it.effect(
+    "renews a still-owned idle credential after unrelated traffic prunes expired credentials",
+    () =>
+      Effect.gen(function* () {
+        let timestamp = 1_000;
+        const registry = yield* makeRegistry(() => timestamp);
+        const threadId = ThreadId.make("idle-provider-thread");
         const issued = yield* registry.issue({
           threadId,
           providerInstanceId: ProviderInstanceId.make("codex"),
           capabilities: new Set(),
         });
         yield* Effect.acquireRelease(
-          Effect.sync(() => McpProviderSession.setMcpProviderSession(issued.config)),
-          () => Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId)),
+          (yield* McpProviderSessions.McpProviderSessions).set(issued.config),
+          () =>
+            Effect.flatMap(McpProviderSessions.McpProviderSessions, (sessions) =>
+              sessions.clear(threadId),
+            ),
         );
-        if (revoke === "thread") yield* registry.revokeThread(threadId);
-        else if (revoke === "session")
-          yield* registry.revokeProviderSession(issued.config.providerSessionId);
-        else yield* registry.revokeAll;
+        const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+        const abandoned = yield* registry.issue({
+          threadId: ThreadId.make("abandoned-provider-thread"),
+          providerInstanceId: ProviderInstanceId.make("claude"),
+          capabilities: new Set(),
+        });
+        const abandonedToken = abandoned.config.authorizationHeader.replace(/^Bearer\s+/, "");
+
+        timestamp += 101;
+        const otherThreadId = ThreadId.make("new-provider-thread");
+        const other = yield* registry.issue({
+          threadId: otherThreadId,
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          capabilities: new Set(),
+        });
+        expect(
+          yield* registry.resolve(other.config.authorizationHeader.replace(/^Bearer\s+/, "")),
+        ).toBeDefined();
+        yield* registry.touch(otherThreadId);
+        expect(yield* registry.resolve(token)).toBeUndefined();
+        expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
 
         yield* registry.touch(threadId);
-        expect(
-          yield* registry.resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, "")),
-        ).toBeUndefined();
-      }
-    }),
-);
+        const renewed = yield* registry.resolve(token);
+        expect(renewed?.thread.providerSessionId).toBe(issued.config.providerSessionId);
+        expect(renewed?.capabilities.has("mailbox")).toBe(true);
+        yield* registry.touch(ThreadId.make("abandoned-provider-thread"));
+        expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
+      }),
+  );
+
+  it.effect(
+    "never renews a revoked credential even while its provider still owns the cached config",
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* makeRegistry(() => 1_000);
+        for (const revoke of ["thread", "session", "all"] as const) {
+          const threadId = ThreadId.make(`revoked-idle-${revoke}`);
+          const issued = yield* registry.issue({
+            threadId,
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            capabilities: new Set(),
+          });
+          yield* Effect.acquireRelease(
+            (yield* McpProviderSessions.McpProviderSessions).set(issued.config),
+            () =>
+              Effect.flatMap(McpProviderSessions.McpProviderSessions, (sessions) =>
+                sessions.clear(threadId),
+              ),
+          );
+          if (revoke === "thread") yield* registry.revokeThread(threadId);
+          else if (revoke === "session")
+            yield* registry.revokeProviderSession(issued.config.providerSessionId);
+          else yield* registry.revokeAll;
+
+          yield* registry.touch(threadId);
+          expect(
+            yield* registry.resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, "")),
+          ).toBeUndefined();
+        }
+      }),
+  );
+});
