@@ -545,6 +545,12 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+// Infer orchestration and environment handlers separately so the combined RPC
+// schema does not exceed the compiler's type-instantiation depth.
+const EnvironmentWsRpcGroup = ServerWsRpcGroup.omit(...Object.values(ORCHESTRATION_V2_WS_METHODS));
+const OrchestrationWsRpcGroup = ServerWsRpcGroup.omit(
+  ...Array.from(EnvironmentWsRpcGroup.requests.values(), (rpc) => rpc._tag),
+);
 // When a resuming client's cursor is more than this many events behind the
 // current head, skip the per-event catch-up replay and send a fresh shell
 // snapshot instead. Replaying each intervening event costs a shell refetch;
@@ -1193,7 +1199,7 @@ const layerWsRpc = (
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   providerMcpServers: ProviderMcpServers.ProviderMcpServers["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  Layer.unwrap(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1823,7 +1829,7 @@ const layerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const orchestrationHandlers = OrchestrationWsRpcGroup.toLayer({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -2057,6 +2063,8 @@ const layerWsRpc = (
               Effect.andThen(subscribeOrchestrationV2Thread(input)),
             ),
           ),
+      });
+      const environmentHandlers = EnvironmentWsRpcGroup.toLayer({
         [WS_METHODS.scheduledTasksList]: (_input) =>
           scheduledTasks.list().pipe(Effect.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
@@ -3164,7 +3172,7 @@ const layerWsRpc = (
             ),
           ),
       });
-      return handlers;
+      return Layer.merge(orchestrationHandlers, environmentHandlers);
     }),
   );
 

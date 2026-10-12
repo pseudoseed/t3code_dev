@@ -6,6 +6,7 @@ import SubagentModelSelection from "./ForkMigrations/001_SubagentModelSelection.
 import ThreadViewed from "./ForkMigrations/002_ThreadViewed.ts";
 import AgentMailbox from "./ForkMigrations/003_AgentMailbox.ts";
 import MailboxWake from "./ForkMigrations/004_MailboxWake.ts";
+import ClearAutomaticProjectModelDefaults from "./Migrations/044_ClearAutomaticProjectModelDefaults.ts";
 
 const legacyNames = [
   "ProjectionThreadSubagentModelSelection",
@@ -31,6 +32,17 @@ export const reconcileForkMigrationHistory = Effect.fn("reconcileForkMigrationHi
           SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
         `;
         if (tables.length === 0) return;
+        const earlyFork = yield* sql`
+          SELECT migration_id FROM effect_sql_migrations
+          WHERE migration_id = 44 AND name = 'ProjectionThreadSubagentModelSelection'
+        `;
+        if (earlyFork.length > 0) {
+          // The first fork release used 44 before moving its column to 48.
+          // Moving the later ledger alone leaves upstream's data repair skipped.
+          yield* ClearAutomaticProjectModelDefaults;
+          yield* sql`UPDATE effect_sql_migrations
+            SET name = 'ClearAutomaticProjectModelDefaults' WHERE migration_id = 44`;
+        }
         const history = yield* sql<{
           readonly migration_id: number;
           readonly name: string;

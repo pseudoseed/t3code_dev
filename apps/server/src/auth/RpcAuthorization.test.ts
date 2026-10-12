@@ -80,9 +80,9 @@ describe("RPC authorization scopes", () => {
     );
   });
 
-  it("requires operate permission to clear a subscription's proxy cooldown", () => {
+  it("requires provider management permission to clear a subscription's proxy cooldown", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.usageLimitSourceClearCooldown)).toBe(
-      AuthOrchestrationOperateScope,
+      AuthProvidersManageScope,
     );
   });
 

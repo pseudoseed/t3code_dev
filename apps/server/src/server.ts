@@ -193,10 +193,6 @@ import * as RelayClient from "@t3tools/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
 import * as ServerActivation from "./serverActivation.ts";
 
-// Resolve the WebSocket requirements before inferring the larger server graph.
-// A later reference makes tsc-rs widen this layer's requirements to any.
-const layerWebSocketRoutes = Ws.layer;
-
 // MCP handoff thread IDs include escaped provenance and can exceed find-my-way's
 // 100-character default for one path segment.
 const HTTP_ROUTER_CONFIG = {
@@ -745,7 +741,7 @@ const layerMakeRoutes = Layer.mergeAll(
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
     ServerHttp.layerStaticAndDevRoute,
-    layerWebSocketRoutes,
+    Ws.layer,
   ),
   // The MCP session registry is provided globally (shared with V2 provider
   // sessions) rather than inline here. The orchestrator toolkit resolves
