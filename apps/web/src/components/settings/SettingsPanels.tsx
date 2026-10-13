@@ -591,7 +591,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.sidebarAutoSettleOnMerge !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge
         ? ["Auto-settle merged threads"]
         : []),
-      ...(settings.sidebarHiddenProjectKeys.length > 0 ? ["Sidebar project filter"] : []),
       ...(settings.autoResumeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads
         ? ["Auto-resume limited threads"]
         : []),
@@ -729,7 +728,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.continueThreadsAfterServerUpdate,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
-      settings.sidebarHiddenProjectKeys,
       settings.autoResumeLimitedThreads,
       settings.snoozeLimitedThreads,
       settings.sidebarProjectGroupingMode,
@@ -840,7 +838,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
-      sidebarHiddenProjectKeys: DEFAULT_UNIFIED_SETTINGS.sidebarHiddenProjectKeys,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -2175,19 +2172,6 @@ function LegacyFeaturesSection() {
                     updateSettings({ contextWindowMeterEnabled: Boolean(checked) })
                   }
                   aria-label="Context window indicator (legacy)"
-                />
-              }
-            />
-            <SettingsRow
-              {...searchableSetting("sidebar-project-sections")}
-              description="Gives every project its own container in the sidebar, with a larger name in the project's own color. Threads keep their active, snoozed, and settled order inside each project."
-              control={
-                <Switch
-                  checked={settings.sidebarProjectSectionsEnabled}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ sidebarProjectSectionsEnabled: Boolean(checked) })
-                  }
-                  aria-label="Group sidebar by project"
                 />
               }
             />

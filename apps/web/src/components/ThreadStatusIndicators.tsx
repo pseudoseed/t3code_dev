@@ -908,7 +908,7 @@ export function ThreadStatusLabel({
           <span
             role="img"
             aria-label={status.label}
-            className={`inline-flex items-center gap-1 rounded bg-sidebar-row-hover px-1.5 py-0.5 text-xs font-semibold ring-1 ring-current/25 ring-inset ${status.colorClass}`}
+            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
           />
         }
       >

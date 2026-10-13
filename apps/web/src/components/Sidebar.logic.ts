@@ -160,9 +160,7 @@ export type SidebarListMarker =
   | "pinned-divider"
   | "working-header"
   | "snoozed-header"
-  | "settled-header"
-  /** Everything below the pins is rendered by the project sections instead. */
-  | "project-sections";
+  | "settled-header";
 
 export function sidebarMarkerId(marker: SidebarListMarker): string {
   return `${SIDEBAR_MARKER_PREFIX}${marker}`;
@@ -1113,13 +1111,6 @@ export function searchSidebarThreads<
 }
 
 /**
- * Value of the bulk row at the top of the project filter menu. It is a control
- * rather than a project, so it is excluded from search results and from every
- * count.
- */
-export const ALL_PROJECTS_SCOPE_VALUE = "all";
-
-/**
  * Whether a PR's search terms contain every whitespace-separated token of the
  * query. Search results use this to pick the PR number to show, so it has to
  * accept the multi-token queries the command palette matches on.
@@ -1140,125 +1131,8 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   matches: (item: TItem, query: string) => boolean;
 }): readonly TItem[] {
   const query = input.query.trim();
-  // Searching targets projects. Keeping the bulk row out of the results stops
-  // it outranking a typed match under autoHighlight.
-  if (query.length > 0) {
-    return input.items.filter(
-      (item) => item.value !== ALL_PROJECTS_SCOPE_VALUE && input.matches(item, query),
-    );
-  }
-  return input.items;
-}
-
-/**
- * The project keys the sidebar shows. `hiddenKeys` may name projects this
- * client no longer knows about (deleted, or on an environment that is
- * currently offline); those are ignored here and deliberately left in storage
- * so reconnecting does not un-hide them.
- */
-export function resolveVisibleSidebarProjectKeys(input: {
-  projectKeys: readonly string[];
-  hiddenKeys: readonly string[];
-}): readonly string[] {
-  if (input.hiddenKeys.length === 0) return input.projectKeys;
-  const hidden = new Set(input.hiddenKeys);
-  return input.projectKeys.filter((key) => !hidden.has(key));
-}
-
-/**
- * The hidden set to persist for a given selection. The menu always reports the
- * complete selection over the projects this client knows about, so one
- * function covers checking a box, unchecking one, and both bulk rows.
- *
- * Hidden keys naming projects this client cannot see are carried through
- * untouched: they belong to an offline environment, and dropping them would
- * un-hide those projects the moment it reconnects.
- */
-export function resolveSidebarHiddenProjectKeys(input: {
-  hiddenKeys: readonly string[];
-  projectKeys: readonly string[];
-  visibleKeys: readonly string[];
-}): readonly string[] {
-  const known = new Set(input.projectKeys);
-  const visible = new Set(input.visibleKeys);
-  return [
-    ...input.hiddenKeys.filter((key) => !known.has(key)),
-    ...input.projectKeys.filter((key) => !visible.has(key)),
-  ];
-}
-
-/**
- * Trigger label for the filter menu. Naming the project when exactly one is
- * shown keeps the common "focus on this one" case readable; the count form
- * makes an active filter visible so a hidden project never reads as a missing
- * one.
- */
-export function sidebarProjectFilterLabel(input: {
-  totalCount: number;
-  visibleCount: number;
-  soleVisibleLabel: string | null;
-}): string {
-  if (input.totalCount > 0 && input.visibleCount === input.totalCount) return "All projects";
-  if (input.visibleCount === 0) return "No projects";
-  if (input.visibleCount === 1 && input.soleVisibleLabel !== null) return input.soleVisibleLabel;
-  return `${input.visibleCount} of ${input.totalCount} projects`;
-}
-
-/**
- * One project's slice of the sidebar list. Sections are the outer structure in
- * project-sections mode; the status buckets (active / snoozed / settled) keep
- * their ordering inside each one.
- */
-export interface SidebarProjectSection<TThread> {
-  readonly projectKey: string;
-  readonly active: readonly TThread[];
-  readonly snoozed: readonly TThread[];
-  readonly settled: readonly TThread[];
-}
-
-/**
- * Splits the status buckets into per-project sections.
- *
- * Section order follows `projectOrder` (already sorted by the sidebar's
- * project sort setting) so the section list matches the project filter menu.
- * A thread whose project is not in that order — its environment dropped while
- * the shell is still on screen — still gets a section, appended in the order
- * the threads themselves arrive, rather than disappearing. Sections with no
- * threads at all are dropped.
- */
-export function buildSidebarProjectSections<TThread>(input: {
-  active: readonly TThread[];
-  snoozed: readonly TThread[];
-  settled: readonly TThread[];
-  projectKeyOf: (thread: TThread) => string;
-  projectOrder: readonly string[];
-}): SidebarProjectSection<TThread>[] {
-  const buckets = new Map<string, { active: TThread[]; snoozed: TThread[]; settled: TThread[] }>();
-  const bucketFor = (projectKey: string) => {
-    const existing = buckets.get(projectKey);
-    if (existing) return existing;
-    const created = { active: [], snoozed: [], settled: [] };
-    buckets.set(projectKey, created);
-    return created;
-  };
-
-  for (const thread of input.active) bucketFor(input.projectKeyOf(thread)).active.push(thread);
-  for (const thread of input.snoozed) bucketFor(input.projectKeyOf(thread)).snoozed.push(thread);
-  for (const thread of input.settled) bucketFor(input.projectKeyOf(thread)).settled.push(thread);
-
-  const ordered = [
-    ...input.projectOrder.filter((key) => buckets.has(key)),
-    ...[...buckets.keys()].filter((key) => !input.projectOrder.includes(key)),
-  ];
-  return ordered.map((projectKey) => {
-    const bucket = buckets.get(projectKey)!;
-    return {
-      projectKey,
-      active: bucket.active,
-      snoozed: bucket.snoozed,
-      settled: bucket.settled,
-    };
-  });
+  if (query.length === 0) return input.items;
+  return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
 }
 
 export interface SidebarProjectScopeMenuState {
@@ -1310,8 +1184,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.hasPendingApprovals) {
     return {
       label: "Pending Approval",
-      colorClass: "text-amber-600 dark:text-amber-200",
-      dotClass: "bg-amber-500 dark:bg-amber-300",
+      colorClass: "text-amber-600 dark:text-amber-300/90",
+      dotClass: "bg-amber-500 dark:bg-amber-300/90",
       pulse: false,
     };
   }
@@ -1319,8 +1193,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.hasPendingUserInput) {
     return {
       label: "Awaiting Input",
-      colorClass: "text-indigo-600 dark:text-indigo-200",
-      dotClass: "bg-indigo-500 dark:bg-indigo-300",
+      colorClass: "text-indigo-600 dark:text-indigo-300/90",
+      dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
       pulse: false,
     };
   }
@@ -1328,8 +1202,8 @@ export function resolveThreadStatusPill(input: {
   if (thread.runtime?.status === "running" || thread.runtime?.status === "waiting") {
     return {
       label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300",
-      dotClass: "bg-sky-500 dark:bg-sky-300",
+      colorClass: "text-sky-600 dark:text-sky-300/80",
+      dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
     };
   }
@@ -1341,8 +1215,8 @@ export function resolveThreadStatusPill(input: {
   ) {
     return {
       label: "Connecting",
-      colorClass: "text-sky-600 dark:text-sky-300",
-      dotClass: "bg-sky-500 dark:bg-sky-300",
+      colorClass: "text-sky-600 dark:text-sky-300/80",
+      dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
     };
   }

@@ -8,10 +8,7 @@ import {
   snoozeWakeLabel,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
-import type {
-  EnvironmentProject,
-  EnvironmentThreadShell,
-} from "@t3tools/client-runtime/state/shell";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { resolveThreadProviderStack } from "@t3tools/client-runtime/state/models";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
@@ -347,8 +344,7 @@ export interface ThreadListV2PendingListItem {
 
 export interface ThreadListV2WorkingShelfListItem {
   readonly type: "v2-working-shelf";
-  readonly key: string;
-  readonly projectKey?: string | null;
+  readonly key: "v2-working-shelf";
   readonly count: number;
   readonly expanded: boolean;
   /** See the snoozed shelf header's field. */
@@ -357,11 +353,9 @@ export interface ThreadListV2WorkingShelfListItem {
 
 export interface ThreadListV2SnoozedShelfListItem {
   readonly type: "v2-snoozed-shelf";
-  readonly key: string;
+  readonly key: "v2-snoozed-shelf";
   readonly count: number;
   readonly expanded: boolean;
-  /** Set in project-sections mode: the shelf belongs to one project. */
-  readonly projectKey?: string | null;
   /** Shelf preferences still loading: the toggle is disabled until they
       arrive. Carried on the item because a recycled cell ignores the render
       closure — without it the header would stay visibly disabled (or enabled
@@ -371,65 +365,19 @@ export interface ThreadListV2SnoozedShelfListItem {
 
 export interface ThreadListV2SettledShelfListItem {
   readonly type: "v2-settled-shelf";
-  readonly key: string;
+  readonly key: "v2-settled-shelf";
   readonly count: number;
   readonly expanded: boolean;
-  readonly projectKey?: string | null;
   /** See the snoozed shelf header's field. */
   readonly disabled: boolean;
 }
 
-/** Project-sections mode only: the container header a project's rows sit under. */
-export interface ThreadListV2ProjectHeaderListItem {
-  readonly type: "v2-project-header";
-  readonly key: string;
-  readonly projectKey: string;
-  readonly projectTitle: string;
-  /** Threads plus queued tasks in the project, whatever the collapse state. */
-  readonly threadCount: number;
-  readonly collapsed: boolean;
-  /** Carried on the item so a recycled header cell picks up a project shell
-      that loads (or changes) after the first render. */
-  readonly project: EnvironmentProject | null;
-  readonly newThreadTarget: EnvironmentProject | null;
-}
-
-/** Project-sections mode only: pages one project's settled tail. */
-export interface ThreadListV2SectionShowMoreListItem {
-  readonly type: "v2-section-show-more";
-  readonly key: string;
-  readonly projectKey: string;
-  readonly hiddenCount: number;
-}
-
-/**
- * Where an item sits inside a project section.
- *
- * The list is flat, so one card around a header and the threads under it is
- * drawn by the rows themselves: the header rounds its top, the members draw
- * the sides, and the last one rounds the bottom.
- */
-export type ThreadListV2SectionPlacement = {
-  /**
-   * The section this item belongs to.
-   *
-   * Carried here rather than read off the item, because thread and pending rows
-   * have no project key of their own; only the shelves and the header do.
-   */
-  readonly projectSectionKey?: string;
-  readonly endsProjectSection?: boolean;
-};
-
-export type ThreadListV2ListItem = (
+export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
   | ThreadListV2SnoozedShelfListItem
-  | ThreadListV2SettledShelfListItem
-  | ThreadListV2ProjectHeaderListItem
-  | ThreadListV2SectionShowMoreListItem
-) &
-  ThreadListV2SectionPlacement;
+  | ThreadListV2SettledShelfListItem;
 
 /** Narrows a wider list-item union (e.g. the sidebar's legacy + v2 mix) to
     the v2 item kinds the shared equality understands. */
@@ -441,9 +389,7 @@ export function isThreadListV2ListItem(value: {
     value.type === "v2-pending" ||
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
-    value.type === "v2-settled-shelf" ||
-    value.type === "v2-project-header" ||
-    value.type === "v2-section-show-more"
+    value.type === "v2-settled-shelf"
   );
 }
 
@@ -458,14 +404,6 @@ export function threadListV2ListItemsAreEqual(
   previous: ThreadListV2ListItem,
   item: ThreadListV2ListItem,
 ): boolean {
-  // Project-section rows draw their own card edges, so a placement change
-  // (moving into a section or becoming its last row) must re-render the cell.
-  if (
-    previous.projectSectionKey !== item.projectSectionKey ||
-    previous.endsProjectSection !== item.endsProjectSection
-  ) {
-    return false;
-  }
   switch (item.type) {
     case "v2-thread":
       return (
@@ -501,7 +439,6 @@ export function threadListV2ListItemsAreEqual(
     case "v2-snoozed-shelf":
       return (
         previous.type === "v2-snoozed-shelf" &&
-        previous.key === item.key &&
         previous.count === item.count &&
         previous.expanded === item.expanded &&
         previous.disabled === item.disabled
@@ -509,26 +446,9 @@ export function threadListV2ListItemsAreEqual(
     case "v2-settled-shelf":
       return (
         previous.type === "v2-settled-shelf" &&
-        previous.key === item.key &&
         previous.count === item.count &&
         previous.expanded === item.expanded &&
         previous.disabled === item.disabled
-      );
-    case "v2-project-header":
-      return (
-        previous.type === "v2-project-header" &&
-        previous.key === item.key &&
-        previous.projectTitle === item.projectTitle &&
-        previous.threadCount === item.threadCount &&
-        previous.collapsed === item.collapsed &&
-        previous.project === item.project &&
-        previous.newThreadTarget === item.newThreadTarget
-      );
-    case "v2-section-show-more":
-      return (
-        previous.type === "v2-section-show-more" &&
-        previous.key === item.key &&
-        previous.hiddenCount === item.hiddenCount
       );
   }
 }
@@ -590,12 +510,7 @@ export function buildThreadListV2ListItems(input: {
   /** True while the shelf expansion preferences are still loading; stamped
       onto both shelf headers so the disabled state reaches recycled cells. */
   readonly shelfPreferencesLoading?: boolean;
-  /** Set in project-sections mode so each project's shelf headers and rows
-      get their own list keys instead of colliding on the flat singletons. */
-  readonly projectKey?: string;
 }): ThreadListV2ListItem[] {
-  const projectKey = input.projectKey ?? null;
-  const scopedKey = (base: string) => (projectKey === null ? base : `${base}:${projectKey}`);
   // An empty set is treated as absent so `?.` skips building the key.
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
   const threadItems = input.items.map((item): ThreadListV2ListItem => {
@@ -621,7 +536,7 @@ export function buildThreadListV2ListItems(input: {
         : undefined;
     return {
       type: "v2-thread",
-      key: scopedKey(`v2-thread:${item.thread.environmentId}:${item.thread.id}`),
+      key: `v2-thread:${item.thread.environmentId}:${item.thread.id}`,
       item,
       snoozeWakeLabelText,
       timeLabel: resolveThreadListV2ItemTimeLabel(item, snoozeWakeLabelText !== undefined),
@@ -654,8 +569,7 @@ export function buildThreadListV2ListItems(input: {
   if (workingShelfHeaderIndex !== null && workingCount > 0) {
     result.push({
       type: "v2-working-shelf",
-      key: scopedKey("v2-working-shelf"),
-      projectKey,
+      key: "v2-working-shelf",
       count: workingCount,
       expanded: input.workingShelfExpanded === true,
       disabled: shelfDisabled,
@@ -665,10 +579,9 @@ export function buildThreadListV2ListItems(input: {
   if (snoozedShelfHeaderIndex !== null && snoozedCount > 0) {
     result.push({
       type: "v2-snoozed-shelf",
-      key: scopedKey("v2-snoozed-shelf"),
+      key: "v2-snoozed-shelf",
       count: snoozedCount,
       expanded: input.snoozedShelfExpanded === true,
-      projectKey,
       disabled: shelfDisabled,
     });
     result.push(...threadItems.slice(snoozedShelfHeaderIndex, snoozedEnd));
@@ -676,10 +589,9 @@ export function buildThreadListV2ListItems(input: {
   if (settledShelfHeaderIndex !== null && settledCount > 0) {
     result.push({
       type: "v2-settled-shelf",
-      key: scopedKey("v2-settled-shelf"),
+      key: "v2-settled-shelf",
       count: settledCount,
       expanded: input.settledShelfExpanded !== false,
-      projectKey,
       disabled: shelfDisabled,
     });
     result.push(...threadItems.slice(settledShelfHeaderIndex));
@@ -695,102 +607,6 @@ export function buildThreadListV2ListItems(input: {
       ? entry
       : { ...entry, showTrailingDivider };
   });
-}
-
-/** One project's already-partitioned slice, ready to flatten into list items. */
-export interface ThreadListV2ProjectSection {
-  readonly projectKey: string;
-  readonly projectTitle: string;
-  readonly layout: ThreadListV2Layout;
-  readonly pendingTasks: ReadonlyArray<PendingNewTask>;
-  readonly collapsed: boolean;
-  readonly workingShelfExpanded?: boolean;
-  readonly snoozedShelfExpanded: boolean;
-  readonly settledShelfExpanded: boolean;
-  /** Representative project for the header's icon. */
-  readonly project?: EnvironmentProject | null;
-  /** Where the header's quick "new thread" lands; null hides the action. */
-  readonly newThreadTarget?: EnvironmentProject | null;
-}
-
-/**
- * Flattens per-project layouts into the sectioned list: project outer, status
- * inner. Each project contributes a header, then its own active / snoozed /
- * settled run with project-scoped shelf keys, then its own settled pager.
- *
- * A collapsed project contributes only its header, so folding a project costs
- * one row no matter how much work is in it. Projects with nothing to show are
- * dropped rather than rendered as empty containers.
- */
-export function buildThreadListV2ProjectSectionItems(input: {
-  readonly sections: ReadonlyArray<ThreadListV2ProjectSection>;
-  readonly snoozeLabelNow?: string;
-  readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
-  readonly queuedThreadKeys?: ReadonlySet<string>;
-  readonly moveAvailability?: ReadonlyMap<string, ThreadMoveAvailability>;
-  readonly shelfPreferencesLoading?: boolean;
-}): ThreadListV2ListItem[] {
-  const items: ThreadListV2ListItem[] = [];
-  for (const section of input.sections) {
-    const threadCount =
-      (section.layout.workingShelfHeaderIndex ??
-        section.layout.items.filter((item) => item.variant === "card").length) +
-      section.layout.workingCount +
-      section.layout.snoozedCount +
-      section.layout.settledCount +
-      section.pendingTasks.length;
-    if (threadCount === 0) continue;
-    const sectionStart = items.length;
-    items.push({
-      type: "v2-project-header",
-      key: `v2-project-header:${section.projectKey}`,
-      projectKey: section.projectKey,
-      projectTitle: section.projectTitle,
-      threadCount,
-      collapsed: section.collapsed,
-      project: section.project ?? null,
-      newThreadTarget: section.newThreadTarget ?? null,
-    });
-    if (section.collapsed) continue;
-    items.push(
-      ...buildThreadListV2ListItems({
-        items: section.layout.items,
-        pendingTasks: section.pendingTasks,
-        workingCount: section.layout.workingCount,
-        workingShelfExpanded: section.workingShelfExpanded,
-        workingShelfHeaderIndex: section.layout.workingShelfHeaderIndex,
-        snoozedCount: section.layout.snoozedCount,
-        snoozedShelfExpanded: section.snoozedShelfExpanded,
-        snoozedShelfHeaderIndex: section.layout.snoozedShelfHeaderIndex,
-        settledCount: section.layout.settledCount,
-        settledShelfExpanded: section.settledShelfExpanded,
-        settledShelfHeaderIndex: section.layout.settledShelfHeaderIndex,
-        snoozeLabelNow: input.snoozeLabelNow,
-        snoozeEnvironmentIds: input.snoozeEnvironmentIds,
-        queuedThreadKeys: input.queuedThreadKeys,
-        moveAvailability: input.moveAvailability,
-        shelfPreferencesLoading: input.shelfPreferencesLoading,
-        projectKey: section.projectKey,
-      }),
-    );
-    if (section.settledShelfExpanded && section.layout.hiddenSettledCount > 0) {
-      items.push({
-        type: "v2-section-show-more",
-        key: `v2-section-show-more:${section.projectKey}`,
-        projectKey: section.projectKey,
-        hiddenCount: section.layout.hiddenSettledCount,
-      });
-    }
-
-    for (let index = sectionStart; index < items.length; index += 1) {
-      items[index] = {
-        ...items[index]!,
-        projectSectionKey: section.projectKey,
-        endsProjectSection: index === items.length - 1,
-      };
-    }
-  }
-  return items;
 }
 
 // Streams update a few unsettled rows, so most rebuilds classify the same

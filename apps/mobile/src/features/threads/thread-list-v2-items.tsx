@@ -1,4 +1,3 @@
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
   THREAD_LIST_V2_MONO_FONT as MONO_FONT,
@@ -18,19 +17,10 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
-import { projectAccent } from "@t3tools/client-runtime/state/project-accent";
 import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Alert, Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
@@ -237,112 +227,6 @@ export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivid
   return <ThreadListV2Section {...props} />;
 });
 
-/**
- * Project-sections header: the project's identity at the top of its own
- * container. Larger than a thread title and tinted with the project's derived
- * accent (see projectAccent) so the project you are in is findable at a
- * glance in a long sidebar.
- */
-export const ThreadListV2ProjectHeader = memo(function ThreadListV2ProjectHeader(props: {
-  readonly projectKey: string;
-  readonly title: string;
-  readonly threadCount: number;
-  readonly collapsed: boolean;
-  readonly project: EnvironmentProject | null;
-  readonly onToggle: (projectKey: string) => void;
-  /** Null hides the button: aggregated groups have no single target project. */
-  readonly newThreadTarget: EnvironmentProject | null;
-  readonly onNewThread?: (project: EnvironmentProject) => void;
-  /** False when the section is collapsed and the header is the whole card. */
-  readonly opensSection?: boolean;
-}) {
-  const { themeAppearance: colorScheme } = useAppearancePreferences();
-  const accent = useMemo(() => projectAccent(props.projectKey), [props.projectKey]);
-  const colors = colorScheme === "dark" ? accent.dark : accent.light;
-  const { onToggle, onNewThread, projectKey, newThreadTarget } = props;
-  const handleToggle = useCallback(() => onToggle(projectKey), [onToggle, projectKey]);
-  const handleNewThread = useCallback(() => {
-    if (newThreadTarget) onNewThread?.(newThreadTarget);
-  }, [newThreadTarget, onNewThread]);
-
-  return (
-    <View
-      className={
-        props.opensSection
-          ? "mx-2 mt-3 flex-row items-center gap-1 rounded-t-xl px-2 py-2"
-          : "mx-2 mb-1 mt-3 flex-row items-center gap-1 rounded-xl px-2 py-2"
-      }
-      style={{
-        backgroundColor: colors.tint,
-        borderColor: colors.line,
-        borderWidth: 1,
-        // The rows below continue the same card, so the header must not close
-        // it with an edge of its own.
-        ...(props.opensSection ? { borderBottomWidth: 0 } : {}),
-      }}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: !props.collapsed }}
-        accessibilityLabel={`${props.title}, ${props.threadCount} threads`}
-        accessibilityHint={props.collapsed ? "Expands the project" : "Collapses the project"}
-        className="min-w-0 flex-1 flex-row items-center gap-2.5"
-        hitSlop={{ top: 8, bottom: 8, left: 12 }}
-        onPress={handleToggle}
-        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-      >
-        {props.project ? (
-          <ProjectFavicon
-            environmentId={props.project.environmentId}
-            faviconPath={props.project.faviconPath}
-            open={!props.collapsed}
-            size={20}
-            projectTitle={props.title}
-            workspaceRoot={props.project.workspaceRoot}
-          />
-        ) : (
-          <SymbolView name="folder" size={17} tintColor={colors.text} type="monochrome" />
-        )}
-        <Text
-          className="min-w-0 flex-shrink text-[17px] font-t3-bold tracking-[0.2px]"
-          numberOfLines={1}
-          style={{ color: colors.text }}
-        >
-          {props.title}
-        </Text>
-        <Text className="text-xs font-t3-medium" style={{ color: colors.text, opacity: 0.6 }}>
-          {props.threadCount}
-        </Text>
-        <View className="flex-1" />
-        <SymbolView
-          name="chevron.down"
-          size={11}
-          tintColor={colors.text}
-          type="monochrome"
-          style={{ transform: [{ rotate: props.collapsed ? "-90deg" : "0deg" }] }}
-        />
-      </Pressable>
-      {onNewThread !== undefined && newThreadTarget !== null ? (
-        <Pressable
-          accessibilityLabel={`Create new thread in ${props.title}`}
-          accessibilityRole="button"
-          hitSlop={{ top: 8, bottom: 8, left: 10, right: 12 }}
-          onPress={handleNewThread}
-          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 10 })}
-        >
-          <SymbolView
-            name="plus"
-            size={17}
-            tintColor={colors.text}
-            type="monochrome"
-            weight="medium"
-          />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-});
-
 type ThreadListV2ShelfHeaderProps = {
   readonly count: number;
   readonly disabled?: boolean;
@@ -440,9 +324,6 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   /** Drawn beside the label; ignored while the label is null. */
   readonly environmentMachine?: EnvironmentMachineKind;
   readonly pane?: "screen" | "sidebar";
-  /** False inside a project section: its header already names the project. */
-  readonly showsProjectTitle?: boolean;
-  /** Draws the "Pending" divider above the first queued row. */
   /** Draws the "Unsent" divider above the first draft or queued row. */
   readonly showPendingDivider: boolean;
   /** Keeps row hairlines inside a section; section headers draw their own rule. */
@@ -452,10 +333,9 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 }) {
   const { pendingTask, onSelectPendingTask, onDeletePendingTask } = props;
   const sidebarPane = props.pane === "sidebar";
-  const projectTitle = props.projectTitle ?? props.project?.title ?? pendingTask.projectTitle ?? "";
-  const showsProjectTitle = props.showsProjectTitle !== false;
-  const branch = pendingTask.branch;
   const isDraft = pendingTask.kind === "draft";
+  const projectTitle = props.projectTitle ?? props.project?.title ?? pendingTask.projectTitle ?? "";
+  const branch = pendingTask.branch;
 
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
@@ -467,7 +347,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const rowContent = (
     <>
       <View className="flex-row items-center gap-1.5">
-        {props.project && showsProjectTitle ? (
+        {props.project ? (
           <ProjectFavicon
             environmentId={pendingTask.environmentId}
             faviconPath={props.project.faviconPath}
@@ -484,7 +364,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
           )}
           numberOfLines={1}
         >
-          {showsProjectTitle ? projectTitle : ""}
+          {projectTitle}
         </Text>
         {isDraft ? (
           <View className="flex-row items-center gap-1">
@@ -637,9 +517,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly snoozePresetMinute: string;
   readonly project: EnvironmentProject | null;
   readonly projectTitle?: string;
-  /** False under a project header, which already names the project. Repeating
-      it on every row is the same word twice in as many lines. */
-  readonly showsProjectTitle?: boolean;
   /** Keep the environment's provider array stable across unrelated list updates. */
   readonly providers: ReadonlyArray<ThreadListProvider> | undefined;
   readonly providerInstance: ThreadRowProviderInstance | null;
@@ -1092,11 +969,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       : `Opens the thread. Swipe left for ${primaryAction.label.toLowerCase()} and snooze actions.`;
 
   // Sidebar rows use navigation foregrounds on their active and idle surfaces.
-  const showsProjectTitle = props.showsProjectTitle !== false;
   const cardContent = (
     <>
       <View className="flex-row items-center gap-1.5">
-        {props.project && showsProjectTitle ? (
+        {props.project ? (
           <ProjectFavicon
             environmentId={thread.environmentId}
             faviconPath={props.project.faviconPath}
@@ -1115,7 +991,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           )}
           numberOfLines={1}
         >
-          {showsProjectTitle ? (props.projectTitle ?? props.project?.title ?? "") : ""}
+          {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
         {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
         {pinnedRow ? (
@@ -1505,37 +1381,3 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </View>
   );
 });
-
-/**
- * Continues a project section's card around the rows beneath its header.
- *
- * The list is flat, so the card is drawn in pieces: this supplies the left and
- * right edges every member needs, closes the bottom on the last one, and insets
- * the content so a nested thread reads as nested.
- */
-export function ThreadListV2SectionMember(props: {
-  readonly projectKey: string;
-  readonly last: boolean;
-  readonly children: ReactNode;
-}) {
-  const { themeAppearance: colorScheme } = useAppearancePreferences();
-  const accent = useMemo(() => projectAccent(props.projectKey), [props.projectKey]);
-  const colors = colorScheme === "dark" ? accent.dark : accent.light;
-
-  return (
-    <View
-      className={props.last ? "mx-2 mb-1 rounded-b-xl pb-1 pl-4 pr-1.5" : "mx-2 pl-4 pr-1.5"}
-      style={{
-        // The same fill as the header, so the header and its threads read as
-        // one surface rather than a header with a box drawn under it.
-        backgroundColor: colors.tint,
-        borderColor: colors.line,
-        borderLeftWidth: 1,
-        borderRightWidth: 1,
-        borderBottomWidth: props.last ? 1 : 0,
-      }}
-    >
-      {props.children}
-    </View>
-  );
-}

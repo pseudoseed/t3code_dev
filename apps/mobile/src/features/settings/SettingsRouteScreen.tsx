@@ -1,11 +1,7 @@
 import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
 import { useAuth, useUser } from "@clerk/expo";
 import { useNavigation } from "@react-navigation/native";
-import { useAtomSet } from "@effect/atom-react";
-import { updateMobilePreferencesAtom } from "../../state/preferences";
-import { useThreadListV2ProjectSections } from "../threads/use-thread-list-v2-project-sections";
 import { resolveVoicePlatformPresentation } from "./SettingsRouteScreen.logic";
-import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { Platform, View } from "react-native";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -173,7 +169,6 @@ function SettingsIndexSections() {
       </SettingsSection>
 
       <SettingsSection title="Projects & threads">
-        <SidebarProjectSectionsSwitch />
         {selectedProjectKey !== null ? (
           <SettingsRow
             icon="folder"
@@ -244,18 +239,5 @@ function VoiceSettingsSection() {
         target={platform.supported ? "SettingsVoice" : undefined}
       />
     </SettingsSection>
-  );
-}
-
-function SidebarProjectSectionsSwitch() {
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
-  const { enabled } = useThreadListV2ProjectSections();
-  return (
-    <SettingsSwitchRow
-      icon="rectangle.grid.1x2"
-      label="Group Threads by Project"
-      value={enabled}
-      onValueChange={(value) => savePreferences({ sidebarProjectSectionsEnabled: value })}
-    />
   );
 }

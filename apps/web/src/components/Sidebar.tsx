@@ -1,8 +1,10 @@
-import { ChevronDownIcon } from "lucide-react";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
-import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
+import {
+  setThreadChangeRequestSnapshot,
+  ThreadTerminalStatusButton,
+} from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -71,8 +73,9 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   ClockIcon,
-  FolderIcon,
+  EyeIcon,
   CircleDotIcon,
+  FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
   MessageCircleQuestionIcon,
@@ -95,7 +98,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -120,7 +122,6 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useShortcutModifierState } from "../shortcutModifierState";
-import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -132,6 +133,7 @@ import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalPro
 import {
   buildSidebarProjectSnapshots,
   projectGroupsSpanEnvironments,
+  resolveSidebarProjectScopeKey,
   getSidebarProjectSettingsKey,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
@@ -142,12 +144,12 @@ import {
 } from "../threadSelectionStore";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
+import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { projectAccent } from "@t3tools/client-runtime/state/project-accent";
 import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
@@ -155,8 +157,14 @@ import {
   useEnvironmentMachines,
   usePrimaryEnvironmentId,
 } from "../state/environments";
-import { readThreadShell, useProjects, useThreadShells } from "../state/entities";
+import {
+  readThreadShell,
+  useAllEnvironmentProjectSnapshotsReady,
+  useProjects,
+  useThreadShells,
+} from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
+import { environmentProjects } from "../state/projects";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -186,9 +194,7 @@ import {
   filterSidebarV2VisibleThreads,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
-  buildSidebarProjectSections,
   deleteSelectedThreadEntries,
-  ALL_PROJECTS_SCOPE_VALUE,
   filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
@@ -203,9 +209,6 @@ import {
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
-  resolveSidebarHiddenProjectKeys,
-  resolveVisibleSidebarProjectKeys,
-  sidebarProjectFilterLabel,
   resolveSidebarThreadSection,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
@@ -244,10 +247,9 @@ import {
   ThreadPullRequestsMiniList,
   ThreadWorktreeIndicator,
   nextThreadChangeRequestSnapshot,
-  prStatusIndicator,
-  setThreadChangeRequestSnapshot,
   resolveDisplayedThreadPr,
   resolveDisplayedThreadPrProvider,
+  prStatusIndicator,
   resolveThreadPullRequestBadge,
   terminalStatusFromRunningIds,
   threadChangeRequestSnapshotsAtom,
@@ -271,7 +273,6 @@ import {
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button, InlineButton } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
 import {
   Combobox,
   ComboboxEmpty,
@@ -309,50 +310,6 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 // Fresh keys deliberately reset both shelves to collapsed for existing users.
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
-// Per-project section state, keyed by logical project key. One record rather
-// than a key per project so a fifty-project sidebar does not write fifty
-// localStorage entries.
-const PROJECT_SECTION_STATE_KEY = "t3code:sidebar:project-sections";
-// Settled rows shown inside a project section before its own Show more. Lower
-// than the flat list's tail: a section is one project's history, and several
-// sections share the scroll.
-const PROJECT_SECTION_SETTLED_INITIAL_COUNT = 5;
-
-const ProjectSectionStateSchema = Schema.Record(
-  Schema.String,
-  Schema.Struct({
-    collapsed: Schema.Boolean,
-    snoozed: Schema.Boolean,
-    settled: Schema.Boolean,
-  }),
-);
-type ProjectSectionState = (typeof ProjectSectionStateSchema.Type)[string];
-const DEFAULT_PROJECT_SECTION_STATE: ProjectSectionState = {
-  collapsed: false,
-  // A project section is already a small container, so its shelves start
-  // folded: the section header's count is the whole footprint until asked.
-  snoozed: false,
-  settled: false,
-};
-const EMPTY_PROJECT_SECTION_STATE: typeof ProjectSectionStateSchema.Type = {};
-
-/** One project section as rendered: buckets already trimmed by the section's
-    own collapse, shelf, and paging state. */
-interface RenderedProjectSection {
-  readonly projectKey: string;
-  readonly project: SidebarProjectSnapshot | null;
-  readonly collapsed: boolean;
-  readonly threadCount: number;
-  readonly activeThreads: readonly EnvironmentThreadShell[];
-  readonly snoozedTotal: number;
-  readonly snoozedExpanded: boolean;
-  readonly visibleSnoozed: readonly EnvironmentThreadShell[];
-  readonly settledTotal: number;
-  readonly settledExpanded: boolean;
-  readonly visibleSettled: readonly EnvironmentThreadShell[];
-  readonly hiddenSettledCount: number;
-}
-
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 
 // Working beta: when this client saw each thread leave the Working shelf.
@@ -1212,17 +1169,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   scratchMachineLabel: string | null;
   project: EnvironmentProject | null;
   projectDisplayName: string | null;
-  /**
-   * False inside a project section: the section header already carries the
-   * project's favicon and name, so its rows drop both.
-   */
-  showsProjectTitle?: boolean;
-  /** Parent-held so a remount cannot lose a merged or closed change request. */
-  changeRequestSnapshot: ThreadChangeRequestSnapshot | null;
-  onChangeRequestSnapshot: (
-    threadKey: string,
-    snapshot: ThreadChangeRequestSnapshot | null,
-  ) => void;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -1246,6 +1192,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
+  changeRequestSnapshot: ThreadChangeRequestSnapshot | null;
+  onChangeRequestSnapshot: (
+    threadKey: string,
+    snapshot: ThreadChangeRequestSnapshot | null,
+  ) => void;
 }) {
   const {
     isRenaming,
@@ -1481,8 +1432,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
   const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
-  const showsProjectTitle = props.showsProjectTitle !== false;
-
   const detailsTooltip = (
     <SidebarThreadTooltip
       thread={thread}
@@ -1682,8 +1631,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     ],
   );
 
-  // Keep selection surfaces independent of status. A static inset marker
-  // makes requests visible without animation or changing row geometry.
+  // All sidebar rows share one surface model. Live threads used to look
+  // like elevated cards while settled threads were plain rows, leaving neither
+  // a useful hierarchy nor a reliable hover cue. Status now lives in the row
+  // content; surface is reserved for interaction (hover, multi-select, route).
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
@@ -1696,12 +1647,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           : shouldRecede
             ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
             : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    // A row that needs a human keeps a colored edge whatever its surface is.
-    (status === "approval" || status === "input" || status === "failed") &&
-      "before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-0.75",
-    status === "approval" && "before:bg-warning",
-    status === "input" && "before:bg-info",
-    status === "failed" && "before:bg-error",
     // Background work fades as a whole row, status label included, so it
     // takes less attention than rows that need a human (input, approval).
     shouldRecede &&
@@ -1927,19 +1872,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             {accessibleTitle}
             {/* Settled history recedes: dimmed favicon at rest, restored on
               hover so the tail stays scannable when you're hunting. */}
-            {showsProjectTitle ? (
-              <span
-                className={cn(
-                  "flex shrink-0 items-center transition-opacity",
-                  (!props.isActive || variantAction === "unsettle") &&
-                    "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
-                )}
-              >
-                {props.project ? (
-                  <ProjectFavicon project={props.project} className="size-4" />
-                ) : null}
-              </span>
-            ) : null}
+            <span
+              className={cn(
+                "flex shrink-0 items-center transition-opacity",
+                (!props.isActive || variantAction === "unsettle") &&
+                  "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+              )}
+            >
+              {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
+            </span>
             {draftIndicator}
             {title}
             {thread.mailboxPendingCount ? (
@@ -2105,10 +2046,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
-              {showsProjectTitle && props.project ? (
+              {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
-              {showsProjectTitle && props.projectDisplayName ? (
+              {props.projectDisplayName ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -2170,7 +2111,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       ) : (
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ring-1 ring-inset",
+                            "inline-flex items-center gap-1 font-medium",
                             topStatus.className,
                           )}
                         >
@@ -2354,194 +2295,6 @@ function latestRunDiff(
   void thread;
   return null;
 }
-
-/**
- * One project's section of the thread list.
- *
- * The header is the project's identity in the sidebar: favicon, name in the
- * project's own accent color, thread count, and a collapse toggle. The accent
- * is derived from the project key (see projectAccent) and published as CSS
- * variables once, so the rule and the container tint follow the name without
- * re-deriving per element.
- */
-const SidebarProjectSection = memo(function SidebarProjectSection(props: {
-  section: RenderedProjectSection;
-  onToggleFlag: (projectKey: string, flag: "collapsed" | "snoozed" | "settled") => void;
-  onShowMoreSettled: (projectKey: string) => void;
-  onNewThread: (section: RenderedProjectSection) => void;
-  renderThreadRow: (
-    thread: EnvironmentThreadShell,
-    section: "pinned" | "active" | "snoozed" | "settled",
-    options?: { inProjectSection?: boolean },
-  ) => ReactNode;
-}) {
-  const { section, onToggleFlag, onShowMoreSettled, onNewThread, renderThreadRow } = props;
-  const accent = useMemo(() => projectAccent(section.projectKey), [section.projectKey]);
-  const displayName = section.project?.displayName ?? "Unknown project";
-  const handleToggleCollapsed = useCallback(
-    () => onToggleFlag(section.projectKey, "collapsed"),
-    [onToggleFlag, section.projectKey],
-  );
-  const handleToggleSnoozed = useCallback(
-    () => onToggleFlag(section.projectKey, "snoozed"),
-    [onToggleFlag, section.projectKey],
-  );
-  const handleToggleSettled = useCallback(
-    () => onToggleFlag(section.projectKey, "settled"),
-    [onToggleFlag, section.projectKey],
-  );
-  const handleShowMoreSettled = useCallback(
-    () => onShowMoreSettled(section.projectKey),
-    [onShowMoreSettled, section.projectKey],
-  );
-  const handleNewThread = useCallback(() => onNewThread(section), [onNewThread, section]);
-
-  return (
-    <li className="list-none" data-thread-selection-safe>
-      <section
-        aria-label={displayName}
-        data-testid="sidebar-project-section"
-        data-project-key={section.projectKey}
-        // Both schemes are published up front; the dark variants win under
-        // .dark without a second render or a theme subscription here.
-        style={
-          {
-            "--project-accent-text-light": accent.light.text,
-            "--project-accent-line-light": accent.light.line,
-            "--project-accent-tint-light": accent.light.tint,
-            "--project-accent-text-dark": accent.dark.text,
-            "--project-accent-line-dark": accent.dark.line,
-            "--project-accent-tint-dark": accent.dark.tint,
-          } as CSSProperties
-        }
-        className={cn(
-          "[--project-accent-text:var(--project-accent-text-light)] [--project-accent-line:var(--project-accent-line-light)] [--project-accent-tint:var(--project-accent-tint-light)]",
-          "dark:[--project-accent-text:var(--project-accent-text-dark)] dark:[--project-accent-line:var(--project-accent-line-dark)] dark:[--project-accent-tint:var(--project-accent-tint-dark)]",
-          "mt-2 rounded-lg border border-(--project-accent-line) bg-(--project-accent-tint) px-1 pb-1 pt-0.5 first:mt-0",
-        )}
-      >
-        <div className="flex items-center gap-1 px-1.5 pb-1 pt-1">
-          <button
-            type="button"
-            onClick={handleToggleCollapsed}
-            aria-expanded={!section.collapsed}
-            data-testid="sidebar-project-section-toggle"
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-0.5 text-left"
-          >
-            {section.project ? (
-              <ProjectFavicon project={section.project} className="size-4 shrink-0" />
-            ) : (
-              <FolderIcon className="size-4 shrink-0 text-(--project-accent-text)" />
-            )}
-            {/* Bigger than a thread title on purpose: the project is the
-                thing you are working in, the threads are its contents. */}
-            <span className="min-w-0 flex-1 truncate text-base font-semibold leading-6 tracking-tight text-(--project-accent-text)">
-              {displayName}
-            </span>
-            <span className="shrink-0 text-xs tabular-nums text-(--project-accent-text) opacity-60">
-              {section.threadCount}
-            </span>
-            <ChevronDownIcon
-              aria-hidden
-              className={cn(
-                "size-3.5 shrink-0 text-(--project-accent-text) opacity-70 transition-transform",
-                section.collapsed && "-rotate-90",
-              )}
-            />
-          </button>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={handleNewThread}
-                  disabled={section.project === null}
-                  aria-label={`New thread in ${displayName}`}
-                  className="shrink-0 cursor-pointer rounded-md p-1 text-(--project-accent-text) opacity-70 hover:bg-sidebar-row-hover hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                />
-              }
-            >
-              <PlusIcon aria-hidden className="size-4" />
-            </TooltipTrigger>
-            <TooltipPopup side="right">New thread</TooltipPopup>
-          </Tooltip>
-        </div>
-        {section.collapsed &&
-        section.activeThreads.length === 0 &&
-        section.visibleSnoozed.length === 0 &&
-        section.visibleSettled.length === 0 ? null : (
-          <ul role="list" className="flex flex-col gap-px">
-            {section.activeThreads.map((thread) =>
-              renderThreadRow(thread, "active", { inProjectSection: true }),
-            )}
-            {section.snoozedTotal > 0 && !section.collapsed ? (
-              <li className="list-none" data-thread-selection-safe>
-                <button
-                  type="button"
-                  onClick={handleToggleSnoozed}
-                  aria-expanded={section.snoozedExpanded}
-                  className="mb-1 mt-2 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
-                >
-                  <span className="text-xs font-medium text-info-foreground">
-                    {section.snoozedExpanded ? "Snoozed" : `Snoozed (${section.snoozedTotal})`}
-                  </span>
-                  <span className="h-px flex-1 bg-info/20" />
-                  <ChevronDownIcon
-                    aria-hidden
-                    className={cn(
-                      "size-3 text-info-foreground transition-transform",
-                      section.snoozedExpanded && "rotate-180",
-                    )}
-                  />
-                </button>
-              </li>
-            ) : null}
-            {section.visibleSnoozed.map((thread) =>
-              renderThreadRow(thread, "snoozed", { inProjectSection: true }),
-            )}
-            {section.settledTotal > 0 && !section.collapsed ? (
-              <li className="list-none" data-thread-selection-safe>
-                <button
-                  type="button"
-                  onClick={handleToggleSettled}
-                  aria-expanded={section.settledExpanded}
-                  className="mb-1 mt-2 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
-                >
-                  <span className="text-xs font-medium text-muted-foreground/50">
-                    {section.settledExpanded ? "Settled" : `Settled (${section.settledTotal})`}
-                  </span>
-                  <span className="h-px flex-1 bg-sidebar-border/60" />
-                  <ChevronDownIcon
-                    aria-hidden
-                    className={cn(
-                      "size-3 text-muted-foreground/50 transition-transform",
-                      section.settledExpanded && "rotate-180",
-                    )}
-                  />
-                </button>
-              </li>
-            ) : null}
-            {section.visibleSettled.map((thread) =>
-              renderThreadRow(thread, "settled", { inProjectSection: true }),
-            )}
-            {section.settledExpanded && !section.collapsed && section.hiddenSettledCount > 0 ? (
-              <li className="list-none">
-                <button
-                  type="button"
-                  onClick={handleShowMoreSettled}
-                  className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-xs text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                >
-                  <PlusIcon aria-hidden className="size-3.5 shrink-0" />
-                  Show {Math.min(section.hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
-                </button>
-              </li>
-            ) : null}
-          </ul>
-        )}
-      </section>
-    </li>
-  );
-});
 
 const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   isSettled: boolean;
@@ -2744,11 +2497,7 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
-  const workingShelfSetting = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
-  const projectSectionsEnabled = useClientSettings((s) => s.sidebarProjectSectionsEnabled);
-  // Project sections own every row below the pins and have no Working shelf,
-  // so the beta only folds working threads away in the flat list.
-  const workingShelfEnabled = workingShelfSetting && !projectSectionsEnabled;
+  const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
     settleThread,
@@ -2940,18 +2689,27 @@ export default function Sidebar() {
   // fresh clock whenever it recomputes.
   const [snoozeWakeTick, bumpSnoozeWakeTick] = useState(0);
 
-  // Project filter: one menu above the list. Multi-select, so the list can be
-  // narrowed to a few projects at once without the header width depending on
-  // the number or length of project names. The choice persists as a client
-  // setting; `sidebarHiddenProjectKeys` documents why the hidden set is stored
-  // rather than the shown set.
-  const hiddenProjectKeys = useClientSettings((s) => s.sidebarHiddenProjectKeys);
-  const updateClientSettings = useUpdateClientSettings();
+  // Project scope: one menu above the list. Scoping filters the list without
+  // making the header width depend on the number or length of project names.
+  // The selection lives in the persisted UI store next to the other sidebar
+  // project preferences, so routes that unmount the sidebar (Settings) and
+  // app restarts keep it.
+  const persistedProjectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
+  const setProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
+  const projectScopeKey = useMemo(
+    () =>
+      resolveSidebarProjectScopeKey({
+        groups: projectGroups,
+        key: persistedProjectScopeKey,
+        settings: projectGroupingSettings,
+      }),
+    [persistedProjectScopeKey, projectGroups, projectGroupingSettings],
+  );
   // {value, label} items let Base UI drive the combobox selection contract
   // while the popup search filters the same collection.
   const projectScopeItems = useMemo(
     () => [
-      { value: ALL_PROJECTS_SCOPE_VALUE, label: "All projects" },
+      { value: "all", label: "All projects" },
       ...projectGroups.map((project) => ({
         value: project.projectKey,
         label: project.displayName,
@@ -2984,27 +2742,11 @@ export default function Sidebar() {
     () => new Map(projectGroups.map((project) => [project.projectKey, project] as const)),
     [projectGroups],
   );
-  const allProjectKeys = useMemo(
-    () => projectGroups.map((project) => project.projectKey),
-    [projectGroups],
-  );
-  const visibleProjectKeys = useMemo(
+  const selectedProjectScopeItem = useMemo(
     () =>
-      resolveVisibleSidebarProjectKeys({
-        projectKeys: allProjectKeys,
-        hiddenKeys: hiddenProjectKeys,
-      }),
-    [allProjectKeys, hiddenProjectKeys],
-  );
-  const allProjectsVisible = visibleProjectKeys.length === allProjectKeys.length;
-  // Base UI drives selection from the item objects, so the checked set is
-  // expressed in the shape the list renders. The bulk row is never part of it:
-  // it is a control, and including it would make "everything is checked" and
-  // "the bulk row is checked" the same state.
-  const visibleProjectKeySet = useMemo(() => new Set(visibleProjectKeys), [visibleProjectKeys]);
-  const selectedProjectScopeItems = useMemo(
-    () => projectScopeItems.filter((item) => visibleProjectKeySet.has(item.value)),
-    [projectScopeItems, visibleProjectKeySet],
+      projectScopeItems.find((item) => item.value === (projectScopeKey ?? "all")) ??
+      projectScopeItems[0]!,
+    [projectScopeItems, projectScopeKey],
   );
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
     reduceSidebarProjectScopeMenuState,
@@ -3027,51 +2769,46 @@ export default function Sidebar() {
       }),
     [projectScopeFilter, projectScopeItems, projectScopeMenuState.query],
   );
-  const applyProjectSelection = useCallback(
-    (visibleKeys: readonly string[]) => {
-      updateClientSettings({
-        sidebarHiddenProjectKeys: resolveSidebarHiddenProjectKeys({
-          hiddenKeys: hiddenProjectKeys,
-          projectKeys: allProjectKeys,
-          visibleKeys,
-        }),
-      });
-    },
-    [allProjectKeys, hiddenProjectKeys, updateClientSettings],
-  );
-  // Named only while the filter isolates one project. The trigger and the
-  // empty state both read this so they agree on what "focused" means.
-  const soleVisibleProjectGroup = useMemo(
+  const scopedProjectGroup = useMemo(
     () =>
-      !allProjectsVisible && visibleProjectKeys.length === 1
-        ? (projectGroupByScopeKey.get(visibleProjectKeys[0]!) ?? null)
-        : null,
-    [allProjectsVisible, projectGroupByScopeKey, visibleProjectKeys],
+      projectScopeKey === null
+        ? null
+        : (projectGroups.find((project) => project.projectKey === projectScopeKey) ?? null),
+    [projectGroups, projectScopeKey],
   );
-  const projectFilterLabel = sidebarProjectFilterLabel({
-    totalCount: allProjectKeys.length,
-    visibleCount: visibleProjectKeys.length,
-    soleVisibleLabel: soleVisibleProjectGroup?.displayName ?? null,
-  });
-  // `null` means "no filter", so every row-level check short-circuits instead
-  // of testing set membership per thread on the common path.
-  const scopedProjectKeys = useMemo(() => {
-    if (allProjectsVisible) return null;
-    const keys = new Set<string>();
-    for (const projectKey of visibleProjectKeys) {
-      const group = projectGroupByScopeKey.get(projectKey);
-      if (!group) continue;
-      for (const projectRef of group.memberProjectRefs) {
-        keys.add(`${projectRef.environmentId}:${projectRef.projectId}`);
-      }
+  const scopedProjectKeys = useMemo(
+    () =>
+      scopedProjectGroup === null
+        ? null
+        : new Set(
+            scopedProjectGroup.memberProjectRefs.map(
+              (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
+            ),
+          ),
+    [scopedProjectGroup],
+  );
+  // Configs identify scratch projects, so both they and live project snapshots
+  // must arrive before a persisted scope can be considered missing.
+  const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
+  const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
+  useEffect(() => {
+    const nextKey = resolveSidebarProjectScopeKey({
+      groups: projectGroups,
+      key: persistedProjectScopeKey,
+      settings: projectGroupingSettings,
+      canClearMissingScope: allProjectSnapshotsReady && allProjectConfigsReady,
+    });
+    if (nextKey !== persistedProjectScopeKey) {
+      setProjectScopeKey(nextKey);
     }
-    return keys;
-  }, [allProjectsVisible, projectGroupByScopeKey, visibleProjectKeys]);
-  // Stable identity for "which projects are showing", used to reset selection
-  // and paging when the filter changes. Hidden keys for projects this client
-  // cannot see must not appear here, or an environment reconnecting would look
-  // like a filter change.
-  const projectFilterResetKey = `${visibleProjectKeys.length}:${visibleProjectKeys.join("|")}`;
+  }, [
+    allProjectConfigsReady,
+    allProjectSnapshotsReady,
+    persistedProjectScopeKey,
+    projectGroups,
+    projectGroupingSettings,
+    setProjectScopeKey,
+  ]);
   // Count-only subscription: the parent needs "are there draft rows" for the
   // empty state, while SidebarDraftBlock owns the per-keystroke content
   // subscription. Selecting a number keeps typing in a draft composer from
@@ -3098,11 +2835,11 @@ export default function Sidebar() {
     }
     return count;
   });
-  // Filter changes drop the selection: rows selected under the old filter may
-  // be hidden now, and bulk actions must never count or touch invisible rows.
+  // Scope flips drop the selection: rows selected under the old scope may be
+  // hidden now, and bulk actions must never count or touch invisible rows.
   useEffect(() => {
     clearSelection();
-  }, [clearSelection, projectFilterResetKey]);
+  }, [clearSelection, projectScopeKey]);
 
   const openProjectSettings = useCallback(
     (projectGroup: SidebarProjectSnapshot, projectRef?: ScopedProjectRef) => {
@@ -3357,7 +3094,7 @@ export default function Sidebar() {
   // filter context changes so a scope/search flip never inherits a deep
   // page state.
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
-  const settledResetKey = projectFilterResetKey;
+  const settledResetKey = projectScopeKey ?? "all";
   const lastSettledResetKeyRef = useRef(settledResetKey);
   if (lastSettledResetKeyRef.current !== settledResetKey) {
     lastSettledResetKeyRef.current = settledResetKey;
@@ -3452,158 +3189,22 @@ export default function Sidebar() {
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
   }, [routeThreadKey, workingShelfExpanded, workingThreads]);
 
-  // ── Project sections ───────────────────────────────────────────────
-  // Project outer, status inner: each project owns a collapsible section and
-  // keeps the active / snoozed / settled ordering inside it. The flat list
-  // above stays the fallback, so everything below reads the same buckets.
-  // Threads carry a physical project ref; sections are keyed by the LOGICAL
-  // group key so the same project across environments lands in one section,
-  // matching the project filter menu.
-  const projectKeyByScopedProject = useMemo(
-    () =>
-      new Map(
-        projectGroups.flatMap((group) =>
-          group.memberProjects.map(
-            (project) => [`${project.environmentId}:${project.id}`, group.projectKey] as const,
-          ),
-        ),
-      ),
-    [projectGroups],
-  );
-  const projectKeyOfThread = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      const scopedKey = `${thread.environmentId}:${thread.projectId}` as const;
-      return projectKeyByScopedProject.get(scopedKey) ?? (scopedKey as string);
-    },
-    [projectKeyByScopedProject],
-  );
-  const [projectSectionState, setProjectSectionState] = useLocalStorage(
-    PROJECT_SECTION_STATE_KEY,
-    EMPTY_PROJECT_SECTION_STATE,
-    ProjectSectionStateSchema,
-  );
-  const toggleProjectSectionFlag = useCallback(
-    (projectKey: string, flag: keyof ProjectSectionState) => {
-      setProjectSectionState((current) => {
-        const existing = current[projectKey] ?? DEFAULT_PROJECT_SECTION_STATE;
-        return { ...current, [projectKey]: { ...existing, [flag]: !existing[flag] } };
-      });
-    },
-    [setProjectSectionState],
-  );
-  // Settled paging is per section and deliberately NOT persisted: a deep page
-  // is a momentary "let me look further back", not a preference.
-  const [settledPageByProject, setSettledPageByProject] = useState<ReadonlyMap<string, number>>(
-    () => new Map(),
-  );
-  const showMoreSettledInProject = useCallback((projectKey: string) => {
-    setSettledPageByProject((current) => {
-      const next = new Map(current);
-      next.set(
-        projectKey,
-        (current.get(projectKey) ?? PROJECT_SECTION_SETTLED_INITIAL_COUNT) +
-          SETTLED_TAIL_PAGE_COUNT,
-      );
-      return next;
-    });
-  }, []);
-  const projectSections = useMemo((): RenderedProjectSection[] => {
-    if (!projectSectionsEnabled) return [];
-    const sections = buildSidebarProjectSections({
-      active: activeThreads,
-      snoozed: snoozedThreads,
-      settled: settledThreads,
-      projectKeyOf: projectKeyOfThread,
-      projectOrder: allProjectKeys,
-    });
-    return sections.map((section) => {
-      const state = projectSectionState[section.projectKey] ?? DEFAULT_PROJECT_SECTION_STATE;
-      const settledLimit =
-        settledPageByProject.get(section.projectKey) ?? PROJECT_SECTION_SETTLED_INITIAL_COUNT;
-      // The open thread outranks every collapse in this block, exactly as it
-      // does in the flat list: a row you are looking at must not hide behind
-      // a shelf, a paged tail, or a folded section.
-      const keepsRouteThread = (thread: EnvironmentThreadShell) =>
-        routeThreadKey !== null &&
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey;
-      const holdsRouteThread =
-        section.active.some(keepsRouteThread) ||
-        section.snoozed.some(keepsRouteThread) ||
-        section.settled.some(keepsRouteThread);
-      const collapsed = state.collapsed && !holdsRouteThread;
-      // One pass keeps the tail in its own order: everything inside the page,
-      // plus the open thread wherever it sits below it.
-      const settledWithRoute = section.settled.filter(
-        (thread, index) => index < settledLimit || keepsRouteThread(thread),
-      );
-      const visibleSnoozed = collapsed
-        ? section.snoozed.filter(keepsRouteThread)
-        : state.snoozed
-          ? section.snoozed
-          : section.snoozed.filter(keepsRouteThread);
-      const visibleSettled = collapsed
-        ? settledWithRoute.filter(keepsRouteThread)
-        : state.settled
-          ? settledWithRoute
-          : settledWithRoute.filter(keepsRouteThread);
-      return {
-        projectKey: section.projectKey,
-        project: projectGroupByScopeKey.get(section.projectKey) ?? null,
-        collapsed,
-        threadCount: section.active.length + section.snoozed.length + section.settled.length,
-        activeThreads: collapsed ? section.active.filter(keepsRouteThread) : section.active,
-        snoozedTotal: section.snoozed.length,
-        snoozedExpanded: state.snoozed,
-        visibleSnoozed,
-        settledTotal: section.settled.length,
-        settledExpanded: state.settled,
-        visibleSettled,
-        hiddenSettledCount: section.settled.length - settledWithRoute.length,
-      };
-    });
-  }, [
-    activeThreads,
-    allProjectKeys,
-    projectGroupByScopeKey,
-    projectKeyOfThread,
-    projectSectionState,
-    projectSectionsEnabled,
-    routeThreadKey,
-    settledPageByProject,
-    settledThreads,
-    snoozedThreads,
-  ]);
-
-  const orderedThreads = useMemo(() => {
-    if (projectSectionsEnabled) {
-      // Jump shortcuts, shift-range select, and prewarming all read this
-      // list, so in section mode it must walk the sections in render order
-      // rather than the flat status order.
-      return [
-        ...pinnedThreads,
-        ...projectSections.flatMap((section) => [
-          ...section.activeThreads,
-          ...section.visibleSnoozed,
-          ...section.visibleSettled,
-        ]),
-      ];
-    }
-    return [
+  const orderedThreads = useMemo(
+    () => [
       ...pinnedThreads,
       ...activeThreads,
       ...visibleWorkingThreads,
       ...visibleSnoozedThreads,
       ...renderedSettledThreads,
-    ];
-  }, [
-    activeThreads,
-    pinnedThreads,
-    projectSections,
-    projectSectionsEnabled,
-    renderedSettledThreads,
-    visibleSnoozedThreads,
-    visibleWorkingThreads,
-  ]);
+    ],
+    [
+      pinnedThreads,
+      activeThreads,
+      visibleWorkingThreads,
+      visibleSnoozedThreads,
+      renderedSettledThreads,
+    ],
+  );
   const orderedThreadKeys = useMemo(
     () =>
       orderedThreads.map((thread) =>
@@ -4335,13 +3936,6 @@ export default function Sidebar() {
     const pinnedRows = rowsOf(pinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
-    // Project sections own everything below the pins: each section renders its
-    // own active, snoozed and settled rows, so the flat shelves are skipped.
-    // Pinned rows stay in the shared list and stay reorderable.
-    if (projectSectionsEnabled) {
-      items.push({ kind: "marker", marker: "project-sections" });
-      return items;
-    }
     const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
     items.push(...activeRows);
@@ -4361,7 +3955,6 @@ export default function Sidebar() {
   }, [
     activeThreads,
     pinnedThreads,
-    projectSectionsEnabled,
     renderedSettledThreads,
     settledThreads.length,
     snoozedThreads.length,
@@ -5167,7 +4760,7 @@ export default function Sidebar() {
               projectFilter: threadProjectGroup
                 ? {
                     label: threadProjectGroup.displayName,
-                    isActive: soleVisibleProjectGroup?.projectKey === threadProjectGroup.projectKey,
+                    isActive: projectScopeKey === threadProjectGroup.projectKey,
                   }
                 : null,
               isPinned,
@@ -5204,10 +4797,10 @@ export default function Sidebar() {
             // This item is the only scope control here, so picking the
             // already-scoped project again is the way back to all projects.
             if (threadProjectGroup) {
-              applyProjectSelection(
-                soleVisibleProjectGroup?.projectKey === threadProjectGroup.projectKey
-                  ? allProjectKeys
-                  : [threadProjectGroup.projectKey],
+              setProjectScopeKey(
+                projectScopeKey === threadProjectGroup.projectKey
+                  ? null
+                  : threadProjectGroup.projectKey,
               );
             }
             return;
@@ -5396,11 +4989,10 @@ export default function Sidebar() {
       handleMultiSelectContextMenu,
       markThreadUnread,
       openProjectSettings,
-      soleVisibleProjectGroup,
-      allProjectKeys,
+      projectScopeKey,
       projectByKey,
       serverConfigs,
-      applyProjectSelection,
+      setProjectScopeKey,
       setThreadAutoSettle,
       startThreadRename,
       updateThreadMetadata,
@@ -5492,16 +5084,6 @@ export default function Sidebar() {
   // falling back to the top project) — same resolution the command palette
   // uses. The command palette already offers a "New thread in..." submenu
   // for multi-project setups.
-  const handleSectionNewThread = useCallback(
-    (section: RenderedProjectSection) => {
-      const project = section.project;
-      if (!project) return;
-      if (isMobile) setOpenMobile(false);
-      void handleNewThreadRef.current(scopeProjectRef(project.environmentId, project.id));
-    },
-    [isMobile, setOpenMobile],
-  );
-
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
       // One project: nothing to pick, create immediately. Shift+click creates
@@ -5553,7 +5135,6 @@ export default function Sidebar() {
                   items={projectScopeItems}
                   filteredItems={filteredProjectScopeItems}
                   autoHighlight
-                  multiple
                   itemToStringLabel={(item) => item.label}
                   isItemEqualToValue={(a, b) => a.value === b.value}
                   open={projectScopeMenuState.open}
@@ -5561,41 +5142,39 @@ export default function Sidebar() {
                     if (open) suppressNextScopeChangeRef.current = false;
                     dispatchProjectScopeMenu({ type: "open-changed", open });
                   }}
-                  value={selectedProjectScopeItems}
-                  onValueChange={(items) => {
-                    const nextKeys = new Set((items ?? []).map((item) => item.value));
-                    // The bulk row never survives into the persisted selection,
-                    // so seeing it here means it was just clicked. It shows
-                    // everything, or clears everything when all are already on.
-                    if (nextKeys.has(ALL_PROJECTS_SCOPE_VALUE)) {
-                      applyProjectSelection(allProjectsVisible ? [] : allProjectKeys);
+                  onItemHighlighted={(item) => {
+                    highlightedProjectScopeKeyRef.current = item?.value ?? null;
+                  }}
+                  value={selectedProjectScopeItem}
+                  onValueChange={(item) => {
+                    if (suppressNextScopeChangeRef.current) {
+                      suppressNextScopeChangeRef.current = false;
                       return;
                     }
-                    applyProjectSelection(allProjectKeys.filter((key) => nextKeys.has(key)));
+                    if (!item) return;
+                    setProjectScopeKey(item.value === "all" ? null : item.value);
                   }}
                 >
                   <ComboboxTrigger
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          soleVisibleProjectGroup
-                            ? `Filter threads by project: ${soleVisibleProjectGroup.displayName}`
+                          scopedProjectGroup
+                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
                             : "Filter threads by project"
                         }
                       />
                     }
                   >
-                    {soleVisibleProjectGroup ? (
+                    {scopedProjectGroup ? (
+                      // Wrapped so the button's direct-child svg color rule cannot override
+                      // a project's own icon color.
                       <span className="flex shrink-0">
-                        <ProjectFavicon project={soleVisibleProjectGroup} className="size-4" />
+                        <ProjectFavicon project={scopedProjectGroup} className="size-4" />
                       </span>
                     ) : (
-                      <ListFilterIcon
-                        className={`size-4 shrink-0${allProjectsVisible ? "" : " text-primary"}`}
-                      />
+                      <ListFilterIcon className="size-4" />
                     )}
-                    <span className="min-w-0 flex-1 truncate">{projectFilterLabel}</span>
-                    <ChevronDownIcon className="-mr-px size-4 shrink-0" />
                   </ComboboxTrigger>
                   <ComboboxPopup
                     align="start"
@@ -5638,12 +5217,6 @@ export default function Sidebar() {
                     <ComboboxList>
                       {(item: (typeof projectScopeItems)[number]) => {
                         const project = projectGroupByScopeKey.get(item.value) ?? null;
-                        const isBulkRow = item.value === ALL_PROJECTS_SCOPE_VALUE;
-                        // The bulk row reflects the whole set: checked when
-                        // every project shows, indeterminate while some do.
-                        const checked = isBulkRow
-                          ? allProjectsVisible
-                          : visibleProjectKeySet.has(item.value);
                         return (
                           <ComboboxItem
                             key={item.value}
@@ -5653,18 +5226,6 @@ export default function Sidebar() {
                               if (project) handleProjectSettings(event, project);
                             }}
                           >
-                            <Checkbox
-                              checked={checked}
-                              indeterminate={
-                                isBulkRow && !allProjectsVisible && visibleProjectKeys.length > 0
-                              }
-                              // The row owns the click; the box is a visual
-                              // state readout, so it must not steal the event
-                              // or take a second tab stop.
-                              tabIndex={-1}
-                              aria-hidden="true"
-                              className="pointer-events-none size-3.5 shrink-0"
-                            />
                             {project ? (
                               <ProjectFavicon project={project} className="size-4 shrink-0" />
                             ) : (
@@ -5834,8 +5395,6 @@ export default function Sidebar() {
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
                         sortable?: SortableThreadRowBag,
-                        /** Rows under a project header inherit its identity. */
-                        options?: { inProjectSection?: boolean },
                       ) => {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
@@ -5944,8 +5503,6 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
-                            // The section header above already names the project.
-                            showsProjectTitle={options?.inProjectSection !== true}
                             changeRequestSnapshot={
                               changeRequestSnapshotByKey.get(threadKey) ?? null
                             }
@@ -5956,7 +5513,6 @@ export default function Sidebar() {
                       const renderThreadRow = (
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
-                        options?: { inProjectSection?: boolean },
                       ) => {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
@@ -5974,7 +5530,7 @@ export default function Sidebar() {
                               optimisticDrop !== null
                             }
                           >
-                            {(bag) => renderThreadRowInner(thread, section, bag, options)}
+                            {(bag) => renderThreadRowInner(thread, section, bag)}
                           </SortableThreadRow>
                         );
                       };
@@ -5996,20 +5552,6 @@ export default function Sidebar() {
                           continue;
                         }
                         switch (item.marker) {
-                          case "project-sections":
-                            for (const section of projectSections) {
-                              items.push(
-                                <SidebarProjectSection
-                                  key={`project-section:${section.projectKey}`}
-                                  section={section}
-                                  onToggleFlag={toggleProjectSectionFlag}
-                                  onShowMoreSettled={showMoreSettledInProject}
-                                  onNewThread={handleSectionNewThread}
-                                  renderThreadRow={renderThreadRow}
-                                />,
-                              );
-                            }
-                            break;
                           case "pinned-header":
                             items.push(
                               <SidebarDragBoundary
@@ -6168,19 +5710,8 @@ export default function Sidebar() {
                     Add project
                   </button>
                 </>
-              ) : visibleProjectKeys.length === 0 ? (
-                <>
-                  <span>Every project is filtered out</span>
-                  <button
-                    type="button"
-                    onClick={() => applyProjectSelection(allProjectKeys)}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  >
-                    Show all projects
-                  </button>
-                </>
-              ) : soleVisibleProjectGroup ? (
-                `No threads in ${soleVisibleProjectGroup.displayName} yet`
+              ) : scopedProjectGroup ? (
+                `No threads in ${scopedProjectGroup.displayName} yet`
               ) : (
                 "No threads yet"
               )}

@@ -628,12 +628,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["composer meter usage tokens circle old"],
   },
   {
-    id: "sidebar-project-sections",
-    title: "Group sidebar by project",
-    to: "/settings/general",
-    searchTerms: ["project section group container accent color divider sidebar"],
-  },
-  {
     id: "legacy-sidebar",
     title: "Sidebar (legacy)",
     to: "/settings/general",

@@ -11,7 +11,6 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
-  buildSidebarProjectSections,
   createThreadJumpHintVisibilityController,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
@@ -31,9 +30,6 @@ import {
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
-  resolveSidebarHiddenProjectKeys,
-  resolveVisibleSidebarProjectKeys,
-  sidebarProjectFilterLabel,
   resolveSidebarSweepKeys,
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
@@ -1100,79 +1096,6 @@ describe("filterSidebarProjectScopeItems", () => {
   });
 });
 
-describe("sidebar project visibility filter", () => {
-  const projectKeys = ["alpha", "beta", "gamma"];
-
-  it("shows every project when nothing is hidden", () => {
-    expect(resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: [] })).toEqual(projectKeys);
-  });
-
-  it("ignores hidden keys for projects this client does not know about", () => {
-    expect(
-      resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: ["beta", "offline-project"] }),
-    ).toEqual(["alpha", "gamma"]);
-  });
-
-  it("hides exactly the projects left out of the selection", () => {
-    expect(
-      resolveSidebarHiddenProjectKeys({
-        hiddenKeys: [],
-        projectKeys,
-        visibleKeys: ["alpha", "gamma"],
-      }),
-    ).toEqual(["beta"]);
-  });
-
-  it("stores nothing when everything is selected and everything when nothing is", () => {
-    expect(
-      resolveSidebarHiddenProjectKeys({
-        hiddenKeys: ["beta"],
-        projectKeys,
-        visibleKeys: projectKeys,
-      }),
-    ).toEqual([]);
-    expect(
-      resolveSidebarHiddenProjectKeys({ hiddenKeys: [], projectKeys, visibleKeys: [] }),
-    ).toEqual(projectKeys);
-  });
-
-  it("carries through hidden projects belonging to an offline environment", () => {
-    expect(
-      resolveSidebarHiddenProjectKeys({
-        hiddenKeys: ["offline-project", "beta"],
-        projectKeys,
-        visibleKeys: projectKeys,
-      }),
-    ).toEqual(["offline-project"]);
-  });
-
-  it("round-trips a selection back through the visible-key resolver", () => {
-    const hidden = resolveSidebarHiddenProjectKeys({
-      hiddenKeys: ["offline-project"],
-      projectKeys,
-      visibleKeys: ["gamma"],
-    });
-    expect(resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: hidden })).toEqual([
-      "gamma",
-    ]);
-  });
-
-  it("labels the trigger by state", () => {
-    const label = (visibleCount: number, soleVisibleLabel: string | null = null) =>
-      sidebarProjectFilterLabel({ totalCount: 3, visibleCount, soleVisibleLabel });
-    expect(label(3)).toBe("All projects");
-    expect(label(0)).toBe("No projects");
-    expect(label(1, "Alpha workspace")).toBe("Alpha workspace");
-    expect(label(2)).toBe("2 of 3 projects");
-  });
-
-  it("does not claim all projects are shown when there are none", () => {
-    expect(
-      sidebarProjectFilterLabel({ totalCount: 0, visibleCount: 0, soleVisibleLabel: null }),
-    ).toBe("No projects");
-  });
-});
-
 describe("reduceSidebarProjectScopeMenuState", () => {
   const queriedOpenState = { open: true, query: "alpha" };
 
@@ -1952,72 +1875,6 @@ describe("sortLogicalProjectsForSidebar", () => {
         (project) => project.projectKey,
       ),
     ).toEqual(["logical-newer", "logical-older"]);
-  });
-});
-
-describe("buildSidebarProjectSections", () => {
-  const thread = (id: string, projectKey: string) => ({ id, projectKey });
-  const projectKeyOf = (item: { projectKey: string }) => item.projectKey;
-
-  it("keeps sections in the project sort order and drops empty ones", () => {
-    const sections = buildSidebarProjectSections({
-      active: [thread("a", "beta"), thread("b", "alpha")],
-      snoozed: [],
-      settled: [],
-      projectKeyOf,
-      projectOrder: ["alpha", "beta", "gamma"],
-    });
-    expect(sections.map((section) => section.projectKey)).toEqual(["alpha", "beta"]);
-  });
-
-  it("preserves bucket ordering inside a section", () => {
-    const [section] = buildSidebarProjectSections({
-      active: [thread("a1", "alpha"), thread("a2", "alpha")],
-      snoozed: [thread("s1", "alpha")],
-      settled: [thread("t1", "alpha")],
-      projectKeyOf,
-      projectOrder: ["alpha"],
-    });
-    expect(section?.active.map((item) => item.id)).toEqual(["a1", "a2"]);
-    expect(section?.snoozed.map((item) => item.id)).toEqual(["s1"]);
-    expect(section?.settled.map((item) => item.id)).toEqual(["t1"]);
-  });
-
-  it("still sections threads whose project fell out of the sort order", () => {
-    const sections = buildSidebarProjectSections({
-      active: [thread("a", "alpha"), thread("o", "orphan")],
-      snoozed: [],
-      settled: [],
-      projectKeyOf,
-      projectOrder: ["alpha"],
-    });
-    expect(sections.map((section) => section.projectKey)).toEqual(["alpha", "orphan"]);
-  });
-
-  it("gives a project with only settled threads its own section", () => {
-    const sections = buildSidebarProjectSections({
-      active: [],
-      snoozed: [],
-      settled: [thread("t1", "alpha")],
-      projectKeyOf,
-      projectOrder: ["alpha"],
-    });
-    expect(sections).toHaveLength(1);
-    expect(sections[0]?.settled).toHaveLength(1);
-  });
-});
-
-describe("resolveSidebarDropVerb", () => {
-  it("names the state change a cross-section drop performs", () => {
-    expect(resolveSidebarDropVerb("active", "pinned")).toBe("pin");
-    expect(resolveSidebarDropVerb("settled", "pinned")).toBe("pin");
-    expect(resolveSidebarDropVerb("snoozed", "pinned")).toBe("pin");
-    expect(resolveSidebarDropVerb("pinned", "active")).toBe("unpin");
-    expect(resolveSidebarDropVerb("settled", "active")).toBe("unsettle");
-    expect(resolveSidebarDropVerb("snoozed", "active")).toBe("wake");
-    expect(resolveSidebarDropVerb("active", "settled")).toBe("settle");
-    expect(resolveSidebarDropVerb("pinned", "settled")).toBe("settle");
-    expect(resolveSidebarDropVerb("snoozed", "settled")).toBe("settle");
   });
 });
 

@@ -109,15 +109,6 @@ export interface Preferences {
   /** Fresh keys reset both shelves to collapsed when users update. */
   readonly threadListSettledShelfExpanded?: boolean;
   readonly threadListSnoozedShelfExpanded?: boolean;
-  /**
-   * Groups the sidebar thread list into per-project sections. Device-local
-   * mirror of the web `sidebarProjectSectionsEnabled` client setting.
-   * Undefined keeps sections on, matching the web default.
-   */
-  readonly sidebarProjectSectionsEnabled?: boolean;
-  /** Project keys whose sidebar section is folded. Only meaningful with
-      `sidebarProjectSectionsEnabled`; the legacy list has its own key. */
-  readonly collapsedSidebarProjectSections?: readonly string[];
   /** Where the workspace terminal pane sits on regular-width layouts. */
   readonly terminalPaneDockPosition?: "right" | "bottom";
   /**
@@ -234,8 +225,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     modelFavorites?: Preferences["modelFavorites"];
     threadListSettledShelfExpanded?: boolean;
     threadListSnoozedShelfExpanded?: boolean;
-    sidebarProjectSectionsEnabled?: boolean;
-    collapsedSidebarProjectSections?: readonly string[];
     terminalPaneDockPosition?: "right" | "bottom";
     voiceSpeechModelId?: string;
     voiceSpeakerFilteringEnabled?: boolean;
@@ -366,14 +355,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.threadListSnoozedShelfExpanded === "boolean") {
     preferences.threadListSnoozedShelfExpanded = parsed.threadListSnoozedShelfExpanded;
-  }
-  if (typeof parsed.sidebarProjectSectionsEnabled === "boolean") {
-    preferences.sidebarProjectSectionsEnabled = parsed.sidebarProjectSectionsEnabled;
-  }
-  if (Array.isArray(parsed.collapsedSidebarProjectSections)) {
-    preferences.collapsedSidebarProjectSections = parsed.collapsedSidebarProjectSections.filter(
-      (key): key is string => typeof key === "string",
-    );
   }
   if (parsed.terminalPaneDockPosition === "right" || parsed.terminalPaneDockPosition === "bottom") {
     preferences.terminalPaneDockPosition = parsed.terminalPaneDockPosition;
