@@ -58,8 +58,6 @@ export const makeCursorAuth = Effect.fn("makeCursorAuth")(function* (options: Cu
     phase: "idle",
     flowId: null,
     authorizationUrl: null,
-    userCode: null,
-    completion: "none",
     expiresAt: null,
     message: null,
   };

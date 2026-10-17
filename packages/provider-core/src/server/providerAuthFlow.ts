@@ -82,10 +82,6 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
     authorizationUrl: null,
     expiresAt: null,
     message: null,
-    // These flows finish through `interaction`; the fork's CLI login flows
-    // (CliLoginAuth) are the ones that set a code or device completion.
-    completion: "redirectUrl",
-    userCode: null,
     interaction: null,
     credentialOwner: options.credentialBinding.owner,
   };

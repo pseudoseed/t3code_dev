@@ -167,10 +167,6 @@
       "types": "./src/state/git.ts",
       "default": "./src/state/git.ts"
     },
-    "./state/mcp": {
-      "types": "./src/state/mcp.ts",
-      "default": "./src/state/mcp.ts"
-    },
     "./state/command-output": {
       "types": "./src/state/commandOutput.ts",
       "default": "./src/state/commandOutput.ts"

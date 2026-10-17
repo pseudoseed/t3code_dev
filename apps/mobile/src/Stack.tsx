@@ -93,7 +93,6 @@ import { NewTaskFlowProvider } from "./features/threads/new-task-flow-provider";
 import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
-import { SettingsMcpRouteScreen } from "./features/settings/SettingsMcpRouteScreen";
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
 import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
@@ -397,13 +396,6 @@ const SettingsContentStack = createV5SheetStackNavigator({
     SettingsUsageAccount: createNativeStackScreen({
       screen: UsageLimitAccountScreen,
       options: { title: "Account" },
-    }),
-    SettingsMcp: createNativeStackScreen({
-      screen: SettingsMcpRouteScreen,
-      linking: "mcp",
-      options: {
-        title: "MCP Servers",
-      },
     }),
     SettingsOpenSourceLicenses: createNativeStackScreen({
       screen: SettingsOpenSourceLicensesRouteScreen,

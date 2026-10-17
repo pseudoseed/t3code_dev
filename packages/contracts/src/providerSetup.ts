@@ -1,4 +1,3 @@
-import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
@@ -33,20 +32,6 @@ export const CodexAuthCallbackState = Schema.Union([
 
 const SetupOperationId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 
-/**
- * How a client finishes a sign-in once the authorization page is open.
- *
- * - `redirectUrl` — the provider redirects to a loopback URL the client must
- *   paste back so the server can forward it (Antigravity).
- * - `code` — the provider displays a code the user pastes back (Claude).
- * - `none` — the provider polls on its own and the client only waits (Codex
- *   device authorization).
- *
- * Defaults to `redirectUrl` because every server old enough to omit the field
- * only ever ran the redirect-based flow.
- */
-export const ProviderAuthCompletion = Schema.Literals(["redirectUrl", "code", "none"]);
-export type ProviderAuthCompletion = typeof ProviderAuthCompletion.Type;
 export const ProviderAuthMethod = Schema.Struct({
   id: SetupOperationId,
   accountEmail: Schema.optional(TrimmedNonEmptyString),
@@ -145,17 +130,6 @@ export const ProviderAuthState = Schema.Struct({
   authorizationUrl: Schema.NullOr(Schema.String),
   expiresAt: Schema.NullOr(IsoDateTime),
   message: Schema.NullOr(Schema.String),
-  completion: ProviderAuthCompletion.pipe(
-    Schema.withDecodingDefault(Effect.succeed("redirectUrl" as const)),
-  ),
-  /**
-   * Short code the user types into the provider's own verification page.
-   * Only device-authorization flows set this; it is not a credential and
-   * is useless without the account holder completing the sign-in.
-   */
-  userCode: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(64))).pipe(
-    Schema.withDecodingDefault(Effect.succeed(null)),
-  ),
   // Newer servers may add method types, interactions, or owners; older
   // clients drop what they cannot decode instead of rejecting the state.
   methods: Schema.optionalKey(

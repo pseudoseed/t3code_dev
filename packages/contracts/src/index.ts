@@ -65,7 +65,6 @@ export * from "./resourceTelemetry.ts";
 export * from "./rpc.ts";
 
 // PseudoCode fork additions. Kept last so upstream merges land above them.
-export * from "./mcpServers.ts";
 export * from "./directPush.ts";
 
 export * from "./worktreeSetup.ts";

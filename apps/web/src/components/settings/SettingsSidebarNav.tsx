@@ -18,7 +18,6 @@ import {
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
-  PlugIcon,
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
@@ -83,8 +82,6 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/keybindings": KeyboardIcon,
   "/settings/snap-shot": SnapShotIcon,
   "/settings/providers": BotIcon,
-  // PseudoCode fork addition.
-  "/settings/mcp": PlugIcon,
   "/settings/integrations": BlocksIcon,
   "/settings/scheduled-tasks": CalendarClockIcon,
   "/settings/source-control": GitBranchIcon,

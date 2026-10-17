@@ -1,4 +1,3 @@
-import * as ProviderMcpServers from "./mcp/ProviderMcpServers.ts";
 import * as IssueService from "./issue/IssueService.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
@@ -1176,7 +1175,6 @@ const layerWsRpc = (
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
-  providerMcpServers: ProviderMcpServers.ProviderMcpServers["Service"],
 ) =>
   Layer.unwrap(
     Effect.gen(function* () {
@@ -2337,19 +2335,6 @@ const layerWsRpc = (
         [WS_METHODS.issuesComment]: (input) => issues.comment(input),
         [WS_METHODS.issuesCreate]: (input) => issues.create(input),
         [WS_METHODS.issuesSetState]: (input) => issues.setState(input),
-        [WS_METHODS.mcpRepair]: (input) => providerMcpServers.repair(input),
-        [WS_METHODS.mcpAuthStart]: (input) => providerMcpServers.authStart(input, currentSessionId),
-        [WS_METHODS.mcpAuthComplete]: (input) =>
-          providerMcpServers.authComplete(input, currentSessionId),
-        [WS_METHODS.mcpAuthCancel]: (input) =>
-          providerMcpServers.authCancel(input, currentSessionId),
-        [WS_METHODS.mcpAuthLogout]: (input) => providerMcpServers.authLogout(input),
-        [WS_METHODS.mcpAuthSubscribe]: (input) =>
-          providerMcpServers.authSubscribe(input, currentSessionId),
-        [WS_METHODS.mcpAdd]: (input) => providerMcpServers.add(input),
-        [WS_METHODS.mcpRemove]: (input) => providerMcpServers.remove(input),
-        [WS_METHODS.mcpCopy]: (input) => providerMcpServers.copy(input),
-        [WS_METHODS.mcpList]: () => providerMcpServers.list(),
         [WS_METHODS.providerAuthStart]: (input) => providerAuth.start(input, currentSessionId),
         [WS_METHODS.providerAuthRespond]: (input) =>
           Effect.annotateCurrentSpan({ instanceId: input.instanceId }).pipe(
@@ -3147,7 +3132,6 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
-    const providerMcpServers = yield* ProviderMcpServers.ProviderMcpServers;
     const issues = yield* IssueService.IssueService;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const pullRequests = yield* PullRequestService.PullRequestService;
@@ -3206,7 +3190,6 @@ export const layer = Layer.unwrap(
               clientAnalyticsProps,
               previewAutomationBroker,
               serverBrowser,
-              providerMcpServers,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Request fibers run in the handlers' context, so this reporter sees

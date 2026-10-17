@@ -47,9 +47,6 @@ describe("provider auth state", () => {
       authorizationUrl: null,
       expiresAt: null,
       message: null,
-      // Fork sign-in fields default when an upstream-shaped server omits them.
-      completion: "redirectUrl",
-      userCode: null,
       methods: [method],
     });
   });

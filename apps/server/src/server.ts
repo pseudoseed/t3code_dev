@@ -4,7 +4,6 @@ import { makeKeepAliveWebSocket } from "./wsKeepAlive.ts";
 import * as IssueProviderRegistry from "./issue/IssueProviderRegistry.ts";
 import * as IssueService from "./issue/IssueService.ts";
 import * as ForgejoTransport from "@t3tools/source-control-forgejo/server/ForgejoTransport";
-import * as ProviderMcpServers from "./mcp/ProviderMcpServers.ts";
 import * as DirectPush from "./push/DirectPush.ts";
 import * as ApnsTransport from "./push/ApnsTransport.ts";
 import { directPushHttpApiLayer } from "./push/http.ts";
@@ -736,12 +735,6 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.provide(PreviewBrowser.layer),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(layerIssueService),
-  Layer.provide(
-    ProviderMcpServers.layer.pipe(
-      Layer.provide(ProcessRunner.layer),
-      Layer.provide(layerPtyAdapter),
-    ),
-  ),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),
   Layer.provide(layerCommandReadiness),
   Layer.provide(ServerHttp.layerBrowserApiCors),

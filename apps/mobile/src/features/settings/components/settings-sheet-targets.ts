@@ -18,7 +18,6 @@ export type SettingsSheetTarget =
   | "SettingsScheduledTasks"
   | "SettingsProjectGrouping"
   | "SettingsClientStorage"
-  | "SettingsMcp"
   | "SettingsVoice"
   | "SettingsDiagnostics"
   | "SettingsOpenSourceLicenses"

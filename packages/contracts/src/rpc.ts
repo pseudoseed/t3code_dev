@@ -264,19 +264,6 @@ import {
   TerminalSessionSnapshot,
   TerminalWriteInput,
 } from "./terminal.ts";
-// PseudoCode fork addition.
-import {
-  McpAuthInput,
-  McpAuthCompleteInput,
-  McpAuthCancelInput,
-  McpRepairInput,
-  McpAddInput,
-  McpCopyInput,
-  McpError,
-  McpInventory,
-  McpMutationResult,
-  McpRemoveInput,
-} from "./mcpServers.ts";
 import {
   DiscoveredLocalServerList,
   ConfiguredLocalServerUrls,
@@ -491,18 +478,6 @@ export const WS_METHODS = {
   deviceAction: "device.action",
 
   // Server meta
-  // PseudoCode fork addition: per-instance MCP server management.
-  mcpList: "mcp.list",
-  mcpAdd: "mcp.add",
-  mcpRemove: "mcp.remove",
-  mcpCopy: "mcp.copy",
-  mcpAuthSubscribe: "mcp.auth.subscribe",
-  mcpAuthLogout: "mcp.auth.logout",
-  mcpAuthCancel: "mcp.auth.cancel",
-  mcpAuthComplete: "mcp.auth.complete",
-  mcpAuthStart: "mcp.auth.start",
-  mcpRepair: "mcp.repair",
-
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
@@ -1945,97 +1920,6 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
-// PseudoCode fork addition.
-const WsMcpListRpc = Rpc.make(WS_METHODS.mcpList, {
-  payload: Schema.Struct({}),
-  success: McpInventory,
-  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-const WsMcpAddRpc = Rpc.make(WS_METHODS.mcpAdd, {
-  payload: McpAddInput,
-  success: McpMutationResult,
-  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-const WsMcpRemoveRpc = Rpc.make(WS_METHODS.mcpRemove, {
-  payload: McpRemoveInput,
-  success: McpMutationResult,
-  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-const WsMcpCopyRpc = Rpc.make(WS_METHODS.mcpCopy, {
-  payload: McpCopyInput,
-  success: McpMutationResult,
-  error: Schema.Union([McpError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-const WsMcpRepairRpc = Rpc.make(WS_METHODS.mcpRepair, {
-  payload: McpRepairInput,
-  success: McpMutationResult,
-  error: Schema.Union([
-    McpError,
-    ProviderSetupError,
-    ServerSettingsError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-const WsMcpAuthStartRpc = Rpc.make(WS_METHODS.mcpAuthStart, {
-  payload: McpAuthInput,
-  success: ProviderAuthState,
-  error: Schema.Union([
-    McpError,
-    ProviderSetupError,
-    ServerSettingsError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-const WsMcpAuthCompleteRpc = Rpc.make(WS_METHODS.mcpAuthComplete, {
-  payload: McpAuthCompleteInput,
-  success: ProviderAuthState,
-  error: Schema.Union([
-    McpError,
-    ProviderSetupError,
-    ServerSettingsError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-const WsMcpAuthCancelRpc = Rpc.make(WS_METHODS.mcpAuthCancel, {
-  payload: McpAuthCancelInput,
-  success: ProviderAuthState,
-  error: Schema.Union([
-    McpError,
-    ProviderSetupError,
-    ServerSettingsError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-const WsMcpAuthLogoutRpc = Rpc.make(WS_METHODS.mcpAuthLogout, {
-  payload: McpAuthInput,
-  success: ProviderAuthState,
-  error: Schema.Union([
-    McpError,
-    ProviderSetupError,
-    ServerSettingsError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-const WsMcpAuthSubscribeRpc = Rpc.make(WS_METHODS.mcpAuthSubscribe, {
-  payload: McpAuthInput,
-  success: ProviderAuthState,
-  error: Schema.Union([
-    McpError,
-    ProviderSetupError,
-    ServerSettingsError,
-    EnvironmentAuthorizationError,
-  ]),
-  stream: true,
-});
 /**
  * Checks the connection's scopes against the scope each RPC declares, before
  * the handler runs. Every RPC in `WsRpcGroup` carries it, so a handler cannot
@@ -2249,16 +2133,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,
 
-  // PseudoCode fork additions. Kept last so upstream merges land above them.
-  WsMcpListRpc,
-  WsMcpAddRpc,
-  WsMcpRemoveRpc,
-  WsMcpCopyRpc,
-  WsMcpAuthSubscribeRpc,
-  WsMcpAuthLogoutRpc,
-  WsMcpAuthCancelRpc,
-  WsMcpAuthCompleteRpc,
-  WsMcpAuthStartRpc,
-  WsMcpRepairRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
 ).middleware(RpcScopeAuthorization);

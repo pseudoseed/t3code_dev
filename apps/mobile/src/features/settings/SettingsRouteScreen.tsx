@@ -185,7 +185,6 @@ function SettingsIndexSections() {
       </SettingsSection>
 
       <SettingsSection title="Server settings">
-        <SettingsRow icon="powerplug" label="MCP Servers" target="SettingsMcp" />
         <SettingsRow
           icon="person.crop.circle"
           label="Provider accounts"

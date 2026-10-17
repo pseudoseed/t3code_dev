@@ -143,8 +143,6 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
     authorizationUrl: null,
     expiresAt: null,
     message: null,
-    completion: "redirectUrl",
-    userCode: null,
   };
   const snapshot = yield* SubscriptionRef.make<AuthSnapshot>({
     ownerSessionId: null,

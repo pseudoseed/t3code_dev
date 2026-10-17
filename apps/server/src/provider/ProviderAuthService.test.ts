@@ -43,8 +43,6 @@ const idleAuthState: ProviderAuthState = {
   authorizationUrl: null,
   expiresAt: null,
   message: null,
-  completion: "redirectUrl",
-  userCode: null,
 };
 const waitingAuthState: ProviderAuthState = {
   ...idleAuthState,
