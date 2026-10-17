@@ -3,7 +3,7 @@ import { AuthTerminalOperateScope, EnvironmentId, ThreadId } from "@t3tools/cont
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type ScrollViewInstance } from "react-native";
 
-import { SymbolView, type AppSymbolName } from "../../components/AppSymbol";
+import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { environmentCatalog } from "../../connection/catalog";
 import { readEnvironmentScope } from "../../state/session";
 import { uuidv4 } from "../../lib/uuid";

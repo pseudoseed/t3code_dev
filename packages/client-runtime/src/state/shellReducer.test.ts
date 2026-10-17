@@ -27,22 +27,6 @@ const otherIdentity = {
 };
 
 describe("applyShellStreamEvent", () => {
-  it("updates mailbox delivery state even when the thread activity timestamp is unchanged", () => {
-    const previous = { ...v2ThreadShell, mailboxPendingCount: 1, mailboxRevision: 4 };
-    const thread = { ...previous, mailboxPendingCount: 0, mailboxRevision: 5 };
-    const next = applyShellStreamEvent(
-      { ...v2ShellSnapshot, threads: [previous] },
-      {
-        kind: "thread.updated",
-        sequence: 1,
-        location: "active",
-        thread,
-      },
-    );
-    expect(next.threads[0]).toBe(thread);
-    expect(next.threads[0]?.updatedAt).toBe(previous.updatedAt);
-  });
-
   it("updates a thread in place without moving its siblings", () => {
     const threads = ["a", "b", "c"].map((id) => ({ ...v2ThreadShell, id: ThreadId.make(id) }));
     const updated = { ...threads[1]!, title: "Streaming" };
@@ -198,7 +182,6 @@ describe("applyShellStreamEvent", () => {
       threads: [{ ...v2ThreadShell, title: "Server thread" }],
     };
 
-    // Lower-sequence marked enrichment is identity-only and must not replace structure.
     const afterEnrichment = mergeShellSnapshotProjects(previous, serverSnapshot, {
       resolvedRepositoryIdentityRoots: [v2Project.workspaceRoot],
     });
@@ -207,7 +190,6 @@ describe("applyShellStreamEvent", () => {
     expect(afterEnrichment.projects[0]?.repositoryIdentity).toBeNull();
     expect(afterEnrichment.threads[0]?.title).toBe("Local-only thread");
 
-    // Unmarked authoritative at the same lower sequence still performs the reset.
     const afterAuthoritative = mergeShellSnapshotProjects(afterEnrichment, serverSnapshot);
     expect(afterAuthoritative.snapshotSequence).toBe(3);
     expect(afterAuthoritative.projects[0]?.title).toBe("Server reset");
@@ -242,6 +224,22 @@ describe("applyShellStreamEvent", () => {
     expect(afterEnrichment.projects[0]?.title).toBe("Server reset");
     expect(afterEnrichment.projects[0]?.repositoryIdentity).toBeNull();
     expect(afterEnrichment.threads[0]?.title).toBe("Server thread");
+  });
+
+  it("keeps the project object when an enrichment re-resolves an unchanged identity", () => {
+    const project = { ...v2Project, repositoryIdentity };
+    const previous = { ...v2ShellSnapshot, snapshotSequence: 5, projects: [project] };
+    const next = mergeShellSnapshotProjects(
+      previous,
+      {
+        ...v2ShellSnapshot,
+        snapshotSequence: 5,
+        projects: [{ ...v2Project, repositoryIdentity: { ...repositoryIdentity } }],
+      },
+      { resolvedRepositoryIdentityRoots: [v2Project.workspaceRoot] },
+    );
+
+    expect(next.projects[0]).toBe(project);
   });
 
   it("takes identity from a lower-sequence enrichment without reverting live thread state", () => {

@@ -46,19 +46,6 @@ Terms whose meaning matters across T3 Code. Architecture and lifecycle constrain
 | Turn diff           | The workspace changes attributed to one turn.                                                                   |
 | Subagent model      | The model a thread's subagents run on, held as `subagentModelSelection`. Null means inherit the thread's model. |
 
-## Agent mailbox
-
-| Term              | Meaning                                                                                             |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| Mailbox           | A durable inbox and outbox shared by explicitly linked threads in one environment.                  |
-| Idle wake         | A queued message admits a new turn only once the recipient is idle. Active turns are never steered. |
-| Execution receipt | The frozen incoming IDs, explicit reads, and sent messages recorded for one agent turn.             |
-| Included          | The message or its retrieval reference was supplied to the recipient.                               |
-| Acknowledged      | The recipient explicitly confirmed receipt.                                                         |
-| Resolved          | The recipient marked the requested work done.                                                       |
-
-See [agent mailbox](./agent-mailbox.md).
-
 ## Voice input
 
 | Term              | Meaning                                                                                                  |

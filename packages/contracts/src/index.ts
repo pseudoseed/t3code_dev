@@ -68,7 +68,6 @@ export * from "./rpc.ts";
 export * from "./mcpServers.ts";
 export * from "./directPush.ts";
 
-export * from "./mailbox.ts";
 export * from "./worktreeSetup.ts";
 export * from "./secretRequest.ts";
 export * from "./clientRpcPermissions.ts";

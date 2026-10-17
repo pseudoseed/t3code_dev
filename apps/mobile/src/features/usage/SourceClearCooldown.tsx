@@ -2,7 +2,7 @@ import type { EnvironmentId, UsageLimitSourceClearCooldownInput } from "@t3tools
 import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 

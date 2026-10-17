@@ -1,10 +1,11 @@
 import { assert, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
+import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
+import * as GitHubRequestPolicy from "@t3tools/source-control-github/server/GitHubRequestPolicy";
 import * as GitHubIssueProvider from "./GitHubIssueProvider.ts";
-const rest = vi.fn<GitHubApi.GitHubApi["Service"]["rest"]>();
-const layer = Layer.mock(GitHubApi.GitHubApi)({ rest });
+const rest = vi.fn<GitHubRest.GitHubRest["Service"]["rest"]>();
+const layer = Layer.mock(GitHubRest.GitHubRest)({ rest });
 const target = { cwd: "/repo", host: "github.enterprise.example", repository: "acme/repo" };
 const output = (body: unknown) =>
   Effect.succeed({
@@ -55,7 +56,7 @@ it.layer(layer)("GitHub issues through upstream API", (it) => {
       rest.mockImplementation((input) =>
         input.path === "user"
           ? Effect.fail(
-              new GitHubApi.GitHubApiRequestError({
+              new GitHubRequestPolicy.GitHubApiRequestError({
                 host: target.host,
                 operation: "getViewer",
                 cause: "Account lookup unavailable",
@@ -123,7 +124,7 @@ it.layer(layer)("GitHub issues through upstream API", (it) => {
       assert.include(result.disabledReason ?? "", "turned off");
       rest.mockImplementation(() =>
         Effect.fail(
-          new GitHubApi.GitHubApiRequestError({
+          new GitHubRequestPolicy.GitHubApiRequestError({
             host: target.host,
             operation: "listIssues",
             cause: "offline",

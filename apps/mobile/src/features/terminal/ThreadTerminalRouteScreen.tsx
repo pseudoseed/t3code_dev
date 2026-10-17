@@ -1,3 +1,4 @@
+import * as Dialog from "../../components/ui/Dialog";
 import {
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
@@ -7,17 +8,17 @@ import {
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
-import { ScreenHeader } from "../../components/ScreenHeader";
-import { MaterialScreenContent } from "../../components/MaterialScreenContent";
+import { AppBar } from "../../components/ui/AppBar";
+import { ScreenContent } from "../../components/ui/ScreenContent";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Platform, Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
+import { Platform, Pressable, View } from "react-native";
+import { AppText as Text } from "../../components/ui/AppText";
 import { TerminalContextSheet } from "./TerminalContextSheet";
 import { hasNativeTerminalSurface } from "./nativeTerminalModule";
 import { KeyboardController } from "react-native-keyboard-controller";
 
-import { EmptyState } from "../../components/EmptyState";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { uuidv4 } from "../../lib/uuid";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
@@ -70,7 +71,7 @@ function TerminalHeader(props: {
   readonly onSelectTerminal: (terminalId: string) => void;
 }) {
   return (
-    <ScreenHeader
+    <AppBar
       title="Terminal"
       subtitle={props.subtitle}
       onBack={props.onCloseTerminal}
@@ -505,7 +506,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         onSelectTerminal={handleSelectTerminal}
       />
 
-      <MaterialScreenContent>
+      <ScreenContent>
         <View
           className="flex-1"
           style={{
@@ -558,7 +559,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                 }
                 onCapture={(text) => {
                   if (text.trim()) setCapturedOutput(text);
-                  else Alert.alert("No terminal output", "There is no visible output to attach.");
+                  else Dialog.alert("No terminal output", "There is no visible output to attach.");
                 }}
                 content={session.surfaceContent}
                 environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
@@ -588,7 +589,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
             </>
           )}
         </View>
-      </MaterialScreenContent>
+      </ScreenContent>
     </>
   );
 }

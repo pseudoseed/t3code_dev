@@ -8,7 +8,7 @@ import {
 } from "@t3tools/client-runtime/context-window";
 
 import { useUniwindTheme } from "../lib/useUniwindTheme";
-import { AppText as Text } from "./AppText";
+import { AppText as Text } from "./ui/AppText";
 
 const RING_SIZE = 14;
 const RING_RADIUS = 5.5;

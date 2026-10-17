@@ -34,22 +34,23 @@ const makeRegistry = (now: () => number, httpServer = fakeHttpServer) =>
     );
 
 it.layer(McpProviderSessions.layer)((it) => {
-  it.effect("a mailbox-only credential authenticates but cannot authorize preview tools", () =>
-    Effect.gen(function* () {
-      const registry = yield* makeRegistry(() => 1_000);
-      const issued = yield* registry.issue({
-        threadId: ThreadId.make("mailbox-only"),
-        providerInstanceId: ProviderInstanceId.make("codex"),
-        previewEnabled: false,
-        capabilities: new Set(),
-      });
-      const scope = yield* registry.resolve(
-        issued.config.authorizationHeader.replace(/^Bearer\s+/, ""),
-      );
-      expect(scope?.capabilities.has("mailbox")).toBe(true);
-      expect(scope?.capabilities.has("preview")).toBe(false);
-      expect(issued.config.browserToolsAvailable).toBe(false);
-    }),
+  it.effect(
+    "an orchestration-only credential authenticates but cannot authorize preview tools",
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* makeRegistry(() => 1_000);
+        const issued = yield* registry.issue({
+          threadId: ThreadId.make("orchestration-only"),
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          previewEnabled: false,
+          capabilities: new Set(),
+        });
+        const scope = yield* registry.resolve(
+          issued.config.authorizationHeader.replace(/^Bearer\s+/, ""),
+        );
+        expect(scope?.capabilities.has("preview")).toBe(false);
+        expect(issued.config.browserToolsAvailable).toBe(false);
+      }),
   );
 
   it.effect("stores only a token hash, resolves the bearer token, and revokes by thread", () =>
@@ -69,7 +70,7 @@ it.layer(McpProviderSessions.layer)((it) => {
       const resolved = yield* registry.resolve(token);
       expect(resolved?.thread.threadId).toBe(threadId);
       expect(resolved?.capabilities).toEqual(
-        new Set(["preview", "orchestration", "worktree", "pull-requests", "issues", "mailbox"]),
+        new Set(["preview", "orchestration", "worktree", "pull-requests", "issues"]),
       );
 
       yield* registry.revokeThread(threadId);
@@ -104,7 +105,6 @@ it.layer(McpProviderSessions.layer)((it) => {
 
       expect(yield* capabilitiesOf(withPreview)).toEqual([
         "issues",
-        "mailbox",
         "orchestration",
         "preview",
         "pull-requests",
@@ -112,7 +112,6 @@ it.layer(McpProviderSessions.layer)((it) => {
       ]);
       expect(yield* capabilitiesOf(withoutPreview)).toEqual([
         "issues",
-        "mailbox",
         "orchestration",
         "pull-requests",
         "worktree",
@@ -120,7 +119,6 @@ it.layer(McpProviderSessions.layer)((it) => {
       expect(yield* capabilitiesOf(withDevice)).toEqual([
         "device",
         "issues",
-        "mailbox",
         "orchestration",
         "pull-requests",
         "worktree",
@@ -251,7 +249,6 @@ it.layer(McpProviderSessions.layer)((it) => {
         yield* registry.touch(threadId);
         const renewed = yield* registry.resolve(token);
         expect(renewed?.thread.providerSessionId).toBe(issued.config.providerSessionId);
-        expect(renewed?.capabilities.has("mailbox")).toBe(true);
         yield* registry.touch(ThreadId.make("abandoned-provider-thread"));
         expect(yield* registry.resolve(abandonedToken)).toBeUndefined();
       }),

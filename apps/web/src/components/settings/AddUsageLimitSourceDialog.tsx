@@ -22,17 +22,14 @@ import { Label } from "../ui/label";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 
 /**
- * Stable per source and readable in settings.json. Dots and dashes in the
- * host are kept so `foo-bar.com` and `foo.bar.com` do not collide; anything
- * else (a port's colon, a path) is folded to a dash.
+ * Dots and dashes in the host are kept so `foo-bar.com` and `foo.bar.com` do
+ * not collide; anything else (a port's colon, a path) is folded to a dash.
  */
 function sourceIdFromUrl(kind: UsageLimitSourceKind, url: string): UsageLimitSourceId {
   let host = url;
   try {
     host = new URL(url).host;
-  } catch {
-    // Keep the raw text; the server reports the bad URL on its row.
-  }
+  } catch {}
   const slug = host
     .toLowerCase()
     .replace(/[^a-z0-9.-]+/g, "-")
@@ -70,9 +67,8 @@ const KINDS: ReadonlyArray<{
 ];
 
 /**
- * Adds a usage-limit source on one environment. A key, when the kind needs
- * one, is sent once and kept in that server's secret store; settings only
- * ever carry a redaction marker for it afterwards.
+ * The management key is sent once and kept in that server's secret store; settings only ever
+ * carry a redaction marker for it afterwards.
  */
 export function AddUsageLimitSourceDialog({
   open,

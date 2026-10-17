@@ -216,8 +216,9 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  for (const provider of ["claude", "codex"]) {
-    it.effect(`clears only the selected ${provider} account without spending a reset credit`, () =>
+  it.effect.each(["claude", "codex"])(
+    "clears only the selected %s account without spending a reset credit",
+    (provider) =>
       Effect.gen(function* () {
         const test = fixture({ accounts: accounts.map((account) => ({ ...account, provider })) });
         const api = yield* test.api;
@@ -227,15 +228,15 @@ describe("CLIProxyAPI built-in management API", () => {
           { path: "/v0/management/reset-quota", body: { auth_index: "b" } },
         ]);
       }),
-    );
-  }
+  );
 
-  for (const [name, account] of [
+  it.effect.each([
     ["missing", { ...accounts[0]!, id: "another.json" }],
     ["disabled", { ...accounts[0]!, disabled: true }],
     ["unsupported", { ...accounts[0]!, provider: "xai" }],
-  ] as const) {
-    it.effect(`rejects cooldown clearing for a ${name} account without changing the hub`, () =>
+  ] as const)(
+    "rejects cooldown clearing for a %s account without changing the hub",
+    ([_name, account]) =>
       Effect.gen(function* () {
         const test = fixture({ accounts: [account] });
         const api = yield* test.api;
@@ -243,27 +244,24 @@ describe("CLIProxyAPI built-in management API", () => {
         expect(result._tag).toBe("Failure");
         expect(test.requests).toEqual([{ path: "/v0/management/auth-files" }]);
       }),
-    );
-  }
+  );
 
-  for (const cooldownStatus of [200, 404, 503]) {
-    it.effect(
-      `does not claim a cooldown was cleared on an unconfirmed HTTP ${cooldownStatus} response`,
-      () =>
-        Effect.gen(function* () {
-          const api = yield* fixture({
-            cooldownStatus,
-            cooldownBody: { error: "private-upstream-detail" },
-          }).api;
-          const result = yield* api.clearCooldown(config, "first.json").pipe(Effect.result);
-          expect(result._tag).toBe("Failure");
-          if (result._tag === "Failure") {
-            expect(result.failure._tag).toBe("UsageLimitSourceError");
-            expect(result.failure.detail).not.toContain("private-upstream-detail");
-          }
-        }),
-    );
-  }
+  it.effect.each([200, 404, 503])(
+    "does not claim a cooldown was cleared on an unconfirmed HTTP %s response",
+    (cooldownStatus) =>
+      Effect.gen(function* () {
+        const api = yield* fixture({
+          cooldownStatus,
+          cooldownBody: { error: "private-upstream-detail" },
+        }).api;
+        const result = yield* api.clearCooldown(config, "first.json").pipe(Effect.result);
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toBe("UsageLimitSourceError");
+          expect(result.failure.detail).not.toContain("private-upstream-detail");
+        }
+      }),
+  );
 
   it.effect("pins redemption to the displayed credit and clears only that account's cooldown", () =>
     Effect.gen(function* () {
@@ -278,7 +276,6 @@ describe("CLIProxyAPI built-in management API", () => {
       expect(redemptions[0]?.body?.data).toBe(redemptions[1]?.body?.data);
       expect(redemptions[0]?.body?.data).toBe(
         encodeJson({
-          // UUIDv5 of "account-b:credit-b"; must stay stable so retries deduplicate.
           redeem_request_id: "519d5243-011a-5b7b-91f3-44d85f095705",
           credit_id: "credit-b",
         }),

@@ -1,11 +1,11 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { useMemo } from "react";
-import { Platform } from "react-native";
+import { isDuoDevice } from "../../lib/device-type";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
+import { useDeviceType } from "../../native/native-layout-metrics";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
-import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
@@ -21,11 +21,10 @@ export function useThreadHeaderOptions(props: {
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
-  readonly mailboxPendingCount: number;
-  readonly onOpenMailbox?: (() => void) | undefined;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
-  const usesDuoHeader = usesNativeWorkspaceColumns && Platform.OS === "ios" && !Platform.isPad;
+  const deviceType = useDeviceType();
+  const usesDuoHeader = usesNativeWorkspaceColumns && isDuoDevice(deviceType);
   const navigation = useNavigation();
   const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
@@ -35,8 +34,6 @@ export function useThreadHeaderOptions(props: {
       ...(!usesDuoHeader
         ? [
             {
-              // Match Mail's split-view detail toolbar: the first detail action sits
-              // inside the content pane, not flush against the sidebar divider.
               spacing: 18,
               type: "spacing" as const,
             },
@@ -89,9 +86,6 @@ export function useThreadHeaderOptions(props: {
       usesNativeWorkspaceColumns,
     ],
   );
-  // Deep links / cold starts land with Thread as the ONLY route, where the
-  // native back button does not render. Provide an explicit Home escape for
-  // that case; when history exists the native back button is used instead.
   const canGoBack = navigation.canGoBack();
   const compactHomeHeaderItems = useMemo<NativeHeaderItems>(
     () => [
@@ -110,24 +104,6 @@ export function useThreadHeaderOptions(props: {
     () => [
       ...threadCenterHeaderItems,
       { type: "spacing", spacing: 8 },
-      ...(layout.usesSplitView &&
-      Platform.OS === "ios" &&
-      !Platform.isPad &&
-      !panes.primarySidebarVisible
-        ? [
-            withNativeGlassHeaderItem({
-              type: "button" as const,
-              axisBehavior: "verticalPreferred",
-              identifier: "thread-right-search",
-              label: "Search threads",
-              accessibilityLabel: "Search threads",
-              icon: { name: "magnifyingglass", type: "sfSymbol" as const },
-              onPress: () => {
-                dispatchHardwareKeyboardCommand("focusSearch");
-              },
-            }),
-          ]
-        : []),
       withNativeGlassHeaderItem({
         type: "button" as const,
         axisBehavior: "verticalPreferred",
@@ -138,7 +114,7 @@ export function useThreadHeaderOptions(props: {
         onPress: () => navigation.navigate("NewTaskSheet", { screen: "NewTask" }),
       }),
     ],
-    [navigation, threadCenterHeaderItems, layout.usesSplitView, panes.primarySidebarVisible],
+    [navigation, threadCenterHeaderItems],
   );
 
   const options: AppNativeStackNavigationOptions = {
@@ -152,36 +128,17 @@ export function useThreadHeaderOptions(props: {
       : undefined,
     title: props.title,
     headerBackVisible: !layout.usesSplitView,
-    // Compact uses the NATIVE back button when a previous route exists;
-    // deep links / cold starts get an explicit Home button instead.
-    // Split view always uses its custom left items.
     unstable_headerLeftItems: layout.usesSplitView
       ? () => splitLeftHeaderItems
       : canGoBack
         ? undefined
         : () => compactHomeHeaderItems,
-    // Search lives in the persistent sidebar, so the split header keeps
-    // the git controls on the RIGHT (no center items — center space is
-    // reserved for future breadcrumbs/status).
-    unstable_headerRightItems: () => [
-      ...(usesDuoHeader
+    unstable_headerRightItems: () =>
+      usesDuoHeader
         ? duoRightHeaderItems
         : layout.usesSplitView
           ? threadCenterHeaderItems
-          : compactRightHeaderItems),
-      ...(props.onOpenMailbox
-        ? [
-            withNativeGlassHeaderItem({
-              type: "button",
-              identifier: "thread-mailbox",
-              label: "Mailbox",
-              accessibilityLabel: `Agent mailbox, ${props.mailboxPendingCount} pending`,
-              icon: { name: "envelope", type: "sfSymbol" },
-              onPress: props.onOpenMailbox,
-            }),
-          ]
-        : []),
-    ],
+          : compactRightHeaderItems,
     unstable_headerToolbarItems: () => [],
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
@@ -199,8 +156,6 @@ export function useThreadHeaderOptions(props: {
       compactRightHeaderItems,
       duoRightHeaderItems,
       usesDuoHeader,
-      props.onOpenMailbox,
-      props.mailboxPendingCount,
       environmentId,
       threadId,
       gitStatus?.isDefaultRef,

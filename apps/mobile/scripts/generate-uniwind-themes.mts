@@ -51,9 +51,9 @@ const color = (family: TailwindColorFamily, shade?: TailwindColorShade, opacity 
   return `color-mix(in srgb, ${value} ${percentage}%, transparent)`;
 };
 
-// These replace the remaining dark:* utility pairs. A registered palette theme is
-// neither literally `light` nor `dark`, so appearance-sensitive values must also be
-// represented as semantic variables for custom themes.
+// A registered palette theme is neither literally `light` nor `dark`, so
+// appearance-sensitive values must also be represented as semantic variables for
+// custom themes.
 const ADAPTIVE_COLORS: Readonly<Record<string, readonly [light: string, dark: string]>> = {
   // Clerk's custom profile pages keep its native palette under every app theme.
   // Keep these values aligned with clerk-theme.json, outside the runtime palette.
@@ -182,7 +182,6 @@ const variablesFor = (themeId: BuiltInThemeId, appearance: MobileThemeAppearance
 // Clerk's native screens use one build-time palette per appearance. Custom
 // profile pages must match it even when the rest of the app uses a named theme.
 const clerkColorsFor = (appearance: MobileThemeAppearance) => {
-  // Native authentication uses plain cards, rather than tonal settings groups.
   const variables = createMobileThemeVariables(
     getMobileThemeColors(DEFAULT_MOBILE_THEME_ID, appearance),
     appearance,

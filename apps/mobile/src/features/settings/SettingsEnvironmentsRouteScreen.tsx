@@ -1,4 +1,4 @@
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useNavigation } from "@react-navigation/native";
 import { useAtomValue } from "@effect/atom-react";
 import { managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
@@ -8,8 +8,8 @@ import { Platform, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SettingsScreen } from "./components/SettingsScreen";
-import { AndroidAnchoredMenu } from "../../components/AndroidAnchoredMenu";
-import { AndroidHeaderIconButton } from "../../components/AndroidScreenHeader";
+import { AndroidAnchoredMenu } from "../../components/ui/AndroidAnchoredMenu";
+import { AndroidHeaderIconButton } from "../../components/ui/AndroidScreenHeader";
 import { CloudEnvironmentRows } from "../connection/CloudEnvironmentRows";
 import { LocalEnvironmentList } from "../connection/LocalEnvironmentList";
 import { GitHubRoutingSettings } from "../connection/GitHubRoutingSettings";
@@ -171,12 +171,6 @@ export function SettingsEnvironmentsRouteScreen() {
           onRemove={onRemoveEnvironmentPress}
           onSetEnabled={onSetEnvironmentEnabled}
           onUpdate={handleUpdateEnvironment}
-          onSetupProvider={(params) =>
-            navigation.navigate("SettingsSheet", {
-              screen: "SettingsContent",
-              params: { screen: "SettingsProviderSetup", params },
-            })
-          }
         />
 
         {/* Always mounted: already-connected relay environments must stay
@@ -185,12 +179,6 @@ export function SettingsEnvironmentsRouteScreen() {
         <CloudEnvironmentRows
           connectedCloudEnvironments={connectedCloudEnvironments}
           onOpenEnvironment={openEnvironment}
-          onSetupProvider={(params) =>
-            navigation.navigate("SettingsSheet", {
-              screen: "SettingsContent",
-              params: { screen: "SettingsProviderSetup", params },
-            })
-          }
           onSetEnvironmentEnabled={onSetEnvironmentEnabled}
           onRemoveEnvironment={onRemoveEnvironmentPress}
           {...(SHOWCASE_ENABLED

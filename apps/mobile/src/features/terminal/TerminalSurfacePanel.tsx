@@ -7,16 +7,16 @@ import {
   useKeyboardState,
 } from "react-native-keyboard-controller";
 
-import { MaterialButton } from "../../components/MaterialButton";
-import { MaterialIconButton } from "../../components/MaterialIconButton";
+import { Button } from "../../components/ui/Button";
+import { IconButton } from "../../components/ui/IconButton";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SymbolView } from "../../components/AppSymbol";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import {
   ComposerToolbarButton,
   ComposerToolbarRow,
   ComposerToolbarScroller,
 } from "../../components/ComposerToolbar";
-import { GlassSurface } from "../../components/GlassSurface";
+import { GlassSurface } from "../../components/ui/GlassSurface";
 import { TerminalSurface } from "./NativeTerminalSurface";
 import type { TerminalOutputState } from "@t3tools/client-runtime/state/terminal";
 import type { TerminalTheme } from "./terminalTheme";
@@ -228,10 +228,10 @@ export function TerminalSurfacePanel(props: {
           style={{ paddingBottom: isHosted ? 0 : insets.bottom }}
         >
           {props.onRequestCapture ? (
-            <MaterialButton label="Attach output" tone="text" onPress={props.onRequestCapture} />
+            <Button label="Attach output" tone="text" onPress={props.onRequestCapture} />
           ) : null}
           <View className="flex-1" />
-          <MaterialIconButton
+          <IconButton
             accessibilityLabel="Show keyboard"
             disabled={props.readOnly}
             icon="keyboard"

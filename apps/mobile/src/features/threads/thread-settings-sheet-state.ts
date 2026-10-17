@@ -1,32 +1,10 @@
-import type { ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { providerNeedsSetup } from "../settings/provider-setup-state";
-
-/** Read setup choices from this environment, not the selectable model list. */
-export function providerSetupCandidates(input: {
-  readonly providers: ReadonlyArray<ServerProvider>;
-  readonly instanceId?: ProviderInstanceId;
-  readonly providerFilter: string | null;
-  readonly query: string;
-}): ReadonlyArray<ServerProvider> {
-  const query = input.query.trim().toLocaleLowerCase();
-  return input.providers.filter(
-    (provider) =>
-      providerNeedsSetup(provider) &&
-      (input.instanceId === undefined || provider.instanceId === input.instanceId) &&
-      (input.providerFilter === null || provider.instanceId === input.providerFilter) &&
-      (query.length === 0 ||
-        [provider.displayName ?? "", provider.driver, provider.instanceId].some((label) =>
-          label.toLocaleLowerCase().includes(query),
-        )),
-  );
-}
+import type { ProviderInstanceId } from "@t3tools/contracts";
 
 export function modelFavoriteKey(provider: ProviderInstanceId, model: string): string {
   return `${provider}:${model}`;
 }
 
-/** Keep catalog order within each group when favorites move to the front. */
 export function favoritesFirst(
   models: ReadonlyArray<ModelOption>,
   favoriteKeys: ReadonlySet<string>,
@@ -39,7 +17,6 @@ export function favoritesFirst(
   return [...favorites, ...others];
 }
 
-/** Match the terms a user can actually see or recognize in the model picker. */
 export function modelMatchesCatalogQuery(input: {
   readonly model: ModelOption;
   readonly providerLabel: string;
@@ -58,7 +35,6 @@ export function modelMatchesCatalogQuery(input: {
   ].some((value) => value.toLocaleLowerCase().includes(query));
 }
 
-/** Preserve staged provider options when the highlighted model is tapped again. */
 export function pendingModelAfterPress(input: {
   readonly current: ModelOption | null;
   readonly pressed: ModelOption;
@@ -70,7 +46,6 @@ export function pendingModelAfterPress(input: {
   return input.current?.key === input.pressed.key ? input.current : input.pressed;
 }
 
-/** A model can disappear while its setup page is open inside the picker. */
 export function canCommitPendingModel(
   pending: ModelOption,
   groups: ReadonlyArray<ProviderGroup>,
@@ -82,10 +57,6 @@ export function canCommitPendingModel(
   );
 }
 
-/**
- * Primary and selected providers start open; all other catalogs start closed.
- * A user's disclosure tap inverts that default until the picker is dismissed.
- */
 export function providerSectionIsCollapsed(input: {
   readonly defaultExpanded: boolean;
   readonly hasExpansionOverride: boolean;

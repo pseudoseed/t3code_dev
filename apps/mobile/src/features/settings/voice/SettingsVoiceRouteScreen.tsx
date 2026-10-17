@@ -19,9 +19,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidScreenHeader } from "../../../components/AndroidScreenHeader";
-import { SymbolView } from "../../../components/AppSymbol";
-import { AppText as Text } from "../../../components/AppText";
+import { AndroidScreenHeader } from "../../../components/ui/AndroidScreenHeader";
+import { SymbolView } from "../../../components/ui/AppSymbol";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { NativeStackScreenOptions } from "../../../native/StackHeader";
 import { DIARIZER_MODEL_ID } from "../../../native/t3Voice";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";

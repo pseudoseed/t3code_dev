@@ -14,7 +14,7 @@ import {
   type ViewProps,
 } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
@@ -202,7 +202,6 @@ const NativeTerminalSurfaceHost = memo(function NativeTerminalSurfaceHost(
     terminalDebugLog("native:surface", {
       terminalKey: props.terminalKey,
       native: true,
-      // null = installed binary predates native hardware-key handling (rebuild needed).
       hardwareKeyRevision: getNativeTerminalHardwareKeyRevision(),
       // null = installed binary predates incremental writes (rebuild needed).
       bufferStreamRevision: getNativeTerminalBufferStreamRevision(),

@@ -20,7 +20,6 @@ export type SettingsSheetTarget =
   | "SettingsClientStorage"
   | "SettingsMcp"
   | "SettingsVoice"
-  | "SettingsLimits"
   | "SettingsDiagnostics"
   | "SettingsOpenSourceLicenses"
   | "SettingsUsage";

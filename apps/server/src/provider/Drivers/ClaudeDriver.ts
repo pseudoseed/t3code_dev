@@ -1,17 +1,3 @@
-/**
- * ClaudeDriver — `ProviderDriver` for the Claude Agent SDK runtime.
- *
- * Mirrors `CodexDriver`: a plain value whose `create()` returns one
- * `ProviderInstance` bundling `snapshot` / `adapter` / `textGeneration`
- * closures captured over the per-instance `ClaudeSettings`.
- *
- * Unlike Codex, the Claude snapshot probe may invoke a secondary probe
- * (`probeClaudeCapabilities`) to read Anthropic account + slash-command
- * metadata. That probe is per-instance and keyed by binary + resolved HOME so
- * two concurrent Claude instances don't cross-contaminate account metadata.
- *
- * @module provider/Drivers/ClaudeDriver
- */
 import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
@@ -72,7 +58,6 @@ import {
   makeClaudeContinuationGroupKey,
   resolveClaudeHomePath,
 } from "./ClaudeHome.ts";
-import { makeClaudeAuthController } from "./ClaudeLogin.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
@@ -125,7 +110,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const { cwd, providerHomesDir } = yield* ServerConfig.ServerConfig;
+      // The server cwd is $HOME in packaged desktop builds, and `claude`
+      // wrappers that scope themselves to their cwd refuse to run there.
+      const { stateDir, providerHomesDir } = yield* ServerConfig.ServerConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
@@ -178,8 +165,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         displayName,
         accentColor,
         continuationGroupKey,
-        // PseudoCode signs in through the Claude CLI but does not install it.
-        setup: { canAuthenticate: true, canInstall: false },
       });
 
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
@@ -217,7 +202,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         timeToLive: CAPABILITIES_PROBE_TTL,
         lookup: () =>
           Effect.all([
-            probeClaudeCapabilities(effectiveConfig, processEnv, cwd),
+            probeClaudeCapabilities(effectiveConfig, processEnv, stateDir),
             ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath),
           ]).pipe(
             Effect.map(([capabilities, workspaceId]) =>
@@ -229,12 +214,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       });
       const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(
         effectiveConfig,
-        cwd,
+        stateDir,
         processEnv,
       );
 
-      // Start the TTL-gated refresh without delaying provider readiness. The
-      // next check observes a remote manifest after the background fetch lands.
       const checkProvider = catalogService.refreshInBackground.pipe(
         Effect.andThen(
           modelCatalog.pipe(
@@ -243,7 +226,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
                 effectiveConfig,
                 () => Cache.get(capabilitiesProbeCache, capabilitiesCacheKey),
                 processEnv,
-                cwd,
+                stateDir,
                 catalog,
                 scopedLimitNames,
                 (version) =>
@@ -297,21 +280,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ),
       );
 
-      // The capabilities probe caches account metadata for minutes at a time.
-      // Signing in or out changes exactly that metadata, so the cache entry has
-      // to go before the snapshot is re-probed or the UI keeps showing the
-      // previous account.
-      const reprobeAccount = Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
-        Effect.andThen(snapshot.refresh),
-        Effect.asVoid,
-      );
-      const auth = yield* makeClaudeAuthController({
-        instanceId,
-        config: effectiveConfig,
-        environment: processEnv,
-        onAuthenticated: reprobeAccount,
-        onSignedOut: reprobeAccount,
-      });
       // Same rules as Codex: serialised on the config directory that holds the
       // login, one request id kept until Claude answers (a cooldown or rate
       // limit is an answer), then a re-probe.
@@ -349,8 +317,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
                 cause,
               }),
           ),
-          // Re-probe after any answer, but only a reset claims the limits
-          // changed, so only a reset reports an unconfirmed refresh.
           Effect.tap((outcome) =>
             Effect.gen(function* () {
               const before = (yield* snapshot.getSnapshot).usageLimits?.checkedAt;
@@ -396,7 +362,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
           ),
         orchestrationAdapter,
         textGeneration,
-        auth,
         consumeResetCredit,
       } satisfies ProviderInstance;
     }),

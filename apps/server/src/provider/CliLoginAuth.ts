@@ -429,9 +429,11 @@ export const makeCliLoginAuth = Effect.fn("makeCliLoginAuth")(function* (
                 `${options.providerLabel} sign-in or sign-out is already in progress.`,
               );
             }
-            const flowId = yield* crypto.randomUUIDv4.pipe(
-              Effect.mapError(() => setupError("start", "Could not start sign-in. Try again.")),
-            );
+            const flowId = yield* crypto
+              .randomUUIDv4()
+              .pipe(
+                Effect.mapError(() => setupError("start", "Could not start sign-in. Try again.")),
+              );
             const expiresAtMillis =
               (yield* Clock.currentTimeMillis) + Duration.toMillis(FLOW_TIMEOUT);
             const state: ProviderAuthState = {

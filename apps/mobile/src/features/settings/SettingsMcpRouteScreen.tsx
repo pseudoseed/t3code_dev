@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
+import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { cn } from "../../lib/cn";
 import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";

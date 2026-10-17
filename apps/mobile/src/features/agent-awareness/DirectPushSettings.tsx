@@ -3,7 +3,7 @@ import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 import { Alert, Platform, View } from "react-native";
 import * as Notifications from "expo-notifications";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { useEnvironments } from "../../state/environments";
 import { SettingsSection } from "../settings/components/SettingsSection";

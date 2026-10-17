@@ -829,9 +829,7 @@ export class VoiceInputController {
       if (this.state.phase === "error" && uri === this.retryRecording?.uri) continue;
       try {
         this.dependencies.deleteRecording(uri);
-      } catch {
-        // The cache may already have removed a failed or interrupted recording.
-      }
+      } catch {}
     }
     this.ownedRecordingUris.clear();
     if (this.state.phase !== "error") this.retryRecording = null;
@@ -867,9 +865,7 @@ export class VoiceInputController {
     try {
       await this.dependencies.releaseRecording();
       this.recordingConfigured = false;
-    } catch {
-      // Final cleanup retries if the prompt release before transcription fails.
-    }
+    } catch {}
   }
 
   private invalidateOperation(): void {

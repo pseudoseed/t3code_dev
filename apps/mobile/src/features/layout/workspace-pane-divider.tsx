@@ -11,14 +11,12 @@ interface WorkspacePaneDividerProps {
   /** "x" resizes a side column's width, "y" a docked pane's height. */
   readonly axis?: "x" | "y";
   readonly currentWidth: number;
-  /** 1 when dragging right/down grows the pane, -1 when the opposite does. */
   readonly resizeDirection: 1 | -1;
   readonly onResizeStart?: () => void;
   readonly onResizeBy: (delta: number) => void;
   readonly onResizeEnd?: () => void;
 }
 
-/** A forgiving divider target for touch, pointer, and VoiceOver users. */
 export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
   const latestProps = useRef(props);
   latestProps.current = props;

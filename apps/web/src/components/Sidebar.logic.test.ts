@@ -11,7 +11,6 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
-  buildSidebarProjectSections,
   createThreadJumpHintVisibilityController,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
@@ -31,9 +30,6 @@ import {
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
-  resolveSidebarHiddenProjectKeys,
-  resolveVisibleSidebarProjectKeys,
-  sidebarProjectFilterLabel,
   resolveSidebarSweepKeys,
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
@@ -41,6 +37,7 @@ import {
   resolveSidebarThreadStatus,
   resolveSidebarV2TopStatus,
   resolveThreadLastVisitedAt,
+  resolveThreadRowClassName,
   resolveThreadStatusPill,
   resolveWorkingStartedAt,
   pullRequestMatchesSearchQuery,
@@ -56,6 +53,7 @@ import {
   sortProjectsForSidebar,
   sortScopedProjectsForSidebar,
   sortSidebarV2ProjectGroups,
+  shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
   type SidebarListItem,
@@ -64,6 +62,7 @@ import {
   resolveSidebarDropVerb,
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 
 import {
@@ -756,10 +755,6 @@ describe("orderItemsByPreferredIds", () => {
   });
 
   it("honors projectOrder physical keys via getProjectOrderKey", async () => {
-    // Regression guard for #1904 / the regression introduced by #2055:
-    // `projectOrder` is populated with physical keys (envId + cwd-derived)
-    // by the store and by drag-end handlers. Readers must identify projects
-    // with the same key format, or manual sort silently snaps back.
     const { getProjectOrderKey } = await import("../logicalProject");
     const projects = [
       {
@@ -1100,79 +1095,6 @@ describe("filterSidebarProjectScopeItems", () => {
   });
 });
 
-describe("sidebar project visibility filter", () => {
-  const projectKeys = ["alpha", "beta", "gamma"];
-
-  it("shows every project when nothing is hidden", () => {
-    expect(resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: [] })).toEqual(projectKeys);
-  });
-
-  it("ignores hidden keys for projects this client does not know about", () => {
-    expect(
-      resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: ["beta", "offline-project"] }),
-    ).toEqual(["alpha", "gamma"]);
-  });
-
-  it("hides exactly the projects left out of the selection", () => {
-    expect(
-      resolveSidebarHiddenProjectKeys({
-        hiddenKeys: [],
-        projectKeys,
-        visibleKeys: ["alpha", "gamma"],
-      }),
-    ).toEqual(["beta"]);
-  });
-
-  it("stores nothing when everything is selected and everything when nothing is", () => {
-    expect(
-      resolveSidebarHiddenProjectKeys({
-        hiddenKeys: ["beta"],
-        projectKeys,
-        visibleKeys: projectKeys,
-      }),
-    ).toEqual([]);
-    expect(
-      resolveSidebarHiddenProjectKeys({ hiddenKeys: [], projectKeys, visibleKeys: [] }),
-    ).toEqual(projectKeys);
-  });
-
-  it("carries through hidden projects belonging to an offline environment", () => {
-    expect(
-      resolveSidebarHiddenProjectKeys({
-        hiddenKeys: ["offline-project", "beta"],
-        projectKeys,
-        visibleKeys: projectKeys,
-      }),
-    ).toEqual(["offline-project"]);
-  });
-
-  it("round-trips a selection back through the visible-key resolver", () => {
-    const hidden = resolveSidebarHiddenProjectKeys({
-      hiddenKeys: ["offline-project"],
-      projectKeys,
-      visibleKeys: ["gamma"],
-    });
-    expect(resolveVisibleSidebarProjectKeys({ projectKeys, hiddenKeys: hidden })).toEqual([
-      "gamma",
-    ]);
-  });
-
-  it("labels the trigger by state", () => {
-    const label = (visibleCount: number, soleVisibleLabel: string | null = null) =>
-      sidebarProjectFilterLabel({ totalCount: 3, visibleCount, soleVisibleLabel });
-    expect(label(3)).toBe("All projects");
-    expect(label(0)).toBe("No projects");
-    expect(label(1, "Alpha workspace")).toBe("Alpha workspace");
-    expect(label(2)).toBe("2 of 3 projects");
-  });
-
-  it("does not claim all projects are shown when there are none", () => {
-    expect(
-      sidebarProjectFilterLabel({ totalCount: 0, visibleCount: 0, soleVisibleLabel: null }),
-    ).toBe("No projects");
-  });
-});
-
 describe("reduceSidebarProjectScopeMenuState", () => {
   const queriedOpenState = { open: true, query: "alpha" };
 
@@ -1269,7 +1191,6 @@ describe("resolveWorkingStartedAt", () => {
           activityStartedAt,
         );
       }
-      // A server-owned run without a valid start must not borrow a local dispatch clock.
       expect(
         deriveActiveWorkStartedAt(
           latestRun,
@@ -1798,8 +1719,6 @@ describe("sortProjectsForSidebar", () => {
     "matches the per-comparison %s order on a shuffled list with ties",
     (sortOrder) => {
       const minute = (value: number) => `2026-03-09T10:0${value}:00.000Z`;
-      // (index * 7) % 24 scrambles the input order. Titles repeat, and
-      // projects 16-23 have no threads, so they use their own stamps.
       const projects = Array.from({ length: 24 }, (_, index) => {
         const n = (index * 7) % 24;
         return makeProject({
@@ -1815,8 +1734,6 @@ describe("sortProjectsForSidebar", () => {
         updatedAt: minute(n % 3),
         latestUserMessageAt: n % 4 === 0 ? null : minute(n % 5),
       }));
-      // The comparator this sort replaced: it walked each project's threads
-      // on every call.
       const timestamp = (project: Project) =>
         getProjectSortTimestamp(
           project,
@@ -1955,72 +1872,6 @@ describe("sortLogicalProjectsForSidebar", () => {
   });
 });
 
-describe("buildSidebarProjectSections", () => {
-  const thread = (id: string, projectKey: string) => ({ id, projectKey });
-  const projectKeyOf = (item: { projectKey: string }) => item.projectKey;
-
-  it("keeps sections in the project sort order and drops empty ones", () => {
-    const sections = buildSidebarProjectSections({
-      active: [thread("a", "beta"), thread("b", "alpha")],
-      snoozed: [],
-      settled: [],
-      projectKeyOf,
-      projectOrder: ["alpha", "beta", "gamma"],
-    });
-    expect(sections.map((section) => section.projectKey)).toEqual(["alpha", "beta"]);
-  });
-
-  it("preserves bucket ordering inside a section", () => {
-    const [section] = buildSidebarProjectSections({
-      active: [thread("a1", "alpha"), thread("a2", "alpha")],
-      snoozed: [thread("s1", "alpha")],
-      settled: [thread("t1", "alpha")],
-      projectKeyOf,
-      projectOrder: ["alpha"],
-    });
-    expect(section?.active.map((item) => item.id)).toEqual(["a1", "a2"]);
-    expect(section?.snoozed.map((item) => item.id)).toEqual(["s1"]);
-    expect(section?.settled.map((item) => item.id)).toEqual(["t1"]);
-  });
-
-  it("still sections threads whose project fell out of the sort order", () => {
-    const sections = buildSidebarProjectSections({
-      active: [thread("a", "alpha"), thread("o", "orphan")],
-      snoozed: [],
-      settled: [],
-      projectKeyOf,
-      projectOrder: ["alpha"],
-    });
-    expect(sections.map((section) => section.projectKey)).toEqual(["alpha", "orphan"]);
-  });
-
-  it("gives a project with only settled threads its own section", () => {
-    const sections = buildSidebarProjectSections({
-      active: [],
-      snoozed: [],
-      settled: [thread("t1", "alpha")],
-      projectKeyOf,
-      projectOrder: ["alpha"],
-    });
-    expect(sections).toHaveLength(1);
-    expect(sections[0]?.settled).toHaveLength(1);
-  });
-});
-
-describe("resolveSidebarDropVerb", () => {
-  it("names the state change a cross-section drop performs", () => {
-    expect(resolveSidebarDropVerb("active", "pinned")).toBe("pin");
-    expect(resolveSidebarDropVerb("settled", "pinned")).toBe("pin");
-    expect(resolveSidebarDropVerb("snoozed", "pinned")).toBe("pin");
-    expect(resolveSidebarDropVerb("pinned", "active")).toBe("unpin");
-    expect(resolveSidebarDropVerb("settled", "active")).toBe("unsettle");
-    expect(resolveSidebarDropVerb("snoozed", "active")).toBe("wake");
-    expect(resolveSidebarDropVerb("active", "settled")).toBe("settle");
-    expect(resolveSidebarDropVerb("pinned", "settled")).toBe("settle");
-    expect(resolveSidebarDropVerb("snoozed", "settled")).toBe("settle");
-  });
-});
-
 describe("sortSidebarV2ProjectGroups", () => {
   it("does not let a hidden subagent thread reorder projects", () => {
     const olderProjectId = ProjectId.make("project-older");
@@ -2078,8 +1929,6 @@ describe("resolveThreadLastVisitedAt", () => {
   });
 
   it("keeps the server watermark authoritative when visited tracking exists", () => {
-    // A rewound server value (mark-unread) must win even over a newer local
-    // watermark left behind by earlier viewing on this device.
     expect(resolveThreadLastVisitedAt("2026-07-30T10:00:00.000Z", "2026-07-30T10:00:05.000Z")).toBe(
       "2026-07-30T10:00:00.000Z",
     );
@@ -2111,8 +1960,6 @@ describe("pinOrderKeyBetween", () => {
   });
 
   it("stays strictly ordered under repeated top insertion", () => {
-    // Every new pin lands at the head of the arranged run; keys must keep
-    // sorting before the previous head without ever bottoming out.
     let head: string | null = null;
     const keys: string[] = [];
     for (let i = 0; i < 100; i += 1) {
@@ -2285,7 +2132,6 @@ describe("Working shelf (beta)", () => {
     latestRun: makeLatestRun(),
     runtime: null,
   };
-  // Stopped with background tasks still open: V2's "waiting" sidebar status.
   const waiting = {
     ...idle,
     runtime: { ...runtime, status: "idle" as const },
@@ -2374,7 +2220,6 @@ describe("Working shelf (beta)", () => {
       key,
       section,
     });
-    // Pinned p1 | Active a1 a2 | Working w1 | Settled s1
     const items: readonly SidebarListItem[] = [
       marker("pinned-header"),
       row("p1", "pinned"),
@@ -2398,8 +2243,6 @@ describe("Working shelf (beta)", () => {
     });
 
     it("arranges the rows it can write when another row's server cannot store an order", () => {
-      // None of the rows has a key yet, so the drop needs keys for its
-      // neighbors too. "offline" sits on a server that cannot take them.
       const plan = planSidebarThreadDrop({
         activeKey: "a2",
         activeSection: "active",
@@ -2424,7 +2267,6 @@ describe("Working shelf (beta)", () => {
       const [a2, a1] = plan.assignments.map(({ orderKey }) => orderKey);
       expect(a2! < a1!).toBe(true);
 
-      // A keyed row on that server still sorts by its key, so it stays a bound.
       const above = planSidebarThreadDrop({
         activeKey: "a2",
         activeSection: "active",

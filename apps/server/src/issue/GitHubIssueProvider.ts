@@ -4,7 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { IssueActor, IssueComment } from "@t3tools/contracts";
-import * as GitHubApi from "@t3tools/source-control-github/server/GitHubApi";
+import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
+import * as GitHubRequestPolicy from "@t3tools/source-control-github/server/GitHubRequestPolicy";
 import { IssueProviderError, type IssueProviderApi, type ProviderIssue } from "./IssueProvider.ts";
 
 const Actor = Schema.Struct({
@@ -84,8 +85,8 @@ const repositoryPath = (repository: string) =>
 
 /** Uses the upstream credential selection, Enterprise routing and rate-limit budget. */
 export const make = Effect.gen(function* () {
-  const api = yield* GitHubApi.GitHubApi;
-  const fail = (operation: string) => (cause: GitHubApi.GitHubApiError) =>
+  const api = yield* GitHubRest.GitHubRest;
+  const fail = (operation: string) => (cause: GitHubRequestPolicy.GitHubApiError) =>
     new IssueProviderError({
       provider: SourceControlProviderKind.make("github"),
       operation,
@@ -103,9 +104,9 @@ export const make = Effect.gen(function* () {
       detail: cause.message,
       cause,
     });
-  const request = (input: GitHubApi.GitHubRestInput) =>
+  const request = (input: GitHubRest.GitHubRestInput) =>
     api.rest({ ...input, allowReserve: true }).pipe(Effect.mapError(fail(input.operation)));
-  const read = <A, I>(input: GitHubApi.GitHubRestInput, schema: Schema.Codec<A, I>) =>
+  const read = <A, I>(input: GitHubRest.GitHubRestInput, schema: Schema.Codec<A, I>) =>
     request(input).pipe(
       Effect.flatMap((response) =>
         Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(response.body).pipe(
