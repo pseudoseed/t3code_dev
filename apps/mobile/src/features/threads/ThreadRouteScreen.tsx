@@ -431,13 +431,16 @@ function ThreadRouteContent(
     });
   }, [props.renderInspector, routeThreadIdentity]);
 
-  useFocusEffect(() => {
-    return () => {
-      if (props.renderInspector === undefined) {
-        setInspectorSelection(null);
-      }
-    };
-  });
+  // Navigation also runs cleanup when this callback changes without a blur.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (props.renderInspector === undefined) {
+          setInspectorSelection(null);
+        }
+      };
+    }, [props.renderInspector]),
+  );
   const routeEnvironmentRuntime = useRemoteEnvironmentRuntime(environmentId);
   const routeConnectionState =
     routeEnvironmentRuntime?.connectionState ?? (environmentId ? "available" : connectionState);
@@ -668,41 +671,25 @@ function ThreadRouteContent(
     },
     [routeThreadIdentity],
   );
-  const TerminalInspector = useCallback(
-    () =>
-      selectedThread !== null && selectedThreadProject?.workspaceRoot ? (
-        <ThreadTerminalPane
-          key={`${selectedThread.environmentId}:${selectedThread.id}`}
-          activeTerminalId={terminalPaneTerminalId}
-          canToggleDockPosition={dock.supported && fileInspector.supported}
-          dockPosition={terminalDockPosition}
-          environmentId={selectedThread.environmentId}
-          headerInset={terminalDockPosition === "bottom" ? 0 : terminalPaneHeaderInset}
-          onClose={handleCloseTerminalPane}
-          onMaximize={handleMaximizeTerminal}
-          onSelectTerminal={handleSelectPaneTerminal}
-          onToggleDockPosition={handleToggleTerminalDockPosition}
-          threadDetailWorktreePath={selectedThreadDetailWorktreePath}
-          threadId={selectedThread.id}
-          threadWorktreePath={selectedThread.worktreePath ?? null}
-          workspaceRoot={selectedThreadProject.workspaceRoot}
-        />
-      ) : null,
-    [
-      handleCloseTerminalPane,
-      handleMaximizeTerminal,
-      handleSelectPaneTerminal,
-      handleToggleTerminalDockPosition,
-      terminalPaneHeaderInset,
-      selectedThread,
-      selectedThreadDetailWorktreePath,
-      selectedThreadProject,
-      dock.supported,
-      fileInspector.supported,
-      terminalDockPosition,
-      terminalPaneTerminalId,
-    ],
-  );
+  const renderTerminalInspector = () =>
+    selectedThread !== null && selectedThreadProject?.workspaceRoot ? (
+      <ThreadTerminalPane
+        key={`${selectedThread.environmentId}:${selectedThread.id}`}
+        activeTerminalId={terminalPaneTerminalId}
+        canToggleDockPosition={dock.supported && fileInspector.supported}
+        dockPosition={terminalDockPosition}
+        environmentId={selectedThread.environmentId}
+        headerInset={terminalDockPosition === "bottom" ? 0 : terminalPaneHeaderInset}
+        onClose={handleCloseTerminalPane}
+        onMaximize={handleMaximizeTerminal}
+        onSelectTerminal={handleSelectPaneTerminal}
+        onToggleDockPosition={handleToggleTerminalDockPosition}
+        threadDetailWorktreePath={selectedThreadDetailWorktreePath}
+        threadId={selectedThread.id}
+        threadWorktreePath={selectedThread.worktreePath ?? null}
+        workspaceRoot={selectedThreadProject.workspaceRoot}
+      />
+    ) : null;
 
   const GitInspector = () => (
     <GitOverviewSheet
@@ -731,7 +718,7 @@ function ThreadRouteContent(
         mode={inspectorMode}
         resetKeys={[routeThreadIdentity, selectedThreadCwd]}
         renderRoute={props.renderInspector ? RouteInspector : undefined}
-        renderTerminal={showTerminalInInspector ? TerminalInspector : undefined}
+        renderTerminal={showTerminalInInspector ? renderTerminalInspector : undefined}
       />
     );
   const activeInspectorRenderer = inspectorMode === null ? undefined : renderInspectorStack;
@@ -739,7 +726,7 @@ function ThreadRouteContent(
   // A bottom-docked terminal renders under the chat instead of beside it, so
   // it takes the dock channel and leaves the trailing column to files/git.
   useRegisterWorkspaceDock(
-    terminalPaneOpen && terminalDockPosition === "bottom" ? TerminalInspector : undefined,
+    terminalPaneOpen && terminalDockPosition === "bottom" ? renderTerminalInspector : undefined,
   );
 
   const handleOpenConnectionEditor = () => {
