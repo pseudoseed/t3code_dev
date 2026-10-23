@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard";
 import * as Dialog from "../../components/ui/Dialog";
 import {
   ComposerContextId,
@@ -38,9 +37,9 @@ export function TerminalContextSheet(props: {
       version: 1 as const,
       kind: "terminal" as const,
       contextId: ComposerContextId.make(uuidv4()),
-      label: `${props.terminalLabel} · captured lines ${range.start + 1}–${range.end + 1}`,
+      label: `${props.terminalLabel} · visible lines ${range.start + 1}–${range.end + 1}`,
       terminalId: props.terminalId,
-      terminalLabel: `${props.terminalLabel} (captured output)`,
+      terminalLabel: `${props.terminalLabel} (visible output)`,
       lineStart: range.start + 1,
       lineEnd: range.end + 1,
       text: selectedText,
@@ -114,16 +113,6 @@ export function TerminalContextSheet(props: {
             Select fewer lines to fit the context limit.
           </Text>
         ) : null}
-        <Button
-          label="Copy selected output"
-          fullWidth
-          disabled={!selectedText.trim()}
-          onPress={() =>
-            void Clipboard.setStringAsync(selectedText).catch(() =>
-              Dialog.alert("Could not copy output"),
-            )
-          }
-        />
         <Button
           label="Attach selected output"
           tone="primary"

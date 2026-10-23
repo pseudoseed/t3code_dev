@@ -1,11 +1,9 @@
 import {
   getMobileThemeColors,
+  getMobileThemeVariables,
   themeColorToNativeColor,
   type MobileThemeId,
-  type MobileThemeVariables,
 } from "../../lib/mobileTheme";
-
-import { getMobileThemeRuntimeVariables } from "../../lib/mobileThemeVariables";
 
 export type TerminalAppearanceScheme = "light" | "dark";
 
@@ -99,21 +97,14 @@ function getPierreTerminalTheme(scheme: TerminalAppearanceScheme): TerminalTheme
 export function getMobileTerminalTheme(
   themeId: MobileThemeId,
   scheme: TerminalAppearanceScheme,
-  resolvedColors?: MobileThemeVariables,
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
-  // Platform overrides only affect header and drawer roles, which terminals do not use.
-  const colors = resolvedColors ?? getMobileThemeRuntimeVariables(themeId, scheme, "ios");
-  const themedPalette: [...TerminalPalette] = [...base.palette];
-  // Match shell path and host colors to the app while retaining status colors.
-  themedPalette[4] = themedPalette[12] = colors["--color-primary"];
-  themedPalette[6] = themedPalette[14] = colors["--color-foreground-muted"];
-  const themedBase = { ...base, palette: themedPalette };
   const paletteId = themeId === "material-you" ? "t3-code" : themeId;
   const palette = getMobileThemeColors(paletteId, scheme);
+  const colors = getMobileThemeVariables(paletteId, scheme);
   const background = themeColorToNativeColor(palette.terminalBackground);
   return {
-    ...themedBase,
+    ...base,
     background,
     foreground: themeColorToNativeColor(palette.terminalForeground),
     mutedForeground: colors["--color-foreground-muted"],

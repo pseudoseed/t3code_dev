@@ -100,8 +100,6 @@ export interface Preferences {
   }>;
   readonly threadListSettledShelfExpanded?: boolean;
   readonly threadListSnoozedShelfExpanded?: boolean;
-  /** Where the workspace terminal pane sits on regular-width layouts. */
-  readonly terminalPaneDockPosition?: "right" | "bottom";
   /**
    * On-device dictation, all device-scoped rather than environment-scoped: the
    * model runs on this phone no matter which environment the composer is
@@ -217,7 +215,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     modelFavorites?: Preferences["modelFavorites"];
     threadListSettledShelfExpanded?: boolean;
     threadListSnoozedShelfExpanded?: boolean;
-    terminalPaneDockPosition?: "right" | "bottom";
     voiceSpeechModelId?: string;
     voiceSpeakerFilteringEnabled?: boolean;
     voiceDownloadOnCellular?: boolean;
@@ -356,9 +353,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.threadListSnoozedShelfExpanded = parsed.threadListSnoozedShelfExpanded;
   }
 
-  if (parsed.terminalPaneDockPosition === "right" || parsed.terminalPaneDockPosition === "bottom") {
-    preferences.terminalPaneDockPosition = parsed.terminalPaneDockPosition;
-  }
   if (typeof parsed.voiceSpeechModelId === "string") {
     preferences.voiceSpeechModelId = parsed.voiceSpeechModelId;
   }

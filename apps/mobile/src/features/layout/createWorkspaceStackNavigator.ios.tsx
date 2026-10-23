@@ -54,7 +54,6 @@ import {
 import {
   NativePrimaryColumnContext,
   NativeWorkspaceInspectorContext,
-  NativeWorkspaceDockContext,
   NativeWorkspaceModeContext,
 } from "../../native/v5-workspace-context";
 
@@ -70,7 +69,6 @@ const isPullRequestRoute = (route: Route) =>
 function ColumnScreen(props: {
   readonly descriptor: Descriptor;
   readonly primary?: boolean;
-  readonly activeDetail?: boolean;
   readonly attached?: boolean;
   readonly selectedThreadKey?: string | null;
   readonly selectedPullRequestKey?: string | null;
@@ -80,7 +78,6 @@ function ColumnScreen(props: {
   readonly navigation: ViewProps["navigation"];
 }) {
   const { descriptor } = props;
-  const dock = use(NativeWorkspaceDockContext);
   const primaryColumn = useMemo(
     () =>
       props.primary
@@ -138,7 +135,6 @@ function ColumnScreen(props: {
             <NativePrimaryColumnContext value={primaryColumn}>
               {descriptor.render()}
             </NativePrimaryColumnContext>
-            {props.activeDetail ? dock.render?.() : null}
           </ColumnContent>
         </NavigationRouteContext>
       </NavigationContext>
@@ -343,7 +339,6 @@ function WorkspaceColumns(
               <ColumnScreen
                 key={route.key}
                 descriptor={descriptor}
-                activeDetail={route.key === activeDetailKey}
                 attached={props.detail.some((current) => current.key === route.key)}
                 onDismiss={handleNativeDismiss}
                 onAppearance={followCollapsedSplit}

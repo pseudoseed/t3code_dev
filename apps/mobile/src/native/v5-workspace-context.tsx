@@ -14,7 +14,3 @@ export const NativeWorkspaceInspectorContext = createContext<{
   readonly render: (() => ReactNode) | undefined;
   readonly visible: boolean;
 }>({ render: undefined, visible: false });
-
-export const NativeWorkspaceDockContext = createContext<{
-  readonly render: (() => ReactNode) | undefined;
-}>({ render: undefined });

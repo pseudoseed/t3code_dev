@@ -191,7 +191,6 @@ export interface ThreadDetailScreenProps {
   };
   readonly worktreeSetup?: WorktreeSetupCardProps | null;
   readonly setupWorkingStartedAt?: string | null;
-  /** The bottom dock already reserves space above the keyboard. */
   readonly canOperateThread: boolean;
   readonly selectedThread: EnvironmentThreadShell;
   /**
@@ -206,7 +205,6 @@ export interface ThreadDetailScreenProps {
   readonly feedbackSubmissions: ReadonlyArray<CodexFeedbackSubmission>;
   readonly onDismissFeedback: (id: MessageId) => void;
   readonly selectedThreadFeed: ReadonlyArray<ThreadFeedEntry>;
-  readonly keyboardHandledByDock?: boolean;
   readonly selectedThreadContextWindow: ContextWindowSnapshot | null;
   readonly pendingHandoff?: HandoffEndpoints | null;
   readonly activityRun: ThreadFeedLatestRun | null;
@@ -1447,7 +1445,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
       {showContent ? (
         <KeyboardStickyView
           // Waiting for a visibility render misses the first keyboard frames.
-          enabled={!props.keyboardHandledByDock && (Platform.OS === "ios" || !keyboardStateSuspect)}
+          enabled={Platform.OS === "ios" || !keyboardStateSuspect}
           pointerEvents="box-none"
           style={{ position: "absolute", bottom: 0, left: 0, right: 0, top: 0 }}
           offset={{ closed: 0, opened: composerKeyboardOffset }}

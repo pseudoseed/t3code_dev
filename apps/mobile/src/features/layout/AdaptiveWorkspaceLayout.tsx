@@ -40,14 +40,12 @@ import {
   deriveFileInspectorPaneLayout,
   alignListPaneToHinge,
   deriveLayout,
-  deriveWorkspaceDockPaneLayout,
   type VerticalHinge,
   deriveWorkspacePaneLayout,
   isPrimarySidebarPinned,
   type FileInspectorPaneLayout,
   type Layout,
   type WorkspaceAuxiliaryPaneRole,
-  type WorkspaceDockPaneLayout,
   type WorkspacePaneLayout,
 } from "../../lib/layout";
 import {
@@ -82,7 +80,6 @@ import { ThreadNavigationSidebar } from "../threads/ThreadNavigationSidebar";
 import { useOpenThreadPullRequests } from "../threads/use-open-thread-pull-requests";
 import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderErrorBoundary";
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
-import { WorkspaceDockPane } from "./workspace-dock-pane";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
 import {
   WorkspaceContentWidthContext,
@@ -91,7 +88,6 @@ import {
 import {
   NativeWorkspaceModeContext,
   NativeWorkspaceInspectorContext,
-  NativeWorkspaceDockContext,
 } from "../../native/v5-workspace-context";
 
 import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
@@ -101,7 +97,6 @@ import { WindowHingeContext } from "../../native/window-hinge-context";
 interface AdaptiveWorkspaceContextValue {
   readonly layout: Layout;
   readonly panes: WorkspacePaneLayout;
-  readonly dock: WorkspaceDockPaneLayout;
   readonly fileInspector: FileInspectorPaneLayout;
   readonly primarySidebarSearchQuery: string;
   readonly startNewTask: () => void;
@@ -110,9 +105,6 @@ interface AdaptiveWorkspaceContextValue {
   readonly selectThreadRoute: (params: ReactNavigation.RootParamList["Thread"]) => void;
   readonly activateAuxiliaryPaneRole: (role: WorkspaceAuxiliaryPaneRole) => () => void;
   readonly registerWorkspaceInspector: (render: () => ReactNode) => () => void;
-  /** Same contract as registerWorkspaceInspector, for the bottom dock. */
-  readonly registerWorkspaceDock: (render: () => ReactNode) => () => void;
-  readonly setDockPaneHeight: (height: number) => void;
   readonly setPrimarySidebarSearchQuery: (query: string) => void;
   readonly showAuxiliaryPane: (role: WorkspaceAuxiliaryPaneRole) => void;
   readonly toggleAuxiliaryPane: () => void;
@@ -138,11 +130,9 @@ const compactFileInspector = deriveFileInspectorPaneLayout({
   layout: compactLayout,
   viewportWidth: 0,
 });
-const compactDock = deriveWorkspaceDockPaneLayout({ layout: compactLayout, viewportHeight: 0 });
 const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextValue>({
   layout: compactLayout,
   panes: compactPanes,
-  dock: compactDock,
   fileInspector: compactFileInspector,
   primarySidebarSearchQuery: "",
   startNewTask: () => undefined,
@@ -151,8 +141,6 @@ const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextValue>({
   selectThreadRoute: () => undefined,
   activateAuxiliaryPaneRole: () => () => undefined,
   registerWorkspaceInspector: () => () => undefined,
-  registerWorkspaceDock: () => () => undefined,
-  setDockPaneHeight: () => undefined,
   setPrimarySidebarSearchQuery: () => undefined,
   showAuxiliaryPane: () => undefined,
   toggleAuxiliaryPane: () => undefined,
@@ -184,21 +172,6 @@ export function useAdaptiveWorkspacePaneRole(role: WorkspaceAuxiliaryPaneRole) {
  */
 export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefined) {
   const { registerWorkspaceInspector } = useAdaptiveWorkspaceLayout();
-  useRegisterWorkspacePane(registerWorkspaceInspector, render);
-}
-
-/** Bottom-dock counterpart of useRegisterWorkspaceInspector. */
-export function useRegisterWorkspaceDock(render: (() => ReactNode) | undefined) {
-  const { registerWorkspaceDock } = useAdaptiveWorkspaceLayout();
-  useRegisterWorkspacePane(registerWorkspaceDock, render);
-}
-
-function useRegisterWorkspacePane(
-  register: (render: () => ReactNode) => () => void,
-  render: (() => ReactNode) | undefined,
-) {
-  // Raw context values (not the useNavigation/useRoute wrappers) so the
-  // portal re-provides exactly what this screen sees.
   const navigation = use(NavigationContext);
   const route = use(NavigationRouteContext);
 
@@ -223,7 +196,7 @@ function useRegisterWorkspacePane(
       deactivateRef.current?.();
       return;
     }
-    deactivateRef.current = register(wrappedRender);
+    deactivateRef.current = registerWorkspaceInspector(wrappedRender);
   });
 
   useFocusEffect(() => {
@@ -302,7 +275,6 @@ function AdaptiveWorkspaceLayoutContent(
   const [supplementaryPanePreferredWidth, setSupplementaryPanePreferredWidth] = useState<
     number | null
   >(null);
-  const [dockPreferredHeight, setDockPreferredHeight] = useState<number | null>(null);
   const [fileInspectorPreferredVisible, setFileInspectorPreferredVisible] = useState(true);
   const [fileInspectorPreferredWidth, setFileInspectorPreferredWidth] = useState<number | null>(
     null,
@@ -374,15 +346,6 @@ function AdaptiveWorkspaceLayoutContent(
       }),
     [fileInspectorPreferredWidth, layout, showPrimarySidebar, shouldRenderPrimarySidebar, width],
   );
-  const dock = useMemo(
-    () =>
-      deriveWorkspaceDockPaneLayout({
-        layout,
-        viewportHeight: height,
-        preferredHeight: dockPreferredHeight ?? undefined,
-      }),
-    [dockPreferredHeight, height, layout],
-  );
   const auxiliaryPaneRole: WorkspaceAuxiliaryPaneRole =
     focusedAuxiliaryPaneRole ?? (/\/files(?:\/|$)/.test(pathname) ? "inspector" : "supplementary");
   const auxiliaryPanePreferredVisible =
@@ -448,33 +411,6 @@ function AdaptiveWorkspaceLayoutContent(
   const handleWorkspaceInspectorClosed = () => {
     setWorkspaceInspector((current) => (current !== null && !current.active ? null : current));
   };
-  const [workspaceDock, setWorkspaceDock] = useState<{
-    render: () => ReactNode;
-    active: boolean;
-  } | null>(null);
-  const workspaceDockOwner = useRef<symbol | null>(null);
-  const registerWorkspaceDock = (render: () => ReactNode) => {
-    const owner = Symbol("workspace-dock");
-    workspaceDockOwner.current = owner;
-    setWorkspaceDock({ render, active: true });
-    return () => {
-      if (workspaceDockOwner.current !== owner) return;
-      setWorkspaceDock((current) => (current === null ? null : { ...current, active: false }));
-    };
-  };
-  const handleWorkspaceDockClosed = () => {
-    setWorkspaceDock((current) => (current !== null && !current.active ? null : current));
-  };
-  const renderWorkspaceDock = () => (
-    <WorkspaceDockPane
-      active={workspaceDock?.active ?? false}
-      dock={dock}
-      renderDock={workspaceDock?.render}
-      setDockPaneHeight={setDockPreferredHeight}
-      viewportHeight={height}
-      onClosed={handleWorkspaceDockClosed}
-    />
-  );
   const activateAuxiliaryPaneRole = (role: WorkspaceAuxiliaryPaneRole) => {
     const owner = Symbol(role);
     activeRoleOwner.current = owner;
@@ -856,9 +792,6 @@ function AdaptiveWorkspaceLayoutContent(
     layout,
     panes,
     fileInspector,
-    dock,
-    registerWorkspaceDock,
-    setDockPaneHeight: setDockPreferredHeight,
     primarySidebarSearchQuery,
     startNewTask: handleStartNewTask,
     deferThreadSelectionUntil: deferredThreadSelection.waitFor,
@@ -885,9 +818,7 @@ function AdaptiveWorkspaceLayoutContent(
           <NativeWorkspaceInspectorContext
             value={{ render: workspaceInspector?.render, visible: inspectorColumnTargetWidth > 0 }}
           >
-            <NativeWorkspaceDockContext value={{ render: renderWorkspaceDock }}>
-              {props.children}
-            </NativeWorkspaceDockContext>
+            {props.children}
           </NativeWorkspaceInspectorContext>
         </AdaptiveWorkspaceContext>
       </HomeListOptionsProvider>
@@ -995,7 +926,6 @@ function AdaptiveWorkspaceLayoutContent(
                     {props.children}
                   </WorkspaceSettledContentWidthContext>
                 </WorkspaceContentWidthContext>
-                {renderWorkspaceDock()}
               </View>
             </View>
             <WorkspaceInspectorPane

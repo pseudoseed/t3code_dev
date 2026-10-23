@@ -116,63 +116,25 @@ vi.mock("./ThreadHeader", () => ({
     gitControls,
     onOpenFilesInspector,
   }: {
-    gitControls: { onOpenNewTerminal: () => void };
+    gitControls: {
+      onOpenNewTerminal: () => void;
+      onOpenTerminal: (terminalId?: string | null) => void;
+    };
     onOpenFilesInspector: () => void;
   }) => (
     <>
       <button onClick={gitControls.onOpenNewTerminal}>Open new terminal</button>
+      <button onClick={() => gitControls.onOpenTerminal("terminal-existing")}>Open terminal</button>
       <button onClick={onOpenFilesInspector}>Files</button>
     </>
   ),
 }));
-vi.mock("../terminal/useThreadTerminalSession", () => ({
-  pickRunningTerminalSessionForBootstrap: () => null,
-}));
 vi.mock("../terminal/terminalDebugLog", () => ({ terminalDebugLog: vi.fn() }));
-vi.mock("../terminal/useTerminalPaneDockPosition", () => ({
-  useTerminalPaneDockPosition: () => ({
-    dockPosition: mocks.fixture().dockPosition,
-    toggleDockPosition: mocks.fixture().toggleDockPosition,
-  }),
-}));
-vi.mock("../terminal/ThreadTerminalPane", () => ({
-  ThreadTerminalPane: ({
-    threadId,
-    activeTerminalId,
-    onMaximize,
-    onClose,
-    onToggleDockPosition,
-  }: {
-    threadId: string;
-    activeTerminalId: string;
-    onMaximize: () => void;
-    onClose: () => void;
-    onToggleDockPosition: () => void;
-  }) => {
-    const [input, setInput] = useState("");
-    return (
-      <>
-        <span>{`${threadId}:${activeTerminalId}`}</span>
-        <input
-          aria-label={`Terminal ${threadId}`}
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-        />
-        <button onClick={onMaximize}>Maximize terminal</button>
-        <button onClick={onClose}>Close terminal</button>
-        <button onClick={onToggleDockPosition}>Move terminal</button>
-      </>
-    );
-  },
-}));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
   useAdaptiveWorkspaceLayout: () => mocks.fixture().layout,
   useAdaptiveWorkspacePaneRole: vi.fn(),
   useRegisterWorkspaceInspector: (render: (() => ReactNode) | undefined) => {
-    useEffect(() => mocks.fixture().publish("right", render), [render]);
-  },
-  useRegisterWorkspaceDock: (render: (() => ReactNode) | undefined) => {
-    useEffect(() => mocks.fixture().publish("bottom", render), [render]);
+    useEffect(() => mocks.fixture().publish(render), [render]);
   },
 }));
 
@@ -183,24 +145,12 @@ import {
 } from "@react-navigation/native";
 import { ThreadRouteScreen } from "./ThreadRouteScreen";
 
-function setup(dockPosition: "right" | "bottom" = "right") {
+function setup() {
   let focused = true;
-  let preferredDock = dockPosition;
   const listeners = { focus: new Set<() => void>(), blur: new Set<() => void>() };
   const paneListeners = new Set<() => void>();
-  const panes: Record<"right" | "bottom", (() => ReactNode) | undefined> = {
-    right: undefined,
-    bottom: undefined,
-  };
+  let inspector: (() => ReactNode) | undefined;
   const fixture = {
-    get dockPosition() {
-      return preferredDock;
-    },
-    toggleDockPosition: () => {
-      preferredDock = preferredDock === "right" ? "bottom" : "right";
-      return preferredDock;
-    },
-    openTerminalId: undefined as string | undefined,
     selection: {
       selectedThread: {
         environmentId: EnvironmentId.make("environment"),
@@ -220,12 +170,9 @@ function setup(dockPosition: "right" | "bottom" = "right") {
         return () => listeners[event].delete(listener);
       },
       navigate: vi.fn(),
-      setParams: vi.fn((params: { openTerminalId: string | undefined }) => {
-        fixture.openTerminalId = params.openTerminalId;
-      }),
+      setParams: vi.fn(),
     },
     layout: {
-      dock: { supported: true },
       fileInspector: { supported: true },
       layout: { usesSplitView: true },
       panes: { auxiliaryPaneVisible: true },
@@ -236,46 +183,45 @@ function setup(dockPosition: "right" | "bottom" = "right") {
       focused = value;
       for (const listener of listeners[value ? "focus" : "blur"]) listener();
     },
-    publish: (position: "right" | "bottom", render: (() => ReactNode) | undefined) => {
-      panes[position] = render;
+    publish: (render: (() => ReactNode) | undefined) => {
+      inspector = render;
       for (const listener of paneListeners) listener();
     },
     subscribe: (listener: () => void) => {
       paneListeners.add(listener);
       return () => paneListeners.delete(listener);
     },
-    getPane: (position: "right" | "bottom") => panes[position],
+    getPane: () => inspector,
   };
   mocks.fixture.mockReturnValue(fixture);
   return fixture;
 }
 
-function Workspace({ fixture }: { fixture: ReturnType<typeof setup> }) {
+function Workspace({
+  fixture,
+  renderInspector,
+}: {
+  fixture: ReturnType<typeof setup>;
+  renderInspector?: () => ReactNode;
+}) {
   return (
     <NavigationContext value={fixture.navigation as unknown as NavigationProp<ParamListBase>}>
       <ThreadRouteScreen
+        renderInspector={renderInspector}
         route={{
           params: {
             environmentId: "environment",
             threadId: fixture.selection.selectedThread.id,
-            openTerminalId: fixture.openTerminalId,
           },
         }}
       />
-      <PaneOutlet fixture={fixture} position="right" />
-      <PaneOutlet fixture={fixture} position="bottom" />
+      <PaneOutlet fixture={fixture} />
     </NavigationContext>
   );
 }
 
-function PaneOutlet({
-  fixture,
-  position,
-}: {
-  fixture: ReturnType<typeof setup>;
-  position: "right" | "bottom";
-}) {
-  const renderPane = useSyncExternalStore(fixture.subscribe, () => fixture.getPane(position));
+function PaneOutlet({ fixture }: { fixture: ReturnType<typeof setup> }) {
+  const renderPane = useSyncExternalStore(fixture.subscribe, fixture.getPane);
   return renderPane?.();
 }
 
@@ -286,29 +232,6 @@ function press(renderer: ReactTestRenderer, label: string) {
     .props.onClick();
 }
 
-it.each(["right", "bottom"] as const)(
-  "keeps an opened %s terminal mounted across chat rerenders",
-  async (position) => {
-    const fixture = setup(position);
-    let renderer!: ReactTestRenderer;
-    await act(async () => {
-      renderer = create(<Workspace fixture={fixture} />);
-    });
-    try {
-      await act(async () => renderer.root.findAllByType("button")[0]!.props.onClick());
-      const terminal = renderer.root.findByType("input");
-      await act(async () => terminal.props.onChange({ target: { value: "echo retained" } }));
-      await act(async () => renderer.update(<Workspace fixture={fixture} />));
-      expect(renderer.root.findByType("input").props.value).toBe("echo retained");
-      await act(async () => fixture.focus(false));
-      await act(async () => fixture.focus(true));
-      if (position === "right") expect(renderer.root.findAllByType("input")).toHaveLength(0);
-    } finally {
-      await act(async () => renderer.unmount());
-    }
-  },
-);
-
 it("keeps Files open across a chat rerender and clears it on blur", async () => {
   const fixture = setup();
   let renderer!: ReactTestRenderer;
@@ -316,7 +239,7 @@ it("keeps Files open across a chat rerender and clears it on blur", async () => 
     renderer = create(<Workspace fixture={fixture} />);
   });
   try {
-    await act(async () => renderer.root.findAllByType("button")[1]!.props.onClick());
+    await act(async () => press(renderer, "Files"));
     expect(
       renderer.root.findAllByType("span").some((span) => span.children.includes("Workspace files")),
     ).toBe(true);
@@ -331,81 +254,64 @@ it("keeps Files open across a chat rerender and clears it on blur", async () => 
   }
 });
 
-it("does not carry a terminal into another thread and can open that thread's terminal", async () => {
+it.each([
+  ["Open new terminal", "term-1"],
+  ["Open terminal", "terminal-existing"],
+])("%s uses the terminal route and follows the current thread", async (label, terminalId) => {
   const fixture = setup();
   let renderer!: ReactTestRenderer;
   await act(async () => {
     renderer = create(<Workspace fixture={fixture} />);
   });
   try {
-    await act(async () => press(renderer, "Open new terminal"));
-    await act(async () =>
-      renderer.root.findByType("input").props.onChange({ target: { value: "old input" } }),
-    );
+    await act(async () => press(renderer, label));
+    expect(fixture.navigation.navigate).toHaveBeenLastCalledWith("ThreadTerminal", {
+      environmentId: "environment",
+      threadId: "thread-a",
+      terminalId,
+    });
     fixture.selection.selectedThread = {
       ...fixture.selection.selectedThread,
       id: ThreadId.make("thread-b"),
     };
     await act(async () => renderer.update(<Workspace fixture={fixture} />));
-    expect(renderer.root.findAllByType("input")).toHaveLength(0);
-    await act(async () => press(renderer, "Open new terminal"));
-    expect(renderer.root.findByType("input").props["aria-label"]).toBe("Terminal thread-b");
-    expect(renderer.root.findByType("input").props.value).toBe("");
+    await act(async () => press(renderer, label));
+    expect(fixture.navigation.navigate).toHaveBeenLastCalledWith("ThreadTerminal", {
+      environmentId: "environment",
+      threadId: "thread-b",
+      terminalId,
+    });
   } finally {
     await act(async () => renderer.unmount());
   }
 });
 
-it("moves the selected terminal between right and bottom docks and closes it", async () => {
+it("keeps a route inspector mounted across chat rerenders", async () => {
   const fixture = setup();
+  function Terminal() {
+    const [input, setInput] = useState("");
+    return <input value={input} onChange={(event) => setInput(event.target.value)} />;
+  }
+  const renderInspector = () => <Terminal />;
   let renderer!: ReactTestRenderer;
   await act(async () => {
-    renderer = create(<Workspace fixture={fixture} />);
+    renderer = create(<Workspace fixture={fixture} renderInspector={renderInspector} />);
   });
   try {
-    await act(async () => press(renderer, "Open new terminal"));
-    const selectedTerminal = renderer.root.findAllByType("span").at(-1)!.children;
-    await act(async () => press(renderer, "Move terminal"));
-    expect(fixture.dockPosition).toBe("bottom");
-    expect(renderer.root.findAllByType("input")).toHaveLength(1);
-    expect(renderer.root.findAllByType("span").at(-1)!.children).toEqual(selectedTerminal);
-    await act(async () => press(renderer, "Move terminal"));
-    expect(fixture.dockPosition).toBe("right");
-    expect(renderer.root.findAllByType("input")).toHaveLength(1);
-    expect(renderer.root.findAllByType("span").at(-1)!.children).toEqual(selectedTerminal);
-    await act(async () => press(renderer, "Close terminal"));
+    await act(async () =>
+      renderer.root.findByType("input").props.onChange({ target: { value: "echo retained" } }),
+    );
+    await act(async () =>
+      renderer.update(<Workspace fixture={fixture} renderInspector={renderInspector} />),
+    );
+    expect(renderer.root.findByType("input").props.value).toBe("echo retained");
+    await act(async () => renderer.update(<Workspace fixture={fixture} />));
     expect(renderer.root.findAllByType("input")).toHaveLength(0);
+    await act(async () => press(renderer, "Files"));
+    expect(
+      renderer.root.findAllByType("span").some((span) => span.children.includes("Workspace files")),
+    ).toBe(true);
   } finally {
     await act(async () => renderer.unmount());
   }
 });
-
-it.each(["right", "bottom"] as const)(
-  "maximizes a %s terminal and restores its selected session on return",
-  async (position) => {
-    const fixture = setup(position);
-    let renderer!: ReactTestRenderer;
-    await act(async () => {
-      renderer = create(<Workspace fixture={fixture} />);
-    });
-    try {
-      await act(async () => press(renderer, "Open new terminal"));
-      const selectedTerminal = renderer.root.findAllByType("span").at(-1)!.children;
-      await act(async () => press(renderer, "Maximize terminal"));
-      expect(renderer.root.findAllByType("input")).toHaveLength(0);
-      expect(fixture.navigation.navigate).toHaveBeenCalledWith(
-        "ThreadTerminal",
-        expect.objectContaining({ threadId: "thread-a" }),
-      );
-      const params = fixture.navigation.navigate.mock.calls[0]![1] as { terminalId: string };
-      await act(async () => fixture.focus(false));
-      fixture.openTerminalId = params.terminalId;
-      await act(async () => renderer.update(<Workspace fixture={fixture} />));
-      await act(async () => fixture.focus(true));
-      expect(renderer.root.findAllByType("input")).toHaveLength(1);
-      expect(renderer.root.findAllByType("span").at(-1)!.children).toEqual(selectedTerminal);
-    } finally {
-      await act(async () => renderer.unmount());
-    }
-  },
-);

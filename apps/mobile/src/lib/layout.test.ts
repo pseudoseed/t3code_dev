@@ -1,14 +1,10 @@
-import { constrainDockPaneHeight } from "./layout";
-import { deriveFileInspectorPaneLayout } from "./layout";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   alignListPaneToHinge,
   deriveLayout,
-  resolveTerminalDockPosition,
   deriveThreadFeedInitialContentInset,
   deriveThreadWorkLogSizing,
-  deriveWorkspaceDockPaneLayout,
   deriveWorkspacePaneLayout,
   isPrimarySidebarPinned,
 } from "./layout";
@@ -82,48 +78,6 @@ describe("deriveWorkspacePaneLayout", () => {
   });
 });
 
-describe("terminal split layouts", () => {
-  it.each([744, 768, 810])(
-    "keeps chat and terminal visible on a %i-point portrait iPad",
-    (width) => {
-      const layout = deriveLayout({ width, height: 1080 });
-      const side = deriveFileInspectorPaneLayout({ layout, viewportWidth: width });
-      const bottom = deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 1080 });
-      expect(
-        resolveTerminalDockPosition({
-          preferredPosition: "right",
-          sideSupported: side.supported,
-          bottomSupported: bottom.supported,
-        }),
-      ).toBe("bottom");
-    },
-  );
-
-  it("restores the side preference when a narrow iPad rotates to landscape", () => {
-    const layout = deriveLayout({ width: 1080, height: 810 });
-    const side = deriveFileInspectorPaneLayout({ layout, viewportWidth: 1080 });
-    const bottom = deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 810 });
-    expect(
-      resolveTerminalDockPosition({
-        preferredPosition: "right",
-        sideSupported: side.supported,
-        bottomSupported: bottom.supported,
-      }),
-    ).toBe("right");
-  });
-
-  it("keeps phone terminals full screen", () => {
-    const layout = deriveLayout({ width: 390, height: 844 });
-    expect(
-      resolveTerminalDockPosition({
-        preferredPosition: "bottom",
-        sideSupported: deriveFileInspectorPaneLayout({ layout, viewportWidth: 390 }).supported,
-        bottomSupported: deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 844 }).supported,
-      }),
-    ).toBeNull();
-  });
-});
-
 describe("alignListPaneToHinge", () => {
   const layout = deriveLayout({ width: 852, height: 880 });
 
@@ -143,35 +97,4 @@ describe("alignListPaneToHinge", () => {
     expect(alignListPaneToHinge(narrowList)).toBe(layout);
     expect(alignListPaneToHinge(narrowDetail)).toBe(layout);
   });
-});
-
-it("keeps chat usable above a resized bottom dock", () => {
-  expect(constrainDockPaneHeight({ preferredHeight: 400, availableHeight: 1_024 })).toBe(400);
-  expect(constrainDockPaneHeight({ preferredHeight: 900, availableHeight: 1_024 })).toBe(704);
-  expect(constrainDockPaneHeight({ preferredHeight: 40, availableHeight: 1_024 })).toBe(180);
-});
-
-it("offers a default dock height on a split-view window", () => {
-  const layout = deriveLayout({ width: 1_024, height: 1_366 });
-
-  expect(deriveWorkspaceDockPaneLayout({ layout, viewportHeight: 1_366 })).toEqual({
-    supported: true,
-    height: 519,
-  });
-});
-
-it("does not dock in a compact shell or a short window", () => {
-  expect(
-    deriveWorkspaceDockPaneLayout({
-      layout: deriveLayout({ width: 430, height: 932 }),
-      viewportHeight: 932,
-    }),
-  ).toEqual({ supported: false, height: null });
-
-  expect(
-    deriveWorkspaceDockPaneLayout({
-      layout: deriveLayout({ width: 1_024, height: 610 }),
-      viewportHeight: 610,
-    }),
-  ).toEqual({ supported: false, height: null });
 });

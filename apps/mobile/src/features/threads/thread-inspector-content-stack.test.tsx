@@ -33,11 +33,11 @@ it("keeps a terminal mounted and its local state when chat changes its render ca
   function Chat({ turn }: { turn: number }) {
     return (
       <ThreadInspectorContentStack
-        mode="terminal"
+        mode="route"
         resetKeys={["thread", null]}
         renderFiles={empty}
         renderGit={empty}
-        renderTerminal={() => <Terminal turn={turn} />}
+        renderRoute={() => <Terminal turn={turn} />}
       />
     );
   }
