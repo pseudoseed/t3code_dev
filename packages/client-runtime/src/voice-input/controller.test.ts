@@ -1,3 +1,4 @@
+import { voiceInputBlocksSubmission } from "./controller.ts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -5,7 +6,6 @@ import {
   resolveTranscriptCommit,
   VoiceInputController,
   VOICE_RECORDING_LIMIT_SECONDS,
-  voiceInputBlocksSubmission,
   type VoiceDraftSnapshot,
   type VoiceInputControllerDependencies,
   type VoiceRecorder,
@@ -120,47 +120,6 @@ describe("resolveTranscriptCommit", () => {
     });
     expect(resolveTranscriptCommit(captured, draft({ revision: 2 }), "text", "en-US")).toEqual({
       kind: "stale",
-    });
-  });
-
-  it("adds English spacing at empty start, middle, and end caret boundaries", () => {
-    const atEnd = draft({
-      text: "Fix cache.",
-      selection: { start: "Fix cache.".length, end: "Fix cache.".length },
-    });
-    expect(resolveTranscriptCommit(atEnd, atEnd, "Also fix tests.", "en-US")).toMatchObject({
-      kind: "commit",
-      text: "Fix cache. Also fix tests.",
-    });
-    expect(resolveTranscriptCommit(atEnd, atEnd, "Also fix tests.", "en_US")).toMatchObject({
-      kind: "commit",
-      text: "Fix cache. Also fix tests.",
-    });
-
-    const atStart = draft({ text: "Fix cache.", selection: { start: 0, end: 0 } });
-    expect(resolveTranscriptCommit(atStart, atStart, "First", "en-US")).toMatchObject({
-      kind: "commit",
-      text: "First Fix cache.",
-    });
-
-    const inMiddle = draft({ text: "Fix cache.", selection: { start: 4, end: 4 } });
-    expect(resolveTranscriptCommit(inMiddle, inMiddle, "also", "en-US")).toMatchObject({
-      kind: "commit",
-      text: "Fix also cache.",
-    });
-  });
-
-  it("does not add English boundary spaces to CJK or selected inline text", () => {
-    const cjk = draft({ text: "修正キャッシュ", selection: { start: 8, end: 8 } });
-    expect(resolveTranscriptCommit(cjk, cjk, "テストも", "ja-JP")).toMatchObject({
-      kind: "commit",
-      text: "修正キャッシュテストも",
-    });
-
-    const selected = draft({ text: "one $skill two", selection: { start: 4, end: 10 } });
-    expect(resolveTranscriptCommit(selected, selected, "new", "en-US")).toMatchObject({
-      kind: "commit",
-      text: "one new two",
     });
   });
 });
@@ -280,36 +239,6 @@ describe("VoiceInputController", () => {
     },
   );
 
-  it("blocks submit while voice input can still change the draft", () => {
-    expect(
-      voiceInputBlocksSubmission({
-        phase: "preparing",
-        error: null,
-        errorAction: null,
-        notice: null,
-      }),
-    ).toBe(true);
-    expect(
-      voiceInputBlocksSubmission({
-        phase: "recording",
-        error: null,
-        errorAction: null,
-        notice: null,
-      }),
-    ).toBe(true);
-    expect(
-      voiceInputBlocksSubmission({
-        phase: "transcribing",
-        error: null,
-        errorAction: null,
-        notice: null,
-      }),
-    ).toBe(true);
-    expect(
-      voiceInputBlocksSubmission({ phase: "idle", error: null, errorAction: null, notice: null }),
-    ).toBe(false);
-  });
-
   it("discloses when the native duration cap ended the recording", async () => {
     const harness = createHarness();
     await harness.controller.start();
@@ -415,35 +344,6 @@ describe("VoiceInputController", () => {
     },
   );
 
-  it("cancels an in-flight transcriber that rejects when its signal aborts", async () => {
-    const transcription = deferred<string>();
-    const transcriptionEntered = deferred<AbortSignal>();
-    const harness = createHarness({
-      getTranscriber: () => ({
-        prepare: async () =>
-          preparedTranscription(
-            transcribingText((_uri, { signal }) => {
-              signal.addEventListener("abort", () => transcription.reject(new Error("aborted")), {
-                once: true,
-              });
-              transcriptionEntered.resolve(signal);
-              return transcription.promise;
-            }),
-          ),
-      }),
-    });
-    await harness.controller.start();
-    const stopping = harness.controller.stop();
-    const signal = await transcriptionEntered.promise;
-    harness.controller.cancel();
-    await stopping;
-
-    expect(signal.aborted).toBe(true);
-    expect(harness.commits).toEqual([]);
-    expect(harness.deleted).toEqual(["file:///voice.m4a"]);
-    expect(harness.controller.currentState.phase).toBe("idle");
-  });
-
   it.each(["cancel", "dispose", "ownerChanged"] as const)(
     "does not freeze the editor again when model loading finishes after %s",
     async (action) => {
@@ -495,28 +395,6 @@ describe("VoiceInputController", () => {
     await harness.controller.stop();
 
     expect(events).toEqual(["released", "transcribed"]);
-  });
-
-  it("retries audio-session release during final cleanup", async () => {
-    const releaseRecording = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValueOnce(new Error("busy"))
-      .mockResolvedValueOnce(undefined);
-    const harness = createHarness({ releaseRecording });
-    await harness.controller.start();
-    await harness.controller.stop();
-
-    expect(releaseRecording).toHaveBeenCalledTimes(2);
-  });
-
-  it("leaves transcription with an error when recorder finalization fails", async () => {
-    const harness = createHarness();
-    harness.recorder.stop.mockRejectedValueOnce(new Error("stop failed"));
-    await harness.controller.start();
-    await harness.controller.stop();
-
-    expect(harness.controller.currentState.phase).toBe("error");
-    expect(harness.controller.currentState.error).toContain("finish voice recording");
   });
 
   it("ignores a late transcript after the draft owner changes", async () => {

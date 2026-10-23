@@ -30,6 +30,8 @@ it.effect("normalizes a same-repository open PR", () =>
       baseRefName: "main",
       headRefName: "feature/forgejo",
       state: "open",
+      closedAt: null,
+      mergedAt: null,
       updatedAt: Option.some(DateTime.makeUnsafe("2026-01-02T00:00:00.000Z")),
     });
   }),

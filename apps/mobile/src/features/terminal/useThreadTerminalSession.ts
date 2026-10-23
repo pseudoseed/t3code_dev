@@ -27,7 +27,7 @@ import {
 } from "../../state/use-terminal-session";
 import { terminalDebugLog } from "./terminalDebugLog";
 import {
-  resolveTerminalOpenLocation,
+  useInitialTerminalLaunchLocation,
   takePendingTerminalLaunch,
   type PendingTerminalLaunch,
 } from "./terminalLaunchContext";
@@ -174,33 +174,24 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   /** Default grid is always valid for attach; onResize refines cols/rows. */
   const [hasMeasuredSurface, setHasMeasuredSurface] = useState(true);
 
-  const launchLocationCandidate = useMemo(() => {
-    if (!workspaceRoot) {
-      return null;
-    }
-    if (pendingLaunch) {
-      return { cwd: pendingLaunch.cwd, worktreePath: pendingLaunch.worktreePath };
-    }
-    return resolveTerminalOpenLocation({
-      terminalLocation: activeKnownSession?.state.summary ?? null,
-      activeSessionLocation: activeKnownSession?.state.summary ?? null,
-      workspaceRoot,
-      threadShellWorktreePath: threadWorktreePath,
-      threadDetailWorktreePath,
-    });
-  }, [
-    activeKnownSession?.state.summary,
+  const launchLocation = useInitialTerminalLaunchLocation({
+    targetKey: launchTargetKey,
     pendingLaunch,
-    threadDetailWorktreePath,
-    threadWorktreePath,
-    workspaceRoot,
-  ]);
-  const [initialLaunchLocationEntry, setInitialLaunchLocationEntry] = useState(() => ({
-    key: launchTargetKey,
-    location: launchLocationCandidate,
-  }));
-  const launchLocation =
-    initialLaunchLocationEntry.key === launchTargetKey ? initialLaunchLocationEntry.location : null;
+    hasResolvedPendingLaunch,
+    isAuthenticated: canRead || canOperate,
+    canRead,
+    canOperate,
+    hasLoadedSessions: knownSessions !== null,
+    location: workspaceRoot
+      ? {
+          terminalLocation: activeKnownSession?.state.summary ?? null,
+          activeSessionLocation: activeKnownSession?.state.summary ?? null,
+          workspaceRoot,
+          threadShellWorktreePath: threadWorktreePath,
+          threadDetailWorktreePath,
+        }
+      : null,
+  });
 
   const terminalAttachInput = useMemo(
     () =>
@@ -302,24 +293,6 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
       size: cachedGridSize ?? { cols: DEFAULT_TERMINAL_COLS, rows: DEFAULT_TERMINAL_ROWS },
     });
   }, [cachedGridSize, initialAttachGridEntry.key, launchTargetKey]);
-
-  useEffect(() => {
-    if (
-      initialLaunchLocationEntry.key === launchTargetKey &&
-      initialLaunchLocationEntry.location !== null
-    ) {
-      return;
-    }
-    if (initialLaunchLocationEntry.key === launchTargetKey && launchLocationCandidate === null) {
-      return;
-    }
-    setInitialLaunchLocationEntry({ key: launchTargetKey, location: launchLocationCandidate });
-  }, [
-    initialLaunchLocationEntry.key,
-    initialLaunchLocationEntry.location,
-    launchLocationCandidate,
-    launchTargetKey,
-  ]);
 
   useEffect(() => {
     const initialInput = pendingLaunch?.initialInput;
@@ -531,6 +504,7 @@ export function useThreadTerminalSession(input: ThreadTerminalSessionInput) {
   return {
     canRead,
     canOperate,
+    launchLocation,
     clearTerminal,
     cwd: terminal.summary?.cwd ?? workspaceRoot ?? null,
     handleResize,

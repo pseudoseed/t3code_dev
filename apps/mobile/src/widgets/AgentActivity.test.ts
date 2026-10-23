@@ -32,7 +32,7 @@ import {
   AgentActivity,
   type AgentActivityProps,
   type AgentActivityRowProps,
-} from "./AgentActivity";
+} from "./pseudocode/OverviewActivity";
 
 function makeRow(overrides: Partial<AgentActivityRowProps>): AgentActivityRowProps {
   return {

@@ -1,13 +1,15 @@
-import { HStack, Image, Spacer, Text, VStack } from "@expo/ui/swift-ui";
+import { Circle, HStack, Image, Spacer, Text, VStack, ZStack } from "@expo/ui/swift-ui";
 import type { ComponentProps } from "react";
 import {
+  accessibilityElement,
   accessibilityLabel,
-  background,
-  cornerRadius,
+  activityBackgroundTint,
   font,
   foregroundStyle,
   frame,
+  layoutPriority,
   lineLimit,
+  minimumScaleFactor,
   padding,
   resizable,
   widgetURL,
@@ -19,6 +21,7 @@ import {
 } from "expo-widgets";
 
 type LiveActivityEnvironment = Parameters<LiveActivityComponent<AgentActivityProps>>[1];
+
 export type AgentActivityPhase =
   | "starting"
   | "running"
@@ -27,6 +30,7 @@ export type AgentActivityPhase =
   | "completed"
   | "failed"
   | "stale";
+
 export interface AgentActivityRowProps {
   readonly environmentId: string;
   readonly threadId: string;
@@ -35,10 +39,10 @@ export interface AgentActivityRowProps {
   readonly modelTitle: string;
   readonly phase: AgentActivityPhase;
   readonly status: string;
-  readonly detail?: string;
   readonly updatedAt: string;
   readonly deepLink: string;
 }
+
 export interface AgentActivityProps {
   readonly title: string;
   readonly subtitle: string;
@@ -47,259 +51,352 @@ export interface AgentActivityProps {
   readonly activities: ReadonlyArray<AgentActivityRowProps>;
 }
 
-/** Expo serializes this function into the extension; keep helpers inside its closure. */
+// This function is serialized into the widget extension's JS bundle, so it
+// must stay self-contained: no references to module-scope helpers, only the
+// imported view/modifier factories.
 export function AgentActivity(
   props: AgentActivityProps,
   environment: LiveActivityEnvironment,
 ): LiveActivityLayout {
   "widget";
-  // The Island and our banner have dark backgrounds even when iOS reports light mode.
-  const muted = environment.isLuminanceReduced;
-  // Past the stale date the system stops vouching for the content, so
-  // in-flight rows read as delayed instead of claiming an agent is working.
-  const stale = environment.isStale;
-  const tint = (phase?: AgentActivityPhase) => {
-    if (muted || (stale && !phase?.startsWith("waiting"))) return "secondary";
-    if (phase === "waiting_for_approval") return "#fcd34d";
-    if (phase === "waiting_for_input") return "#c4b5fd";
-    if (phase === "failed") return "#fca5a5";
-    if (phase === "completed") return "#6ee7b7";
-    return "#5eead4";
-  };
-  const label = (phase: AgentActivityPhase) => {
-    if (stale && (phase === "running" || phase === "starting")) return "Update delayed";
+
+  // Hierarchical styles inherit the system's foreground treatment, including
+  // tinted and vibrant presentations, rather than resolving to a label color.
+  type Foreground = Parameters<typeof foregroundStyle>[0];
+  const primaryForeground = { type: "hierarchical", style: "primary" } as const;
+  const secondaryForeground = { type: "hierarchical", style: "secondary" } as const;
+  const monochrome =
+    environment.widgetRenderingMode === "accented" || environment.widgetRenderingMode === "vibrant";
+
+  // On iPhone the LA sits on a dark material, but macOS (iPhone Mirroring /
+  // Mac notification center) renders it on a light one — so pick the web
+  // palette's light (-600) or dark (-300) variant off the color scheme.
+  const isLightScheme = environment.colorScheme === "light";
+  const phaseTint = (phase: AgentActivityPhase | undefined): Foreground => {
+    if (environment.isLuminanceReduced) {
+      return secondaryForeground;
+    }
+    if (monochrome) {
+      return primaryForeground;
+    }
     switch (phase) {
-      case "starting":
-        return "Starting";
-      case "running":
-        return "Working";
       case "waiting_for_approval":
-        return "Approve request";
+        return isLightScheme ? "#d97706" : "#fcd34d";
       case "waiting_for_input":
-        return "Reply needed";
-      case "completed":
-        return "Done";
+        return isLightScheme ? "#4f46e5" : "#a5b4fc";
       case "failed":
-        return "Needs review";
+        return isLightScheme ? "#dc2626" : "#fca5a5";
+      case "completed":
+        return isLightScheme ? "#059669" : "#6ee7b7";
       case "stale":
-        return "Update delayed";
+        return secondaryForeground;
+      case "starting":
+      case "running":
+      default:
+        return isLightScheme ? "#0284c7" : "#7dd3fc";
     }
   };
-  type SymbolName = NonNullable<ComponentProps<typeof Image>["systemName"]>;
-  const symbol = (phase?: AgentActivityPhase): SymbolName => {
+
+  const phasePriority = (phase: AgentActivityPhase): number => {
+    if (phase === "waiting_for_approval" || phase === "waiting_for_input") return 0;
+    if (phase === "failed") return 1;
+    if (phase === "running" || phase === "starting") return 2;
+    return 3;
+  };
+  // Past the stale date the system stops vouching for the content, so every
+  // in-flight row degrades to "stale" rather than claiming an agent is still
+  // working.
+  const activities: ReadonlyArray<AgentActivityRowProps> = environment.isStale
+    ? props.activities.map((row) =>
+        row.phase === "completed" || row.phase === "failed"
+          ? row
+          : { ...row, phase: "stale", status: "Out of date" },
+      )
+    : props.activities;
+  const ordered = [...activities].sort((a, b) => phasePriority(a.phase) - phasePriority(b.phase));
+  const row0 = ordered[0];
+  const row1 = ordered[1];
+  const row2 = ordered[2];
+  const row3 = ordered[3];
+  const row4 = ordered[4];
+
+  const attentionRows = activities.filter(
+    (row) => row.phase === "waiting_for_approval" || row.phase === "waiting_for_input",
+  );
+  const attentionRow = attentionRows[0];
+  const failedRow = activities.find((row) => row.phase === "failed");
+  const heroRow = attentionRow ?? failedRow ?? row0;
+  const tint = phaseTint(heroRow?.phase);
+  const headerTint = attentionRow
+    ? phaseTint(attentionRow.phase)
+    : failedRow
+      ? phaseTint(failedRow.phase)
+      : tint;
+
+  const allDone = props.activeCount === 0;
+  const doneLabel = failedRow ? "Failed" : "Done";
+  const outcomeLabel = failedRow ? "Agent work failed" : "Agent work completed";
+
+  const agentWord = props.activeCount === 1 ? "agent" : "agents";
+  const agentsLabel = allDone
+    ? outcomeLabel
+    : environment.isStale
+      ? "Agent status out of date"
+      : `${props.activeCount} active ${agentWord}`;
+  const attentionSuffix =
+    attentionRows.length > 0
+      ? `${attentionRows.length} need${attentionRows.length === 1 ? "s" : ""} attention`
+      : "";
+  const activeLabel = allDone
+    ? doneLabel
+    : environment.isStale
+      ? "Out of date"
+      : `${props.activeCount} active`;
+  const showCompactCount = !attentionRow && !allDone && !environment.isStale;
+  const compactCountLabel = props.activeCount > 99 ? "99+" : `${props.activeCount}`;
+  const summary = attentionSuffix || activeLabel;
+
+  // Any registered scheme variant routes back to this app; taps are delivered
+  // to the widget's containing app, so the prod scheme is safe for all builds.
+  const deepLinkRow = attentionRow ?? row0;
+  const deepLink =
+    deepLinkRow && deepLinkRow.deepLink.startsWith("/") && !deepLinkRow.deepLink.startsWith("//")
+      ? `t3code://${deepLinkRow.deepLink.slice(1)}`
+      : null;
+  const linkModifiers = deepLink ? [widgetURL(deepLink)] : [];
+
+  type SFName = NonNullable<ComponentProps<typeof Image>["systemName"]>;
+  const phaseSymbol = (phase: AgentActivityPhase): SFName => {
     switch (phase) {
       case "waiting_for_approval":
-        return "hand.raised.fill";
+        return "exclamationmark.circle.fill";
       case "waiting_for_input":
-        return "bubble.left.and.text.bubble.right.fill";
+        return "questionmark.circle.fill";
       case "failed":
-        return "exclamationmark.triangle.fill";
+        return "xmark.octagon.fill";
       case "completed":
         return "checkmark.circle.fill";
+      case "starting":
+        return "circle.dotted";
       case "stale":
-        return "clock";
+        return "clock.arrow.circlepath";
+      case "running":
       default:
-        return "terminal.fill";
+        return "arrow.triangle.2.circlepath";
     }
   };
-  const priority = (row: AgentActivityRowProps) =>
-    row.phase.startsWith("waiting")
-      ? 0
-      : row.phase === "running" || row.phase === "starting"
-        ? 1
-        : 2;
-  const ordered = [...props.activities].sort(
-    (a, b) => priority(a) - priority(b) || b.updatedAt.localeCompare(a.updatedAt),
-  );
-  const attention = ordered.filter((row) => row.phase.startsWith("waiting"));
-  const hero = ordered[0];
-  const done = props.activeCount === 0;
-  const summary = attention.length
-    ? `${attention.length} need${attention.length === 1 ? "s" : ""} you`
-    : done
-      ? hero?.phase === "failed"
-        ? "Needs review"
-        : hero
-          ? "Done"
-          : "All caught up"
-      : `${props.activeCount} active`;
-  const url =
-    hero?.deepLink.startsWith("/") && !hero.deepLink.startsWith("//")
-      ? `t3code://${hero.deepLink.slice(1)}`
-      : null;
-  const logo = (size: number) => (
-    <HStack modifiers={[frame({ width: size, height: size })]}>
-      <Image assetName="AppMark" modifiers={[resizable(), accessibilityLabel("PseudoCode")]} />
-    </HStack>
-  );
-  const glyph = (row: AgentActivityRowProps, size: number) => (
-    <HStack modifiers={[frame({ width: size, height: size }), foregroundStyle(tint(row.phase))]}>
-      <Image systemName={symbol(row.phase)} modifiers={[resizable()]} />
-    </HStack>
-  );
-  const badge = (text: string, phase?: AgentActivityPhase) => (
-    <Text
-      modifiers={[
-        font({ size: 12, weight: "semibold" }),
-        foregroundStyle(tint(phase)),
-        lineLimit(1),
-        padding({ horizontal: 8, vertical: 4 }),
-        background("#25353d"),
-        cornerRadius(7),
-      ]}
+
+  // SF Symbols, like the logo, ignore frame/foregroundStyle applied directly to
+  // the image; size + tint them through a container the resizable symbol fills.
+  const renderGlyph = (
+    systemName: SFName,
+    size: number,
+    color: Foreground,
+    modifiers: typeof linkModifiers = [],
+  ) => (
+    <HStack
+      modifiers={[frame({ width: size, height: size }), foregroundStyle(color), ...modifiers]}
     >
-      {text}
-    </Text>
-  );
-  const detail = (row: AgentActivityRowProps) =>
-    row.phase === "failed"
-      ? row.detail || "Open thread to review the error"
-      : row.phase === "waiting_for_approval"
-        ? "Tap to review and approve"
-        : row.phase === "waiting_for_input"
-          ? "Tap to answer your agent"
-          : row.phase === "completed"
-            ? "Ready to review"
-            : row.modelTitle;
-  const rowView = (row: AgentActivityRowProps, prominent: boolean) => (
-    <HStack key={`${row.environmentId}:${row.threadId}`} alignment="top" spacing={10}>
-      <VStack modifiers={[padding({ top: 3 })]}>{glyph(row, prominent ? 17 : 13)}</VStack>
-      <VStack
-        alignment="leading"
-        spacing={4}
-        modifiers={[frame({ maxWidth: Infinity, alignment: "leading" })]}
-      >
-        <Text
-          modifiers={[
-            font({ size: prominent ? 16 : 13, weight: "semibold" }),
-            foregroundStyle("#f4f8fa"),
-            lineLimit(1),
-          ]}
-        >
-          {row.threadTitle}
-        </Text>
-        <HStack spacing={6}>
-          <Text modifiers={[font({ size: 11 }), foregroundStyle("#a8bac3"), lineLimit(1)]}>
-            {row.projectTitle}
-          </Text>
-          <Spacer minLength={4} />
-          <Text
-            modifiers={[
-              font({ size: 12, weight: "semibold" }),
-              foregroundStyle(tint(row.phase)),
-              lineLimit(1),
-            ]}
-          >
-            {label(row.phase)}
-          </Text>
-        </HStack>
-        {prominent ? (
-          <Text
-            modifiers={[
-              font({ size: 12 }),
-              foregroundStyle(row.phase === "failed" ? tint(row.phase) : "#a8bac3"),
-              lineLimit(1),
-            ]}
-          >
-            {detail(row)}
-          </Text>
-        ) : null}
-      </VStack>
+      <Image systemName={systemName} modifiers={[resizable()]} />
     </HStack>
   );
-  const extra = Math.max(
-    0,
-    props.activeCount - ordered.slice(0, 2).filter((row) => priority(row) < 2).length,
+
+  const renderCompactRow = (row: AgentActivityRowProps) => (
+    <HStack spacing={7} alignment="center">
+      <Text
+        modifiers={[
+          font({ weight: "semibold", size: 13 }),
+          foregroundStyle(primaryForeground),
+          lineLimit(1),
+        ]}
+      >
+        {row.threadTitle}
+      </Text>
+      {/* No layoutPriority and no frame on the project: two bare texts take
+          their ideal width when it fits and shrink proportionally only when it
+          doesn't — so short rows never truncate, and long title + long project
+          truncate together. */}
+      <Text modifiers={[font({ size: 11 }), foregroundStyle(secondaryForeground), lineLimit(1)]}>
+        {row.projectTitle}
+      </Text>
+      <Spacer minLength={8} />
+      <Text
+        modifiers={[
+          font({ weight: "semibold", size: 11 }),
+          foregroundStyle(phaseTint(row.phase)),
+          layoutPriority(1),
+        ]}
+      >
+        {row.status}
+      </Text>
+    </HStack>
   );
+
+  // Image views only honor `resizable` directly (frame/foregroundStyle are
+  // dropped), so we size it via a container frame the resizable image fills and
+  // tint it through the container's foreground style, which the template image
+  // inherits.
+  const renderLogo = (height: number, color: Foreground, modifiers: typeof linkModifiers = []) => (
+    <HStack
+      modifiers={[frame({ width: height * 1.5, height }), foregroundStyle(color), ...modifiers]}
+    >
+      <Image assetName="T3Mark" modifiers={[resizable()]} />
+    </HStack>
+  );
+
   return {
     banner: (
       <VStack
         alignment="leading"
-        spacing={12}
+        spacing={6}
         modifiers={[
-          frame({ maxWidth: Infinity, alignment: "leading" }),
-          padding({ horizontal: 16, vertical: 14 }),
-          background("#101a1f"),
-          ...(url ? [widgetURL(url)] : []),
+          padding({ all: 14 }),
+          // A clear tint reveals iOS 26's glass material; older hosts keep the standard surface.
+          activityBackgroundTint(environment.isLiquidGlassAvailable ? "clear" : null),
+          ...(deepLink ? [widgetURL(deepLink)] : []),
         ]}
       >
-        <HStack spacing={7}>
-          {logo(23)}
-          <Text modifiers={[font({ size: 14, weight: "semibold" }), foregroundStyle("#f4f8fa")]}>
-            PseudoCode
-          </Text>
-          <Spacer minLength={8} />
-          {badge(summary, hero?.phase)}
-        </HStack>
-        {hero ? (
-          rowView(hero, true)
-        ) : (
-          <Text modifiers={[font({ size: 13 }), foregroundStyle("#a8bac3")]}>
-            Your tasks are up to date.
-          </Text>
-        )}
-        {ordered[1] ? rowView(ordered[1], false) : null}
-        {extra > 0 ? (
-          <Text modifiers={[font({ size: 11 }), foregroundStyle("#a8bac3")]}>
-            +{extra} more active in PseudoCode
-          </Text>
-        ) : null}
+        <ZStack>
+          <HStack spacing={0} alignment="center">
+            {renderLogo(13, primaryForeground)}
+            <Spacer minLength={0} />
+          </HStack>
+          <HStack spacing={6} alignment="center">
+            <Spacer minLength={0} />
+            <Text
+              modifiers={[
+                font({ weight: "semibold", size: 13 }),
+                foregroundStyle(allDone ? headerTint : primaryForeground),
+                lineLimit(1),
+              ]}
+            >
+              {agentsLabel}
+            </Text>
+            {attentionSuffix ? (
+              <Text modifiers={[font({ size: 13 }), foregroundStyle(secondaryForeground)]}>·</Text>
+            ) : null}
+            {attentionSuffix ? (
+              <Text
+                modifiers={[
+                  font({ weight: "semibold", size: 13 }),
+                  foregroundStyle(headerTint),
+                  lineLimit(1),
+                ]}
+              >
+                {attentionSuffix}
+              </Text>
+            ) : null}
+            <Spacer minLength={0} />
+          </HStack>
+        </ZStack>
+        {row0 ? renderCompactRow(row0) : null}
+        {row1 ? renderCompactRow(row1) : null}
+        {row2 ? renderCompactRow(row2) : null}
+        {row3 ? renderCompactRow(row3) : null}
+        {row4 ? renderCompactRow(row4) : null}
       </VStack>
     ),
     bannerSmall: (
-      <VStack
-        alignment="leading"
-        spacing={8}
-        modifiers={[padding({ all: 10 }), background("#101a1f")]}
-      >
-        <HStack spacing={6}>
-          {logo(20)}
-          <Text modifiers={[font({ size: 12, weight: "semibold" })]}>PseudoCode</Text>
-          <Spacer minLength={0} />
+      <VStack alignment="leading" spacing={5} modifiers={[padding({ all: 10 })]}>
+        <HStack spacing={7} alignment="center">
+          {renderLogo(14, primaryForeground)}
+          <Text
+            modifiers={[
+              font({ weight: "bold", size: 13 }),
+              foregroundStyle(headerTint),
+              lineLimit(1),
+            ]}
+          >
+            {attentionRows.length > 0 ? summary : activeLabel}
+          </Text>
+          <Spacer minLength={6} />
         </HStack>
-        {hero ? rowView(hero, false) : null}
-        {badge(summary, hero?.phase)}
+        {row0 ? (
+          <HStack spacing={7} alignment="center">
+            <Text
+              modifiers={[
+                font({ weight: "semibold", size: 12 }),
+                foregroundStyle(primaryForeground),
+                lineLimit(1),
+              ]}
+            >
+              {row0.threadTitle}
+            </Text>
+            <Spacer minLength={6} />
+            <Text modifiers={[font({ size: 11 }), foregroundStyle(phaseTint(row0.phase))]}>
+              {row0.status}
+            </Text>
+          </HStack>
+        ) : null}
       </VStack>
     ),
-    compactLeading: logo(22),
-    compactTrailing: (
-      <Text
+    compactLeading: renderLogo(14, tint, linkModifiers),
+    compactTrailing: showCompactCount ? (
+      <ZStack
         modifiers={[
-          font({ size: 12, weight: "semibold" }),
-          foregroundStyle(tint(hero?.phase)),
-          lineLimit(1),
+          frame({ width: 28, height: 28 }),
+          accessibilityElement("ignore"),
+          accessibilityLabel(agentsLabel),
+          ...linkModifiers,
         ]}
       >
-        {attention.length
-          ? hero?.phase === "waiting_for_approval"
-            ? "Approve"
-            : "Reply"
-          : summary}
+        <Circle modifiers={[foregroundStyle(tint)]} />
+        <Text
+          modifiers={[
+            font({ weight: "bold", size: 14 }),
+            foregroundStyle("#000000"),
+            lineLimit(1),
+            minimumScaleFactor(0.75),
+            frame({ width: 24, height: 28 }),
+          ]}
+        >
+          {compactCountLabel}
+        </Text>
+      </ZStack>
+    ) : (
+      <Text
+        modifiers={[
+          font({ weight: "semibold", size: 11 }),
+          foregroundStyle(tint),
+          lineLimit(1),
+          minimumScaleFactor(0.5),
+          ...linkModifiers,
+        ]}
+      >
+        {attentionRow
+          ? attentionRow.phase === "waiting_for_approval"
+            ? "Approval"
+            : "Input"
+          : activeLabel}
       </Text>
     ),
-    minimal: hero && (done || attention.length) ? glyph(hero, 16) : logo(20),
+    minimal:
+      (attentionRow || failedRow || allDone) && heroRow
+        ? renderGlyph(phaseSymbol(heroRow.phase), 13, phaseTint(heroRow.phase), linkModifiers)
+        : renderLogo(11, tint, linkModifiers),
     expandedLeading: (
-      <HStack spacing={6} modifiers={[padding({ leading: 4, top: 3 })]}>
-        {logo(22)}
-        <Text modifiers={[font({ size: 12, weight: "semibold" })]}>PseudoCode</Text>
+      <HStack spacing={5} alignment="center" modifiers={[padding({ leading: 4, vertical: 4 })]}>
+        {renderLogo(15, tint)}
+        <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(tint)]}>
+          {allDone ? doneLabel : `${props.activeCount}`}
+        </Text>
       </HStack>
     ),
-    expandedTrailing: (
-      <HStack modifiers={[padding({ trailing: 4, top: 3 })]}>{badge(summary, hero?.phase)}</HStack>
-    ),
     expandedCenter: null,
+    expandedTrailing: null,
     expandedBottom: (
       <VStack
         alignment="leading"
-        spacing={8}
-        modifiers={[padding({ horizontal: 8, vertical: 6 }), ...(url ? [widgetURL(url)] : [])]}
+        spacing={5}
+        modifiers={
+          deepLink
+            ? [padding({ vertical: 2, horizontal: 8 }), widgetURL(deepLink)]
+            : [padding({ vertical: 2, horizontal: 8 })]
+        }
       >
-        {hero ? rowView(hero, true) : null}
-        {extra > 0 || props.activeCount > 1 ? (
-          <Text modifiers={[font({ size: 11 }), foregroundStyle("#a8bac3")]}>
-            Open PseudoCode for all {props.activeCount} active tasks
-          </Text>
-        ) : null}
+        {row0 ? renderCompactRow(row0) : null}
+        {row1 ? renderCompactRow(row1) : null}
+        {row2 ? renderCompactRow(row2) : null}
       </VStack>
     ),
   };

@@ -3,39 +3,46 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import * as PlatformError from "effect/PlatformError";
 
 import { resolveUserDataPath } from "./DesktopUserData.ts";
 
-it.effect("identifies a failed source read and preserves its cause", () => {
-  const sourceState = "/profiles/t3code/Local State";
-  const cause = PlatformError.systemError({
-    _tag: "PermissionDenied",
-    module: "FileSystem",
-    method: "readFileString",
-    pathOrDescriptor: sourceState,
-  });
-  return Effect.gen(function* () {
-    const error = yield* resolveUserDataPath({
-      appDataDirectory: "/profiles",
-      isDevelopment: false,
-      platform: "win32",
-    }).pipe(Effect.flip);
-    assert.equal(error.operation, "read");
-    assert.equal(error.resourcePath, sourceState);
-    assert.equal(error.category, "PermissionDenied");
-    assert.strictEqual(error.cause, cause);
-  }).pipe(
-    Effect.provideService(
-      FileSystem.FileSystem,
-      FileSystem.makeNoop({
-        exists: (path) => Effect.succeed(path === sourceState),
-        readFileString: () => Effect.fail(cause),
-      }),
-    ),
-    Effect.provide(NodeServices.layer),
-  );
-});
+it.effect.each(["darwin", "win32", "linux"] as const)(
+  "uses an explicit isolated profile on %s without migrating installed state",
+  (platform) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-isolated-profile-" });
+      const installed = path.join(directory, "T3 Code (Alpha)");
+      const isolated = path.join(directory, "isolated");
+      yield* fs.makeDirectory(installed, { recursive: true });
+      yield* fs.writeFileString(path.join(installed, "Local State"), "installed state");
+      assert.equal(
+        yield* resolveUserDataPath({
+          appDataDirectory: directory,
+          userDataDirectory: isolated,
+          isDevelopment: false,
+          platform,
+        }),
+        isolated,
+      );
+      assert.isFalse(yield* fs.exists(isolated));
+      assert.equal(
+        yield* fs.readFileString(path.join(installed, "Local State")),
+        "installed state",
+      );
+      if (platform !== "win32") {
+        assert.equal(
+          yield* resolveUserDataPath({
+            appDataDirectory: directory,
+            isDevelopment: false,
+            platform,
+          }),
+          path.join(directory, "t3code-v2"),
+        );
+      }
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it.effect.each(["t3code", "T3 Code (Alpha)"])(
   "preserves Windows credential keys from %s without copying browser databases",

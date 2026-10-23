@@ -25,7 +25,7 @@ import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useWorkspaceState } from "../../state/workspace";
+import { useConnectionsReady } from "../../state/workspace";
 import {
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
@@ -185,7 +185,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const insets = useSafeAreaInsets();
   const nativeColumnMetrics = useNativeColumnLayoutMetrics();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, "environment retry");
-  const { state: workspaceState } = useWorkspaceState();
+  const connectionsReady = useConnectionsReady();
   const { dock, fileInspector } = useAdaptiveWorkspaceLayout();
   const params = props.route.params;
   const { selectedThread, selectedThreadProject, selectedEnvironmentConnection } =
@@ -201,7 +201,9 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
   const requestedTerminalId = firstRouteParam(params.terminalId);
   const terminalId = requestedTerminalId ?? DEFAULT_TERMINAL_ID;
+  const captureSequenceRef = useRef(0);
   const [captureRequest, setCaptureRequest] = useState(0);
+  const requestCapture = () => setCaptureRequest(++captureSequenceRef.current);
   const [capturedOutput, setCapturedOutput] = useState<string | null>(null);
   const {
     isReady: hasResolvedFontPreference,
@@ -441,7 +443,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const headerSubtitle = selectedThreadProject?.title ?? "";
 
   if (!selectedThread) {
-    if (workspaceState.isLoadingConnections) {
+    if (!connectionsReady) {
       return <LoadingScreen message="Opening terminal…" />;
     }
 
@@ -537,6 +539,11 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               title="Terminal access unavailable"
               detail="This connection does not have permission to view terminals."
             />
+          ) : canOperateTerminal && session.launchLocation === null ? (
+            <EmptyState
+              title={sessionsError ? "Could not load terminals" : "Loading terminals"}
+              detail={sessionsError ?? "Reading existing terminal sessions."}
+            />
           ) : !canOperateTerminal && sessionsPending ? (
             <LoadingScreen message="Loading terminals…" />
           ) : !canOperateTerminal && sessionsError !== null ? (
@@ -554,10 +561,11 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                 captureRequest={captureRequest}
                 onRequestCapture={
                   Platform.OS !== "android" && hasNativeTerminalSurface()
-                    ? () => setCaptureRequest((value) => value + 1)
+                    ? requestCapture
                     : undefined
                 }
                 onCapture={(text) => {
+                  setCaptureRequest(0);
                   if (text.trim()) setCapturedOutput(text);
                   else Dialog.alert("No terminal output", "There is no visible output to attach.");
                 }}
@@ -579,7 +587,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                   accessibilityRole="button"
                   onPress={() => {
                     KeyboardController.dismiss();
-                    setCaptureRequest((value) => value + 1);
+                    requestCapture();
                   }}
                   className="px-4 py-2"
                 >

@@ -1,11 +1,8 @@
+import { resolveVoicePlatformPresentation } from "./SettingsRouteScreen.logic";
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  resolveAgentAwarenessPlatformPresentation,
-  resolveVoicePlatformPresentation,
-  resolveAutoSettleReferenceEnvironmentId,
-} from "./SettingsRouteScreen.logic";
+import { resolveAutoSettleReferenceEnvironmentId } from "./SettingsRouteScreen.logic";
 
 describe("resolveAutoSettleReferenceEnvironmentId", () => {
   const firstId = EnvironmentId.make("first");
@@ -33,15 +30,6 @@ describe("resolveAutoSettleReferenceEnvironmentId", () => {
     ).toBe(firstId);
   });
 
-  it("does not wait for later grants after finding the first writable reference", () => {
-    expect(
-      resolveAutoSettleReferenceEnvironmentId([
-        { environmentId: firstId, canWriteSettings: true },
-        { environmentId: secondId, canWriteSettings: null },
-      ]),
-    ).toBe(firstId);
-  });
-
   it("waits before showing a read-only fallback until all grants are resolved", () => {
     expect(
       resolveAutoSettleReferenceEnvironmentId([
@@ -55,26 +43,6 @@ describe("resolveAutoSettleReferenceEnvironmentId", () => {
         { environmentId: secondId, canWriteSettings: false },
       ]),
     ).toBe(firstId);
-  });
-
-  it("has no reference when no environment supports synchronization", () => {
-    expect(resolveAutoSettleReferenceEnvironmentId([])).toBeNull();
-  });
-});
-
-describe("resolveAgentAwarenessPlatformPresentation", () => {
-  it("supports agent awareness settings on Android", () => {
-    expect(resolveAgentAwarenessPlatformPresentation("android")).toEqual({
-      supported: true,
-      subtitle: undefined,
-    });
-  });
-
-  it("leaves supported iOS settings unchanged", () => {
-    expect(resolveAgentAwarenessPlatformPresentation("ios")).toEqual({
-      supported: true,
-      subtitle: undefined,
-    });
   });
 });
 

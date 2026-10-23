@@ -1,4 +1,3 @@
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -14,7 +13,6 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 
 export interface McpCredentialRequest {
-  readonly previewEnabled?: boolean;
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
   /**
@@ -62,9 +60,9 @@ export interface McpSessionRegistryOptions {
 }
 
 /**
- * The bound matters because `/mcp` is mounted outside the environment auth
- * stack and is reachable on whatever host the server binds to, so this token is
- * the only thing guarding the `t3-code` toolkits on a remote-reachable server.
+ * `/mcp` is outside environment auth, so idle tokens stop authenticating.
+ * Keep expired records until explicit revocation: a trusted provider turn can
+ * refresh the token its subprocess still holds; MCP requests cannot.
  */
 const DEFAULT_LIVENESS_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
@@ -82,7 +80,6 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   options: McpSessionRegistryOptions = {},
 ) {
   const crypto = yield* Crypto.Crypto;
-  const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const environmentId = yield* environment.getEnvironmentId;
   const httpServer = yield* HttpServer.HttpServer;
@@ -97,19 +94,6 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
     crypto
       .digest("SHA-256", new TextEncoder().encode(token))
       .pipe(Effect.map(bytesToHex), Effect.orDie);
-
-  const pruneDead = Effect.fnUntraced(function* (
-    records: ReadonlyMap<string, CredentialRecord>,
-    timestamp: number,
-  ) {
-    const next = new Map(records);
-    for (const [key, record] of records) {
-      if (timestamp - record.lastAliveAt <= livenessWindowMs) continue;
-      const owner = yield* mcpSessions.read(record.scope.thread.threadId);
-      if (owner?.providerSessionId !== record.scope.thread.providerSessionId) next.delete(key);
-    }
-    return next.size === records.size ? records : next;
-  });
 
   const issue: McpSessionRegistryShape["issue"] = Effect.fn("McpSessionRegistry.issue")(
     function* (request) {
@@ -136,14 +120,11 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
         ]),
         issuedAt,
       };
-      yield* SynchronizedRef.updateEffect(
-        state,
-        Effect.fnUntraced(function* ({ records }) {
-          const next = new Map(yield* pruneDead(records, issuedAt));
-          next.set(tokenHash, { tokenHash, scope, lastAliveAt: issuedAt });
-          return { records: next };
-        }),
-      );
+      yield* SynchronizedRef.update(state, ({ records }) => {
+        const next = new Map(records);
+        next.set(tokenHash, { tokenHash, scope, lastAliveAt: issuedAt });
+        return { records: next };
+      });
       return {
         config: {
           environmentId,
@@ -164,38 +145,30 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
       if (rawToken.length === 0) return undefined;
       const tokenHash = yield* hashToken(rawToken);
       const timestamp = yield* currentTimeMillis;
-      return yield* SynchronizedRef.modifyEffect(
-        state,
-        Effect.fnUntraced(function* ({ records }) {
-          const current = yield* pruneDead(records, timestamp);
-          const record = current.get(tokenHash);
-          // Only a trusted provider turn can renew an expired, still-owned record.
-          if (!record || timestamp - record.lastAliveAt > livenessWindowMs)
-            return [undefined, { records: current }] as const;
-          const next = new Map(current);
-          next.set(tokenHash, { ...record, lastAliveAt: timestamp });
-          return [record.scope, { records: next }] as const;
-        }),
-      );
+      return yield* SynchronizedRef.modify(state, ({ records }) => {
+        const record = records.get(tokenHash);
+        if (!record || timestamp - record.lastAliveAt > livenessWindowMs) {
+          return [undefined, { records }] as const;
+        }
+        const next = new Map(records);
+        next.set(tokenHash, { ...record, lastAliveAt: timestamp });
+        return [record.scope, { records: next }] as const;
+      });
     },
   );
 
   const touch: McpSessionRegistryShape["touch"] = Effect.fn("McpSessionRegistry.touch")(
     function* (threadId) {
       const timestamp = yield* currentTimeMillis;
-      yield* SynchronizedRef.updateEffect(
-        state,
-        Effect.fnUntraced(function* ({ records }) {
-          const current = yield* pruneDead(records, timestamp);
-          const next = new Map(current);
-          for (const [tokenHash, record] of current) {
-            if (record.scope.thread.threadId === threadId) {
-              next.set(tokenHash, { ...record, lastAliveAt: timestamp });
-            }
+      yield* SynchronizedRef.update(state, ({ records }) => {
+        const next = new Map(records);
+        for (const [tokenHash, record] of records) {
+          if (record.scope.thread.threadId === threadId) {
+            next.set(tokenHash, { ...record, lastAliveAt: timestamp });
           }
-          return { records: next };
-        }),
-      );
+        }
+        return { records: next };
+      });
     },
   );
 
@@ -238,18 +211,7 @@ const make = Effect.acquireRelease(
     }),
 );
 
-export const layer = Layer.effect(McpSessionRegistry, make).pipe(
-  Layer.provide(McpProviderSessions.layer),
-);
-
-export const issueActiveMcpCredential = (
-  request: McpCredentialRequest,
-): Effect.Effect<McpIssuedCredential | undefined> =>
-  activeMcpSessionRegistry
-    ? activeMcpSessionRegistry
-        .revokeThread(request.threadId)
-        .pipe(Effect.andThen(activeMcpSessionRegistry.issue(request)))
-    : Effect.undefined;
+export const layer = Layer.effect(McpSessionRegistry, make);
 
 export const touchActiveMcpThread = (threadId: ThreadId): Effect.Effect<void> =>
   activeMcpSessionRegistry ? activeMcpSessionRegistry.touch(threadId) : Effect.void;

@@ -1,18 +1,11 @@
 import type { VoiceInputPhase, VoiceInputState } from "@t3tools/client-runtime/voice-input";
 import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
-import {
-  Linking,
-  Platform,
-  Pressable,
-  Text as SystemText,
-  View,
-  type LayoutChangeEvent,
-} from "react-native";
+import { Linking, Pressable, Text as SystemText, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   Easing,
-  LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
   type EntryExitAnimationFunction,
@@ -31,10 +24,6 @@ const DICTATION_TIMING = {
   easing: Easing.out(Easing.cubic),
   reduceMotion: ReduceMotion.System,
 } as const;
-const DICTATION_LAYOUT =
-  Platform.OS === "android"
-    ? undefined
-    : LinearTransition.duration(DICTATION_TIMING.duration).reduceMotion(ReduceMotion.System);
 const TOOLBAR_FLIP_TIMING = {
   duration: 260,
   easing: Easing.inOut(Easing.cubic),
@@ -121,7 +110,6 @@ export function ComposerDictationDraftContent(props: {
       importantForAccessibility={props.hidden ? "no-hide-descendants" : "auto"}
       collapsable={false}
       className={props.className}
-      layout={DICTATION_LAYOUT}
       pointerEvents={props.hidden ? "none" : "auto"}
       style={[animatedStyle, { backfaceVisibility: "hidden" }]}
     >
@@ -135,14 +123,19 @@ export function ComposerDictationToolbar(props: {
   readonly showsDictation: boolean;
   readonly visible?: boolean;
 }) {
+  // Android can drop the reduced-motion flip's final frame, leaving the toolbar invisible.
+  const reducedMotion = useReducedMotion();
+  const entering = props.showsDictation ? DICTATION_TOOLBAR_ENTERING : DRAFT_TOOLBAR_ENTERING;
+  const exiting = props.showsDictation ? DICTATION_TOOLBAR_EXITING : DRAFT_TOOLBAR_EXITING;
+
   return (
     <View className="relative h-[44px] overflow-hidden">
       {props.visible !== false ? (
         <Animated.View
           key={props.showsDictation ? "dictation" : "draft"}
           className="absolute inset-0"
-          entering={props.showsDictation ? DICTATION_TOOLBAR_ENTERING : DRAFT_TOOLBAR_ENTERING}
-          exiting={props.showsDictation ? DICTATION_TOOLBAR_EXITING : DRAFT_TOOLBAR_EXITING}
+          entering={reducedMotion ? undefined : entering}
+          exiting={reducedMotion ? undefined : exiting}
           style={{ backfaceVisibility: "hidden" }}
         >
           {props.children}
@@ -262,6 +255,7 @@ export function DictationElapsedTime(props: {
 }
 
 function VoiceActionButton(props: {
+  readonly size?: "regular" | "large";
   readonly accessibilityLabel: string;
   readonly disabled?: boolean;
   readonly icon: AppSymbolName;
@@ -289,7 +283,11 @@ function VoiceActionButton(props: {
       <View
         className={cn(
           "items-center justify-center",
-          variant === "primary" ? "size-[30px] rounded-full bg-subtle" : "size-[44px]",
+          variant === "primary"
+            ? props.size === "large"
+              ? "size-[44px] rounded-full bg-subtle"
+              : "size-[30px] rounded-full bg-subtle"
+            : "size-[44px]",
         )}
       >
         {variant === "primary" ? (
@@ -304,7 +302,7 @@ function VoiceActionButton(props: {
           ) : (
             <SymbolView
               name={props.icon}
-              size={variant === "primary" ? 16 : 20}
+              size={props.size === "large" ? 24 : variant === "primary" ? 16 : 20}
               weight={variant === "primary" ? "semibold" : "regular"}
               tintColorClassName={
                 variant === "primary" ? "accent-primary-foreground" : "accent-icon"
@@ -318,7 +316,6 @@ function VoiceActionButton(props: {
   );
 }
 
-/** Bounded feedback sits beside the composer; it never replaces the editor. */
 export function ComposerDictationFeedback(props: {
   readonly presentation: VoiceComposerPresentation;
   readonly recoverableTranscript: string | null;
@@ -370,7 +367,7 @@ export function ComposerDictationFeedback(props: {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add saved dictation"
-            className="py-2 active:opacity-70"
+            className="min-h-11 justify-center py-2 active:opacity-70"
             onPress={props.onInsertRecovery}
           >
             <Text className="text-xs text-foreground">Add</Text>
@@ -378,7 +375,7 @@ export function ComposerDictationFeedback(props: {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Discard saved dictation"
-            className="py-2 active:opacity-70"
+            className="min-h-11 justify-center py-2 active:opacity-70"
             onPress={props.onDiscardRecovery}
           >
             <Text className="text-xs text-foreground-muted">Discard</Text>
@@ -429,12 +426,14 @@ export function ComposerDictationStatus(props: {
 }
 
 export function ComposerDictationCancelAction(props: {
+  readonly size?: "regular" | "large";
   readonly presentation: VoiceComposerPresentation;
   readonly onCancel: () => void;
 }) {
   if (props.presentation.leadingAction !== "cancel") return null;
   return (
     <VoiceActionButton
+      size={props.size}
       accessibilityLabel={
         props.presentation.statusLabel === "Cleaning up"
           ? "Use original transcription"
@@ -447,6 +446,7 @@ export function ComposerDictationCancelAction(props: {
 }
 
 export function ComposerDictationPrimaryAction(props: {
+  readonly size?: "regular" | "large";
   readonly state: VoiceInputState;
   readonly presentation: VoiceComposerPresentation;
   readonly isAvailable: boolean;
@@ -459,6 +459,7 @@ export function ComposerDictationPrimaryAction(props: {
   if (props.presentation.trailingAction === "confirm") {
     return (
       <VoiceActionButton
+        size={props.size}
         accessibilityLabel={
           props.presentation.confirmationEnabled
             ? "Finish dictation"
@@ -477,6 +478,7 @@ export function ComposerDictationPrimaryAction(props: {
 }
 
 export function ComposerDictationStartAction(props: {
+  readonly size?: "regular" | "large";
   readonly state: VoiceInputState;
   readonly isAvailable: boolean;
   readonly hasPendingRecovery?: boolean;
@@ -488,6 +490,7 @@ export function ComposerDictationStartAction(props: {
   const openSettings = props.state.phase === "error" && props.state.errorAction === "settings";
   return (
     <VoiceActionButton
+      size={props.size}
       accessibilityLabel={
         props.hasPendingRecovery
           ? "Add or discard saved dictation before recording again"

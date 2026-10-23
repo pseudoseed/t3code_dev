@@ -1,5 +1,9 @@
 import AgentActivity, { type AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
 
+export function dismissEndedAgentLiveActivities() {
+  AgentActivity.dismissEnded();
+}
+
 export function getAgentLiveActivities() {
   return AgentActivity.getInstances();
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useEffectEvent, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, View, type AccessibilityActionEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
@@ -18,38 +18,39 @@ interface WorkspacePaneDividerProps {
 }
 
 export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
-  const latestProps = useRef(props);
-  latestProps.current = props;
-  const [dragging, setDragging] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const handleResizeStart = useCallback(() => {
-    setDragging(true);
-    latestProps.current.onResizeStart?.();
-  }, []);
-  const handleResize = useCallback((translation: number) => {
-    latestProps.current.onResizeBy(translation * latestProps.current.resizeDirection);
-  }, []);
-  const handleResizeEnd = useCallback(() => {
-    setDragging(false);
-    latestProps.current.onResizeEnd?.();
-  }, []);
   const axis = props.axis ?? "x";
-  const resizeGesture = useMemo(() => {
-    const pan = Gesture.Pan()
-      .onStart(() => {
-        runOnJS(handleResizeStart)();
-      })
-      .onUpdate((event) => {
-        runOnJS(handleResize)(axis === "x" ? event.translationX : event.translationY);
-      })
-      .onFinalize(() => {
-        runOnJS(handleResizeEnd)();
-      });
-
-    return axis === "x"
-      ? pan.activeOffsetX([-4, 4]).failOffsetY([-24, 24])
-      : pan.activeOffsetY([-4, 4]).failOffsetX([-24, 24]);
-  }, [axis, handleResize, handleResizeEnd, handleResizeStart]);
+  const [hovered, setHovered] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  // The pan callbacks fire after render, so effect events read the latest props
+  // while the gesture object stays stable across renders.
+  const handleResizeStart = useEffectEvent(() => {
+    setDragging(true);
+    props.onResizeStart?.();
+  });
+  const handleResize = useEffectEvent((translationX: number) => {
+    props.onResizeBy(translationX * props.resizeDirection);
+  });
+  const handleResizeEnd = useEffectEvent(() => {
+    setDragging(false);
+    props.onResizeEnd?.();
+  });
+  const resizeGesture = useMemo(
+    () =>
+      (axis === "x"
+        ? Gesture.Pan().activeOffsetX([-4, 4]).failOffsetY([-24, 24])
+        : Gesture.Pan().activeOffsetY([-4, 4]).failOffsetX([-24, 24])
+      )
+        .onStart(() => {
+          runOnJS(handleResizeStart)();
+        })
+        .onUpdate((event) => {
+          runOnJS(handleResize)(axis === "x" ? event.translationX : event.translationY);
+        })
+        .onFinalize(() => {
+          runOnJS(handleResizeEnd)();
+        }),
+    [axis],
+  );
 
   const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
     props.onResizeStart?.();

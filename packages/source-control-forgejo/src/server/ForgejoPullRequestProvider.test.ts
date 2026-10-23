@@ -268,6 +268,140 @@ const REPO_PATH = "repos/acme/project";
 const PULL_PATH = "repos/acme/project/pulls/42";
 const MERGE_PATH = "repos/acme/project/pulls/42/merge";
 
+it.effect("keeps branch-policy checks on both summary and detail reads", () => {
+  const requests: ForgejoApiInput[] = [];
+  return Effect.gen(function* () {
+    const provider = yield* ForgejoPullRequestProvider.make;
+    if (!provider.getChangeRequestChecks) return yield* Effect.die("checks read missing");
+    const summary = yield* provider.getChangeRequestChecks(reference);
+    const detail = yield* provider.getChangeRequest(reference);
+    for (const result of [summary, detail]) {
+      expect(
+        result.checks.map(({ name, status, required }) => ({ name, status, required })),
+      ).toEqual([
+        { name: "optional", status: "failure", required: undefined },
+        { name: "build/linux", status: "success", required: true },
+        { name: "security", status: "pending", required: true },
+      ]);
+    }
+    expect(detail.viewerPermissions.actions).toContain("draft");
+    expect(detail.viewerPermissions.actions).toContain("enable-auto-merge");
+    expect(requests.filter(({ path }) => path === `${REPO_PATH}/branches/main`)).toHaveLength(2);
+  }).pipe(
+    Effect.provide(
+      Layer.mock(ForgejoCli)({
+        api: (request) => {
+          requests.push(request);
+          const uri = new URL(request.path, "https://forgejo.example.com/");
+          const endpoint = uri.pathname.slice(1);
+          let body: unknown;
+          switch (endpoint) {
+            case PULL_PATH:
+              body = pullRequest({});
+              break;
+            case REPO_PATH:
+              body = { ...repository(true), permissions: { push: true, admin: false } };
+              break;
+            case "user":
+              body = { login: "reviewer" };
+              break;
+            case `${REPO_PATH}/branches/main`:
+              body = { enable_status_check: true, status_check_contexts: ["build/*", "security"] };
+              break;
+            case `${REPO_PATH}/statuses/head`:
+              body =
+                uri.searchParams.get("page") === "1"
+                  ? ["build/linux", "optional"].map((context) => ({
+                      context,
+                      status: context === "optional" ? "failure" : "success",
+                      description: null,
+                      target_url: null,
+                      updated_at: "2026-01-01T00:00:00Z",
+                    }))
+                  : [];
+              break;
+            default:
+              return Effect.die(`unexpected request ${request.path}`);
+          }
+          return Effect.succeed(output(JSON.stringify(body)));
+        },
+      }),
+    ),
+  );
+});
+
+it.effect("bounds commit payloads while preserving timeline and file revisions", () => {
+  const requests: ForgejoApiInput[] = [];
+  const commit = {
+    sha: "commit-1",
+    author: { login: "author" },
+    commit: { message: "Fix reconnect", committer: { date: "2026-01-01T00:00:00Z" } },
+    parents: [{ sha: "parent-1" }],
+  };
+  return Effect.gen(function* () {
+    const provider = yield* ForgejoPullRequestProvider.make;
+    const activity = yield* provider.getChangeRequestActivity(reference);
+    expect(activity.commits.map(({ oid }) => oid)).toEqual(["commit-1"]);
+    if (!provider.getDiffFileContents) return yield* Effect.die("file contents read missing");
+    const contents = yield* provider.getDiffFileContents({
+      ...reference,
+      commit: "commit-1",
+      oldPath: "src/app.ts",
+      newPath: "src/app.ts",
+      changeType: "change",
+    });
+    expect(contents).toEqual({ oldContents: "before", newContents: "after" });
+    const commitReads = requests.filter(({ path }) => path.includes("/commits"));
+    expect(commitReads).toHaveLength(3);
+    for (const { path } of commitReads) {
+      const query = new URL(path, "https://forgejo.example.com/").searchParams;
+      expect(query.get("files")).toBe("false");
+      expect(query.get("verification")).toBe("false");
+    }
+  }).pipe(
+    Effect.provide(
+      Layer.mock(ForgejoCli)({
+        api: (request) => {
+          requests.push(request);
+          const uri = new URL(request.path, "https://forgejo.example.com/");
+          const endpoint = uri.pathname.slice(1);
+          let body: unknown;
+          switch (endpoint) {
+            case PULL_PATH:
+              body = pullRequest({});
+              break;
+            case "user":
+              body = { login: "reviewer" };
+              break;
+            case `${PULL_PATH}/commits`:
+              body = uri.searchParams.get("page") === "1" ? [commit] : [];
+              break;
+            case `${REPO_PATH}/git/commits/commit-1`:
+              body = commit;
+              break;
+            case `${REPO_PATH}/contents/src/app.ts`:
+              body = {
+                encoding: "base64",
+                content: Buffer.from(
+                  uri.searchParams.get("ref") === "parent-1" ? "before" : "after",
+                ).toString("base64"),
+              };
+              break;
+            case `${REPO_PATH}/issues/42/comments`:
+            case `${PULL_PATH}/reviews`:
+            case `${REPO_PATH}/issues/42/reactions`:
+              body = [];
+              break;
+            default:
+              return Effect.die(`unexpected request ${request.path}`);
+          }
+          return Effect.succeed(output(JSON.stringify(body)));
+        },
+      }),
+    ),
+  );
+});
+
 /** Serves the repository, the pull request, and the merge, recording every request. */
 const forgejo = (input: {
   readonly repository?: unknown;

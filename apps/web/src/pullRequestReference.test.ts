@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parsePullRequestReference } from "./pullRequestReference";
+import { parsePullRequestReference } from "@t3tools/client-runtime/pull-request-link-input";
 
 describe("parsePullRequestReference", () => {
   it("accepts GitHub pull request URLs", () => {

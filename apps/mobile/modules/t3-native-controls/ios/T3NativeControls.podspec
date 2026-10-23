@@ -12,16 +12,9 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  xcconfig = {
+  s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
   }
-  # Xcode 27.0 already uses Swift 6.4 but lacks the iOS 27.1 hinge APIs.
-  sdk_version = Gem::Version.new(
-    Pod::Executable.execute_command('xcrun', ['--sdk', 'iphoneos', '--show-sdk-version']).strip
-  )
-  if sdk_version >= Gem::Version.new('27.1')
-    xcconfig['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = '$(inherited) T3_UIKIT_HINGE_SDK'
-  end
-  s.pod_target_xcconfig = xcconfig
+  s.resource_bundles = { 'T3NativeControlIcons' => ['Resources/Icons/pull-request*.png'] }
   s.source_files = '**/*.{h,m,mm,swift,hpp,cpp}'
 end

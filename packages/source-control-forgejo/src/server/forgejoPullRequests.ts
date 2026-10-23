@@ -12,6 +12,9 @@ export interface NormalizedForgejoPullRequestRecord {
   readonly headRefName: string;
   readonly state: "open" | "closed" | "merged";
   readonly updatedAt: Option.Option<DateTime.Utc>;
+  readonly headSha?: string;
+  readonly closedAt: string | null;
+  readonly mergedAt: string | null;
   readonly isCrossRepository?: boolean;
   readonly headRepositoryNameWithOwner?: string | null;
   readonly headRepositoryOwnerLogin?: string | null;
@@ -84,6 +87,9 @@ export function normalizeForgejoPullRequestRecord(
     baseRefName: raw.base.ref,
     headRefName: raw.head.ref,
     state: normalizeState(raw.state, raw.merged ?? null),
+    ...((raw.head.sha ?? "").trim().length > 0 ? { headSha: (raw.head.sha ?? "").trim() } : {}),
+    closedAt: raw.closed_at ?? null,
+    mergedAt: raw.merged_at ?? null,
     updatedAt: raw.updated_at ?? Option.none(),
     ...(isCrossRepository ? { isCrossRepository: true } : {}),
     ...(isCrossRepository && headFullName ? { headRepositoryNameWithOwner: headFullName } : {}),

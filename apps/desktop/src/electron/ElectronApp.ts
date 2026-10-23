@@ -58,6 +58,7 @@ export class ElectronApp extends Context.Service<
      * the window is hidden or occluded.
      */
     readonly preventAppSuspension: Effect.Effect<void, never, Scope.Scope>;
+    readonly requestSingleInstanceLock: Effect.Effect<boolean>;
     readonly quit: Effect.Effect<void>;
     readonly exit: (code: number) => Effect.Effect<void>;
     readonly relaunch: (options: Electron.RelaunchOptions) => Effect.Effect<void>;
@@ -151,6 +152,7 @@ export const make = ElectronApp.of({
         Electron.powerSaveBlocker.stop(id);
       }),
   ).pipe(Effect.asVoid),
+  requestSingleInstanceLock: Effect.sync(() => Electron.app.requestSingleInstanceLock()),
   quit: Effect.sync(() => {
     Electron.app.quit();
   }),

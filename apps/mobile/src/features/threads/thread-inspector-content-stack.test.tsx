@@ -8,6 +8,9 @@ vi.mock("../../components/RenderErrorBoundary", () => ({
   RenderErrorBoundary: ({ children }: { children: unknown }) => children,
   RenderFailureView: () => null,
 }));
+vi.mock("../../native/NativeInspectorContent", () => ({
+  NativeInspectorContent: ({ children }: { children: unknown }) => children,
+}));
 
 import { ThreadInspectorContentStack } from "./thread-inspector-content-stack";
 

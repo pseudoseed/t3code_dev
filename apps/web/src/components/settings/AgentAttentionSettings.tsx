@@ -7,7 +7,7 @@ import {
   showAgentAttentionNotification,
 } from "../../agentAttentionDelivery";
 import { APP_DISPLAY_NAME } from "../../branding";
-import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
+import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -16,7 +16,7 @@ import { searchableSetting } from "./settingsSearch";
 export function AgentAttentionSettings() {
   const sound = useClientSettings((settings) => settings.agentAttentionSound);
   const notifications = useClientSettings((settings) => settings.agentAttentionNotifications);
-  const update = useUpdateClientSettings();
+  const update = updateClientSettings;
   const [permission, setPermission] = useState(agentNotificationPermission);
   const [requesting, setRequesting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
