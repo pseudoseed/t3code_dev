@@ -26,7 +26,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { runMigrations } from "../../persistence/Migrations.ts";
+import { migrationManifest, runMigrations } from "../../persistence/Migrations.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import Migration0042 from "../../persistence/Migrations/042_ProjectionThreadLinkedPullRequest.ts";
 import Migration0043 from "../../persistence/Migrations/043_ProjectionThreadsUnsettledAt.ts";
@@ -79,13 +79,24 @@ const codexModelSelection = {
   instanceId,
   model: "gpt-5.4",
 };
+const legacyContextUsage = {
+  usedTokens: 24000,
+  maxTokens: 200000,
+  inputTokens: 18000,
+  cachedInputTokens: 6000,
+  outputTokens: 6000,
+  costUsd: 3.25,
+  costSource: "modelPriced",
+  sessionCostUsd: 1.25,
+  costSessionId: "legacy-session",
+} as const;
 
 /**
  * Slot 41 carries a site-local `ThreadSummaryTimeline` migration, matching
  * production databases where local builds recorded extra names under the shared
  * id sequence. The V2 runner only applies migrations past the recorded maximum
- * id, so the cutover in this test applies 050, 051 and 052 on top of the
- * untouched copy — the same path the real upgrade takes.
+ * id, so the cutover applies the full remaining migration chain on top of the
+ * untouched copy, matching a real upgrade.
  */
 const seedV1Database = (fixturePath: string, workspace: string) =>
   Effect.scoped(
@@ -218,6 +229,39 @@ const seedV1Database = (fixturePath: string, workspace: string) =>
         linkedPullRequestJson:
           '{"projectId":"project:cutover","repository":"pingdotgg/t3code","number":9100,"url":"https://github.com/pingdotgg/t3code/pull/9100"}',
       });
+      for (const [index, usage] of [
+        { ...legacyContextUsage, usedTokens: 12000, costUsd: 1.5 },
+        legacyContextUsage,
+      ].entries()) {
+        const createdAt = `2026-01-0${index + 3}T00:00:00.000Z`;
+        const activity = {
+          id: `activity:cutover:usage:${index}`,
+          tone: "info",
+          kind: "context-window.updated",
+          summary: "Context window updated",
+          payload: usage,
+          turnId: null,
+          createdAt,
+        };
+        yield* sql`
+          INSERT INTO orchestration_events (
+            event_id, aggregate_kind, stream_id, stream_version, event_type,
+            occurred_at, actor_kind, payload_json, metadata_json
+          ) VALUES (
+            ${`event:cutover:usage:${index}`}, 'thread', ${ACTIVE_THREAD}, ${index + 1},
+            'thread.activity-appended', ${createdAt}, 'system',
+            ${JSON.stringify({ threadId: ACTIVE_THREAD, activity })}, '{}'
+          )
+        `;
+        yield* sql`
+          INSERT INTO projection_thread_activities (
+            activity_id, thread_id, tone, kind, summary, payload_json, created_at, sequence
+          ) VALUES (
+            ${activity.id}, ${ACTIVE_THREAD}, ${activity.tone}, ${activity.kind},
+            ${activity.summary}, ${JSON.stringify(usage)}, ${createdAt}, ${index + 1}
+          )
+        `;
+      }
       yield* insertMessage({
         messageId: "message:cutover:active:1",
         threadId: ACTIVE_THREAD,
@@ -686,6 +730,15 @@ describe("orchestration v2 legacy v1 cutover", () => {
               const projections = yield* ProjectionStore.ProjectionStoreV2;
               const orchestrator = yield* Orchestrator.OrchestratorV2;
 
+              assert.deepStrictEqual(
+                yield* sql`SELECT name FROM sqlite_schema WHERE name = 'projection_thread_activities'`,
+                [],
+              );
+              const latestMigration = migrationManifest.at(-1)!;
+              assert.deepStrictEqual(
+                yield* sql`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id DESC LIMIT 1`,
+                [{ migration_id: latestMigration[0], name: latestMigration[1] }],
+              );
               assert.equal(yield* importer.pendingThreadCount, ALL_THREADS.length);
               const shellImport = yield* importer.reconcileShells;
               assert.deepStrictEqual(shellImport, {
@@ -718,6 +771,7 @@ describe("orchestration v2 legacy v1 cutover", () => {
                 ThreadId.make(ACTIVE_THREAD),
               );
               assert.equal(activeShell.thread.historyOrigin, "v1_import");
+              assert.deepStrictEqual(activeShell.thread.legacyContextUsage, legacyContextUsage);
               assert.isNull(activeShell.thread.activeProviderThreadId);
               assert.deepStrictEqual(
                 activeShell.messages.map((message) => message.id),
@@ -794,6 +848,7 @@ describe("orchestration v2 legacy v1 cutover", () => {
                 ThreadId.make(ARCHIVED_THREAD),
               );
               assert.isNotNull(archived.thread.archivedAt);
+              assert.isNull(archived.thread.legacyContextUsage);
               const pinned = yield* projections.getThreadProjection(ThreadId.make(PINNED_THREAD));
               assert.isNotNull(pinned.thread.pinnedAt);
               assert.equal(pinned.thread.pinOrderKey, "a0");
@@ -953,6 +1008,11 @@ describe("orchestration v2 legacy v1 cutover", () => {
                 importedThreadCount: 0,
                 importedMessageCount: 0,
               });
+              assert.deepStrictEqual(
+                (yield* projections.getThreadProjection(ThreadId.make(ACTIVE_THREAD))).thread
+                  .legacyContextUsage,
+                legacyContextUsage,
+              );
               assert.deepStrictEqual(
                 yield* importer.ensureTranscript(ThreadId.make(SNOOZED_THREAD)),
                 { importedThreadCount: 1, importedMessageCount: 1 },

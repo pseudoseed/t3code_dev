@@ -353,6 +353,21 @@ const make = Effect.gen(function* () {
   const eventSink = yield* EventSink.EventSinkV2;
   const transcriptImports = yield* KeyedLock.make<ThreadId>();
 
+  // Migration 063 removes activity projections; the V1 event log retains usage and costs.
+  const contextUsage = sql`
+    (
+      SELECT json_extract(event.payload_json, '$.activity.payload')
+      FROM orchestration_events AS event
+      WHERE event.application_event_version = 1
+        AND event.aggregate_kind = 'thread'
+        AND event.stream_id = thread.thread_id
+        AND event.event_type = 'thread.activity-appended'
+        AND json_extract(event.payload_json, '$.activity.kind') = 'context-window.updated'
+      ORDER BY event.sequence DESC
+      LIMIT 1
+    )
+  `;
+
   const listMessages = (threadId: ThreadId) =>
     sql<LegacyMessageRow>`
       SELECT
@@ -454,7 +469,7 @@ const make = Effect.gen(function* () {
         thread.title,
         thread.model_selection_json,
         thread.subagent_model_selection_json,
-        (SELECT payload_json FROM projection_thread_activities a WHERE a.thread_id = thread.thread_id AND a.kind = 'context-window.updated' ORDER BY sequence DESC, created_at DESC LIMIT 1) AS context_usage_json,
+        ${contextUsage} AS context_usage_json,
         thread.runtime_mode,
         thread.interaction_mode,
         thread.branch,
@@ -571,7 +586,7 @@ const make = Effect.gen(function* () {
         thread.title,
         thread.model_selection_json,
         thread.subagent_model_selection_json,
-        (SELECT payload_json FROM projection_thread_activities a WHERE a.thread_id = thread.thread_id AND a.kind = 'context-window.updated' ORDER BY sequence DESC, created_at DESC LIMIT 1) AS context_usage_json,
+        ${contextUsage} AS context_usage_json,
         thread.runtime_mode,
         thread.interaction_mode,
         thread.branch,

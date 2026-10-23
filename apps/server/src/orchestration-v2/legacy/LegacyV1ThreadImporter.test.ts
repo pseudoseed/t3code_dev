@@ -42,6 +42,21 @@ const layerTest = Layer.mergeAll(
   layerProjectionMaintenanceProvided,
 );
 
+it.effect("reconciles an empty database after the full production migration chain", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
+    assert.deepStrictEqual(
+      yield* sql`SELECT name FROM sqlite_schema WHERE name = 'projection_thread_activities'`,
+      [],
+    );
+    assert.deepStrictEqual(yield* importer.reconcileShells, {
+      importedThreadCount: 0,
+      importedMessageCount: 0,
+    });
+  }).pipe(Effect.provide(layerTest)),
+);
+
 const seedPendingTranscripts = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
@@ -231,8 +246,39 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
         )
       `;
       yield* sql`UPDATE projection_threads SET subagent_model_selection_json = '{"instanceId":"codex","model":"gpt-5.4-mini"}' WHERE thread_id = ${threadId}`;
-      yield* sql`INSERT INTO projection_thread_activities (activity_id, thread_id, tone, kind, summary, payload_json, created_at, sequence)
-        VALUES ('legacy-cost', ${threadId}, 'info', 'context-window.updated', 'Usage', '{"usedTokens":12000,"costUsd":2.5,"costSource":"modelPriced"}', '2026-01-04T00:00:00.000Z', 4)`;
+      const legacyUsage = { usedTokens: 12000, costUsd: 2.5, costSource: "modelPriced" } as const;
+      for (const [index, kind, usage, occurredAt] of [
+        [
+          1,
+          "context-window.updated",
+          { usedTokens: 1000, costUsd: 0.5 },
+          "2026-01-05T00:00:00.000Z",
+        ],
+        [2, "context-window.updated", legacyUsage, "2026-01-04T00:00:00.000Z"],
+        [3, "turn.completed", { usedTokens: 99999, costUsd: 99 }, "2026-01-06T00:00:00.000Z"],
+      ] as const) {
+        yield* sql`
+          INSERT INTO orchestration_events (
+            event_id, aggregate_kind, stream_id, stream_version, event_type,
+            occurred_at, actor_kind, payload_json, metadata_json
+          ) VALUES (
+            ${`event:legacy-usage:${index}`}, 'thread', ${threadId}, ${index},
+            'thread.activity-appended', ${occurredAt}, 'system',
+            ${JSON.stringify({
+              threadId,
+              activity: {
+                id: `activity:legacy-usage:${index}`,
+                tone: "info",
+                kind,
+                summary: "Usage",
+                payload: usage,
+                turnId: null,
+                createdAt: occurredAt,
+              },
+            })}, '{}'
+          )
+        `;
+      }
       yield* sql`
         INSERT INTO projection_thread_messages (
           message_id,
@@ -350,6 +396,7 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
       assert.equal(shellProjection.thread.historyOrigin, "v1_import");
       assert.equal(shellProjection.thread.subagentModelSelection?.model, "gpt-5.4-mini");
       assert.equal(shellProjection.thread.legacyContextUsage?.costUsd, 2.5);
+      assert.deepStrictEqual(shellProjection.thread.legacyContextUsage, legacyUsage);
       assert.equal(shellProjection.thread.branch, "main");
       assert.equal(shellProjection.thread.worktreePath, "/tmp/legacy-project");
       assert.deepEqual(
@@ -413,6 +460,7 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
             payload: {
               ...shellProjection.thread,
               title: "Renamed after shell import",
+              lastVisitedAt: null,
               runtimeMode: "approval-required",
               interactionMode: "plan",
               archivedAt: renamedAt,
@@ -497,7 +545,8 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
           '$.snoozedAt',
           '$.unsettledAt',
           '$.linkedPullRequest',
-          '$.pullRequests'
+          '$.pullRequests',
+          '$.legacyContextUsage'
         )
         WHERE thread_id = ${threadId}
       `;
@@ -506,6 +555,7 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
         importedMessageCount: 0,
       });
       const repaired = yield* projections.getThreadProjection(threadId);
+      assert.deepStrictEqual(repaired.thread.legacyContextUsage, legacyUsage);
       assert.isNull(repaired.thread.pinnedAt);
       assert.isNull(repaired.thread.pinOrderKey);
       assert.deepEqual(
@@ -605,6 +655,11 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
         pinOrderKey: null,
         linkedPullRequest: null,
         pullRequests: [],
+        legacyContextUsage: {
+          usedTokens: 42000,
+          costUsd: 6.75,
+          costSource: "modelPriced" as const,
+        },
       };
       delete previousRepairThread.branchPullRequest;
       delete previousRepairThread.activeOrderKey;
@@ -627,6 +682,10 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
       });
       const repaired = yield* projections.getThreadProjection(threadId);
       assert.equal(repaired.thread.title, "Renamed in v2");
+      assert.deepStrictEqual(
+        repaired.thread.legacyContextUsage,
+        previousRepairThread.legacyContextUsage,
+      );
       assert.isNull(repaired.thread.pinnedAt);
       assert.isNull(repaired.thread.pinOrderKey);
       assert.isNull(repaired.thread.linkedPullRequest);
