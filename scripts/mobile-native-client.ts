@@ -181,6 +181,8 @@ const command = Effect.fn("nativeClient.command")(function* (
         ...environment,
         APP_VARIANT: "development",
         MOBILE_VERSION_POLICY: "appVersion",
+        // An explicit value also overrides repo env files and the legacy Personal Team alias.
+        T3CODE_IOS_BUNDLE_ID: bundleId,
         T3CODE_IOS_PERSONAL_TEAM: "0",
         CI: "1",
         EXPO_NO_GIT_STATUS: "1",
@@ -322,7 +324,7 @@ export const prebuildAndroid = Effect.fn("nativeClient.prebuildAndroid")(functio
   );
 });
 
-const main = Command.make(
+export const main = Command.make(
   "mobile-native-client",
   {
     mode: Argument.Literals("mode", ["check", "ensure"]),
