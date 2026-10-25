@@ -20,7 +20,7 @@ One command each. Both run from anywhere in the repo.
 .agents/skills/ship-pseudocode/scripts/ship-ios.sh          # TestFlight upload
 ```
 
-The scripts handle the parts that are easy to get wrong: they pick Node 24, put `/usr/bin` ahead of
+The scripts handle the parts that are easy to get wrong: they pick Node 26, put `/usr/bin` ahead of
 Homebrew, export the branding variables the desktop build needs, bump the iOS build number, pass
 the signing team to every target, and verify the
 result before claiming success.
@@ -121,7 +121,7 @@ been done.
 
 | Symptom                                       | Cause                                                                                                                                                              |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ERR_UNKNOWN_FILE_EXTENSION ".ts"`            | Node 20 on PATH. The ship scripts pick Node 24; a hand-run command must too.                                                                                       |
+| `ERR_UNKNOWN_FILE_EXTENSION ".ts"`            | Node 20 on PATH. The ship scripts pick Node 26; a hand-run command must too.                                                                                       |
 | `command not found: vp`                       | `node_modules/.bin` missing from PATH.                                                                                                                             |
 | App bundle named `T3 Code.app`                | `T3CODE_APP_NAME` not exported for the desktop build.                                                                                                              |
 | `skipped macOS notarization`                  | No notarytool keychain profile named `pseudocode`. `ROTATION.md` step 6.                                                                                           |
