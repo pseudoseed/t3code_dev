@@ -14,27 +14,7 @@ const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
 
-// Identity for a local build on a team other than T3 Tools. Any membership
-// can set these; T3CODE_IOS_PERSONAL_TEAM is separate and controls only the
-// capability stripping a free Personal Team needs. The PERSONAL_TEAM-suffixed
-// names stay accepted so existing local setups keep working.
-const iosBundleIdentifierOverride = (
-  repoEnv.T3CODE_IOS_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
-)?.trim();
-// Fork branding. Both are optional and default to the upstream values, which
-// keeps the difference to these few lines rather than a rename spread across
-// every string in the file.
-const appNameOverride = repoEnv.T3CODE_APP_NAME?.trim();
-// Path to a 1024x1024 PNG, relative to the repository root.
-const appIconOverride = repoEnv.T3CODE_APP_ICON?.trim() || "assets/pseudocode/app-icon-1024.png";
-// App Store Connect rejects a second upload that reuses a build number, so a
-// fork distributing its own TestFlight builds sets this per upload.
-const iosBuildNumberOverride = repoEnv.T3CODE_IOS_BUILD_NUMBER?.trim();
-// Optional. Xcode's automatic signing picks the sole available team when this
-// is unset, which is the common case for a free account.
-const iosTeamIdOverride = (
-  repoEnv.T3CODE_IOS_TEAM_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_ID
-)?.trim();
+const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
@@ -42,19 +22,11 @@ const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (
   isIosPersonalTeamBuild &&
-  (!iosBundleIdentifierOverride || !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride))
+  (!personalTeamBundleIdentifier ||
+    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
 ) {
   throw new Error(
-    "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
-  );
-}
-
-if (
-  iosBundleIdentifierOverride &&
-  !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride)
-) {
-  throw new Error(
-    "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code.",
+    "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
   );
 }
 
@@ -99,7 +71,7 @@ const RELEASE_ASSETS = {
 
 const VARIANT_CONFIG = {
   development: {
-    appName: "PseudoCode Dev",
+    appName: "T3 Code Dev",
     scheme: "t3code-dev",
     iosBundleIdentifier: "com.t3tools.t3code.dev",
     androidPackage: "com.t3tools.t3code.dev",
@@ -107,7 +79,7 @@ const VARIANT_CONFIG = {
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "PseudoCode Preview",
+    appName: "T3 Code Preview",
     scheme: "t3code-preview",
     iosBundleIdentifier: "com.t3tools.t3code.preview",
     androidPackage: "com.t3tools.t3code.preview",
@@ -115,7 +87,7 @@ const VARIANT_CONFIG = {
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "PseudoCode",
+    appName: "T3 Code",
     scheme: "t3code",
     iosBundleIdentifier: "com.t3tools.t3code",
     androidPackage: "com.t3tools.t3code",
@@ -136,8 +108,9 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
-const iosBundleIdentifier = iosBundleIdentifierOverride ?? variant.iosBundleIdentifier;
-const overriddenAppIcon = appIconOverride ? fromRepoRoot(appIconOverride) : undefined;
+const iosBundleIdentifier = isIosPersonalTeamBuild
+  ? personalTeamBundleIdentifier!
+  : variant.iosBundleIdentifier;
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -151,23 +124,14 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
     bundleIdentifier: `${iosBundleIdentifier}.widgets`,
     groupIdentifier: `group.${iosBundleIdentifier}`,
     enablePushNotifications: true,
-    // Agent activity can update many times an hour; without the
-    // frequent-updates entitlement iOS throttles the update budget sooner.
+    // Frequent updates need the iOS entitlement to avoid early throttling.
     frequentUpdates: true,
     enableAndroid: true,
     widgets: [
       {
-        name: "PseudoCodeOverview",
-        displayName: "PseudoCode Overview",
-        description: "Project updates, concise summaries, and requests that need you.",
-        // iOS-only widget; Android has no presentation for it.
-        android: null,
-        ios: { supportedFamilies: ["systemMedium", "systemLarge"] },
-      },
-      {
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
-        description: "Subscription quotas from your connected PseudoCode environments.",
+        description: "Subscription quotas from your connected T3 Code environments.",
         ios: {
           configuration: {
             title: "Subscription usage",
@@ -210,16 +174,14 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
           targetCellWidth: 4,
           targetCellHeight: 3,
           resizeMode: "both",
-          // Embeds the layout in the APK so the widget renders before the app
-          // has run once; the app replaces it with stored props on publish.
+          // The embedded layout renders before first launch; publishing replaces it with stored props.
           initialLayout: "./src/widgets/SubscriptionUsage.android.tsx",
         },
       },
       {
         name: "AgentActivity",
-        displayName: "PseudoCode",
-        description: "Follow your tasks, answer requests, and review recent results.",
-        // Live Activity companion; there is no Android presentation for it.
+        displayName: "Agent Activity",
+        description: "Shows the current state of active T3 Code agents.",
         android: null,
         ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
       },
@@ -231,9 +193,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
   "expo-sharing",
   {
     ios: {
-      // Personal Teams cannot sign App Groups or extension targets. Keep the
-      // reduced-capability local build usable while release builds expose the
-      // real system share target.
+      // Personal Teams cannot sign App Groups or extension targets; keep local builds usable.
       enabled: !isIosPersonalTeamBuild,
       extensionBundleIdentifier: `${iosBundleIdentifier}.sharing`,
       appGroupId: `group.${iosBundleIdentifier}`,
@@ -253,24 +213,20 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
   },
 ];
 
-// These aliases match the fonts' PostScript names on iOS. Register the same
-// names on Android so React Native and the native composer use one set of
-// family names without waiting for runtime font loading.
+// Match iOS PostScript names on Android so RN and the native composer share fonts before runtime loading.
 
 const config: ExpoConfig = {
-  name: appNameOverride ?? variant.appName,
+  name: variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.1.0",
   runtimeVersion: {
-    // Development manifests resolve on every launch, so avoid fingerprint's
-    // expensive native-project calculation there. Preview and production stay
-    // fingerprinted so OTAs only reach binaries with matching native projects.
+    // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
     policy: runtimeVersionPolicy,
   },
   orientation: "portrait",
-  icon: overriddenAppIcon ?? variant.assets.appIcon,
+  icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
     enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
@@ -279,33 +235,16 @@ const config: ExpoConfig = {
     fallbackToCacheTimeout: 0,
   },
   ios: {
-    icon: overriddenAppIcon ?? variant.assets.iosIcon,
+    icon: variant.assets.iosIcon,
     supportsTablet: true,
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    ...(iosBuildNumberOverride ? { buildNumber: iosBuildNumberOverride } : {}),
-    // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
-    // does not fall back to a personal team (which cannot sign app groups,
-    // Sign in with Apple, or push notification entitlements). A Personal Team
-    // build cannot use that pin at all — it signs with the developer's own
-    // team, so it supplies its own id or leaves the choice to Xcode's
-    // automatic signing.
-    ...(iosTeamIdOverride
-      ? { appleTeamId: iosTeamIdOverride }
-      : isIosPersonalTeamBuild
-        ? {}
-        : { appleTeamId: "ARK85ZXQ4Z" }),
-    // Associated Domains is a paid-membership capability, so a Personal Team
-    // build cannot sign it. Universal links and shared web credentials are the
-    // cost; everything else in the app still works.
-    ...(isIosPersonalTeamBuild
-      ? {}
-      : {
-          associatedDomains: [
-            `applinks:${variant.relyingParty}`,
-            `webcredentials:${variant.relyingParty}`,
-          ],
-        }),
+    // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
+    appleTeamId: "ARK85ZXQ4Z",
+    associatedDomains: [
+      `applinks:${variant.relyingParty}`,
+      `webcredentials:${variant.relyingParty}`,
+    ],
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
     },
@@ -319,17 +258,12 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow PseudoCode to connect to PseudoCode servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow PseudoCode to save images to your photo library.",
-      // "Audio, AirPlay, and Picture in Picture": the browser screen's system
-      // picture in picture needs it to start and to stay up outside the app.
+        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+      // System picture in picture needs background audio to start and survive outside the app.
       UIBackgroundModes: ["audio"],
       ITSAppUsesNonExemptEncryption: false,
-      // The App Store screenshot harness rotates the iPad interface from
-      // inside the app (CI denies osascript the Accessibility access that
-      // Simulator menu scripting needs), and iPadOS ignores programmatic
-      // orientation requests for multitasking-capable apps — so the capture
-      // build opts out of multitasking and declares landscape support.
+      // Capture builds disable multitasking because iPadOS otherwise ignores orientation requests.
       ...(process.env.T3_SHOWCASE_CAPTURE_BUILD === "1"
         ? {
             "UISupportedInterfaceOrientations~ipad": [
@@ -343,7 +277,7 @@ const config: ExpoConfig = {
     },
   },
   android: {
-    icon: overriddenAppIcon ?? variant.assets.appIcon,
+    icon: variant.assets.appIcon,
     package: variant.androidPackage,
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }
@@ -353,26 +287,18 @@ const config: ExpoConfig = {
       ...(variant.assets.androidAdaptiveBackgroundImage
         ? { backgroundImage: variant.assets.androidAdaptiveBackgroundImage }
         : {}),
-      foregroundImage: overriddenAppIcon ?? variant.assets.androidAdaptiveForeground,
+      foregroundImage: variant.assets.androidAdaptiveForeground,
       monochromeImage: variant.assets.androidMonochromeIcon,
     },
-    // Opts into OnBackInvokedCallback-based back dispatch (Android 13+).
-    // JS back handling survives it via react-native's Android 16 shim plus
-    // withAndroidPredictiveBackCompat on Android 13-15.
+    // JS back dispatch needs RN's Android 16 shim and withAndroidPredictiveBackCompat on Android 13-15.
     predictiveBackGestureEnabled: true,
     // expo-sensors declares this for its pedometer, which the app does not use.
     blockedPermissions: ["android.permission.ACTIVITY_RECOGNITION"],
   },
   web: {
-    favicon: overriddenAppIcon ?? variant.assets.appIcon,
+    favicon: variant.assets.appIcon,
   },
   plugins: [
-    // FIRST on purpose: same-type mods run last-registered-first, so being
-    // first here makes this plugin's entitlements mod run LAST — after
-    // expo-notifications and Clerk have written theirs. Registered last it
-    // ran first, and expo-notifications simply put aps-environment back,
-    // which a Personal Team cannot sign.
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
     "expo-asset",
     "react-native-pdf-jsi",
     [
@@ -410,22 +336,17 @@ const config: ExpoConfig = {
         icon: variant.assets.androidNotificationIcon,
         color: variant.assets.androidNotificationColor,
         mode: APP_VARIANT === "development" ? "development" : "production",
-        enableBackgroundRemoteNotifications: !isIosPersonalTeamBuild,
       },
     ],
-    // appleSignIn stays gated here rather than relying on the entitlements
-    // stripper: Clerk's plugin also writes native sign-in configuration that a
-    // deleted entitlement key would leave behind.
+    // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
     ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
     "expo-web-browser",
     [
       "expo-quick-actions",
       {
-        // Adaptive launcher-shortcut icon; referenced by resource name from
-        // the shortcut items set in src/features/shortcuts.
         androidIcons: {
           shortcut_icon: {
-            foregroundImage: overriddenAppIcon ?? variant.assets.androidAdaptiveForeground,
+            foregroundImage: variant.assets.androidAdaptiveForeground,
             backgroundColor: variant.assets.androidAdaptiveBackgroundColor,
             ...(variant.assets.androidAdaptiveBackgroundImage
               ? { backgroundImage: variant.assets.androidAdaptiveBackgroundImage }
@@ -437,7 +358,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow PseudoCode to use your microphone for voice input.",
+        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
         recordAudioAndroid: false,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -446,8 +367,7 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission:
-          "Allow PseudoCode to access your camera so you can scan pairing QR codes.",
+        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
@@ -457,19 +377,16 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        image: overriddenAppIcon ?? variant.assets.splashIcon,
+        image: variant.assets.splashIcon,
         resizeMode: "contain",
         backgroundColor: "#ffffff",
         imageWidth: 220,
         dark: {
-          image: overriddenAppIcon ?? variant.assets.splashIcon,
+          image: variant.assets.splashIcon,
           backgroundColor: "#0a0a0a",
         },
         android: {
-          // Android 12+ masks the splash icon to a circle over the central two thirds of
-          // its 288dp canvas, so the iOS export's corners get cut. A full-canvas image of
-          // the composed adaptive layers puts the wordmark in the same frame the launcher
-          // icon uses.
+          // Android 12+ masks the central two thirds of the 288dp canvas; adaptive layers avoid clipped corners.
           image: variant.assets.androidSplashIcon,
           imageWidth: 288,
           dark: { image: variant.assets.androidSplashIcon },
@@ -481,12 +398,7 @@ const config: ExpoConfig = {
       {
         android: {
           minSdkVersion: 24,
-          // kotlinx-io uses Kotlin 2.3's return-value checker annotation, while
-          // SDK 58 builds with Kotlin 2.2. It has no runtime behavior.
-          // WorkManager 2.9 keeps InputMerger classes but not their constructors,
-          // and R8 full mode no longer keeps a default constructor implicitly.
-          // Without it no work request can start, so the Glance session behind
-          // the widget never renders and it stays on "Loading widget".
+          // SDK 58 lacks Kotlin 2.3's runtime-inert annotation. R8 needs explicit InputMerger constructors for widgets.
           extraProguardRules: [
             "-dontwarn kotlin.MustUseReturnValues",
             "-keep class * extends androidx.work.InputMerger { <init>(); }",
@@ -503,24 +415,18 @@ const config: ExpoConfig = {
       },
     ],
     "./plugins/withIosCocoaPodsUuidCache.cjs",
-    "./plugins/withIosT3VoiceModuleMap.cjs",
-    // Only the accelerometer is used (device viewer shake). Compile out the
-    // pedometer so iOS needs no motion purpose string.
+    // Compile out the unused pedometer to avoid an iOS motion purpose string.
     ["expo-sensors", { motionPermission: false }],
-    // Must be listed BEFORE expo-widgets: same-type mods run last-registered-
-    // first, so registering earlier makes this plugin's mods run AFTER
-    // expo-widgets' — its dangerous mod wipes ios/ExpoWidgetsTarget/ (which
-    // would delete the asset catalog) and its xcodeproj mod creates the widget
-    // target (which must exist before the compile phase can be attached).
+    // Mods run in reverse order; expo-widgets must create and wipe the target before assets are added.
     ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
     "./plugins/withAndroidCleartextTraffic.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
-    "./plugins/withAndroidFbjniVersion.cjs",
     "./plugins/withAndroidInputBackground.cjs",
     "./plugins/withAndroidModernPopupMenu.cjs",
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
+    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
@@ -532,11 +438,7 @@ const config: ExpoConfig = {
       publishableKey: repoEnv.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? null,
       jwtTemplate: repoEnv.EXPO_PUBLIC_CLERK_JWT_TEMPLATE ?? null,
     },
-    // @clerk/expo reads these from `extra`
-    // under their exact env-var names (not nested), and its config plugin reads
-    // the iOS URL scheme at prebuild to register it in Info.plist.
-    // Unset values must be omitted (not null): the public manifest serializes
-    // null to {}, which is truthy and would defeat Clerk's fallback checks.
+    // Clerk reads these exact names at prebuild. Omit unset values: manifest null becomes truthy {}.
     EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID,
     EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID,
     EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID,

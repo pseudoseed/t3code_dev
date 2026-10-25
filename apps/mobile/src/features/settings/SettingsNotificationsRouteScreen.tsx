@@ -1,4 +1,3 @@
-import { DirectPushSettings } from "../agent-awareness/DirectPushSettings";
 import * as Dialog from "../../components/ui/Dialog";
 import { AuthRelayWriteScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "../../state/session";
@@ -64,9 +63,8 @@ export function SettingsNotificationsRouteScreen() {
           contentInsetAdjustmentBehavior="automatic"
           contentContainerClassName="px-5 pt-4"
         >
-          <DirectPushSettings />
           <Text className="text-base text-foreground-muted">
-            Cloud relay notifications are unavailable in this app build.
+            Notifications require T3 Connect in this app build.
           </Text>
         </ScrollView>
       </SettingsScreen>
@@ -93,8 +91,6 @@ function ConfiguredSettingsNotificationsRouteScreen() {
   const [liveActivityStatus, setLiveActivityStatus] = useState<LiveActivityStatus>("checking");
   const liveActivityWriteInFlight = useRef(false);
   const deviceRegistered = useDeviceRegistered();
-  const directPushEnabled =
-    AsyncResult.isSuccess(preferencesResult) && preferencesResult.value.directPushEnabled === true;
   const liveActivitiesPreferenceEnabled = AsyncResult.isSuccess(preferencesResult)
     ? preferencesResult.value.liveActivitiesEnabled !== false
     : true;
@@ -177,7 +173,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
       } else {
         Dialog.alert(
           "Couldn't finish enabling notifications",
-          "Notification access was granted, but this device could not be registered with Cloud Connect. Notifications will start once registration succeeds.",
+          "Notification access was granted, but this device could not be registered with T3 Connect. Notifications will start once registration succeeds.",
         );
       }
       return;
@@ -207,13 +203,13 @@ function ConfiguredSettingsNotificationsRouteScreen() {
 
   const promptSignIn = () => {
     Dialog.alert(
-      "Sign in to Cloud Connect",
-      "Live Activity updates require Cloud Connect so relay can deliver updates to this device.",
+      "Sign in to T3 Connect",
+      "Live Activity updates require T3 Connect so relay can deliver updates to this device.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue",
-          onPress: () => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" }),
+          onPress: () => navigation.navigate("SettingsAuth"),
         },
       ],
     );
@@ -298,9 +294,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
     savePreferences({ liveActivitiesEnabled: true });
     refreshManagedRelayEnvironments();
     setLiveActivityStatus("enabled");
-    // The environment link can succeed while this device's own registration
-    // (the push-to-start token the relay needs) has not — don't claim Live
-    // Activities are live until the device is actually registered.
+    // Environment linking can precede device registration; only registered devices can receive Live Activities.
     if (getAgentAwarenessRegistrationStatus() === "registered") {
       Dialog.alert(
         Platform.OS === "android" ? "Ongoing activity enabled" : "Live Activities enabled",
@@ -311,7 +305,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
     } else {
       Dialog.alert(
         "Couldn't finish enabling activity updates",
-        "This device could not be registered with Cloud Connect, so activity updates won't appear yet. They'll start once registration succeeds.",
+        "This device could not be registered with T3 Connect, so activity updates won't appear yet. They'll start once registration succeeds.",
       );
     }
   };
@@ -328,7 +322,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
 
     Dialog.alert(
       "Disable notifications",
-      "Open system Settings to disable notifications for PseudoCode.",
+      "Open system Settings to disable notifications for T3 Code.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Open Settings", onPress: () => void Linking.openSettings() },
@@ -406,76 +400,68 @@ function ConfiguredSettingsNotificationsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
-        <DirectPushSettings />
-        {!directPushEnabled || Platform.OS === "android" ? (
-          <SettingsSection title="Agent activity">
-            <SettingsSwitchRow
-              icon="bell.badge"
-              label="Device Notifications"
-              disabled={
-                !agentAwarenessPlatform.supported ||
-                !agentAwarenessPushAvailable ||
-                notificationStatus === "checking" ||
-                notificationStatus === "unsupported"
-              }
-              subtitle={agentAwarenessSubtitle}
-              // Only reads as on when this device is actually registered with the
-              // relay; otherwise notifications cannot be delivered regardless of
-              // the local iOS permission.
-              value={
-                agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
-              }
-              onValueChange={handleDeviceNotificationsChange}
-            />
-            <SettingsSwitchRow
-              disabled={
-                !agentAwarenessPlatform.supported ||
-                !agentAwarenessPushAvailable ||
-                !isLoaded ||
-                liveActivityStatus === "checking" ||
-                liveActivityStatus === "linking"
-              }
+        <SettingsSection title="Agent activity">
+          <SettingsSwitchRow
+            icon="bell.badge"
+            label="Device Notifications"
+            disabled={
+              !agentAwarenessPlatform.supported ||
+              !agentAwarenessPushAvailable ||
+              notificationStatus === "checking" ||
+              notificationStatus === "unsupported"
+            }
+            subtitle={agentAwarenessSubtitle}
+            value={
+              agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
+            }
+            onValueChange={handleDeviceNotificationsChange}
+          />
+          <SettingsSwitchRow
+            disabled={
+              !agentAwarenessPlatform.supported ||
+              !agentAwarenessPushAvailable ||
+              !isLoaded ||
+              liveActivityStatus === "checking" ||
+              liveActivityStatus === "linking"
+            }
+            icon="bolt.circle"
+            label={
+              Platform.OS === "android"
+                ? supportsAndroidLiveUpdateSettings()
+                  ? "Agent Live Updates"
+                  : "Ongoing Agent Activity"
+                : "Live Activity Updates"
+            }
+            subtitle={agentAwarenessSubtitle}
+            value={
+              agentAwarenessPushAvailable &&
+              (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
+              deviceRegistered
+            }
+            onValueChange={(enabled) => void handleLiveActivitiesChange(enabled)}
+          />
+          {liveActivityStatus === "signed-out" && canClearLiveActivitiesPreference ? (
+            <SettingsRow
               icon="bolt.circle"
-              label={
-                Platform.OS === "android"
-                  ? supportsAndroidLiveUpdateSettings()
-                    ? "Agent Live Updates"
-                    : "Ongoing Agent Activity"
-                  : "Live Activity Updates"
-              }
-              subtitle={agentAwarenessSubtitle}
-              // Same gate: a saved preference is meaningless until the device
-              // registration the relay needs to push updates has succeeded.
-              value={
-                agentAwarenessPushAvailable &&
-                (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
-                deviceRegistered
-              }
-              onValueChange={(enabled) => void handleLiveActivitiesChange(enabled)}
+              label="Turn off Live Activity preference"
+              onPress={() => void handleLiveActivitiesChange(false)}
             />
-            {liveActivityStatus === "signed-out" && canClearLiveActivitiesPreference ? (
-              <SettingsRow
-                icon="bolt.circle"
-                label="Turn off Live Activity preference"
-                onPress={() => void handleLiveActivitiesChange(false)}
-              />
-            ) : null}
-            {supportsAndroidLiveUpdateSettings() ? (
-              <SettingsRow
-                icon="bolt.circle"
-                label="Live Update Settings"
-                onPress={() => {
-                  void openAndroidLiveUpdateSettings().catch(() => {
-                    Dialog.alert(
-                      "Couldn't open Settings",
-                      "Open Android Settings, select PseudoCode, then enable Live Updates in Notifications.",
-                    );
-                  });
-                }}
-              />
-            ) : null}
-          </SettingsSection>
-        ) : null}
+          ) : null}
+          {supportsAndroidLiveUpdateSettings() ? (
+            <SettingsRow
+              icon="bolt.circle"
+              label="Live Update Settings"
+              onPress={() => {
+                void openAndroidLiveUpdateSettings().catch(() => {
+                  Dialog.alert(
+                    "Couldn't open Settings",
+                    "Open Android Settings, select T3 Code, then enable Live Updates in Notifications.",
+                  );
+                });
+              }}
+            />
+          ) : null}
+        </SettingsSection>
       </ScrollView>
     </SettingsScreen>
   );

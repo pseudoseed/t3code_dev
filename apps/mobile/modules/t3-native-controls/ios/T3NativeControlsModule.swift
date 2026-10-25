@@ -3,8 +3,6 @@ import ExpoModulesCore
 import Security
 import UIKit
 
-// Expo Modules 2.0: plain members marked @JS are bound by the macro, while the
-// views and main-queue presenters stay in definition(). Both are merged.
 @ExpoModule("T3NativeControls")
 public final class T3NativeControlsModule: Module {
   private let presentationSources = T3PresentationSources()
@@ -12,11 +10,6 @@ public final class T3NativeControlsModule: Module {
   private var filePresentation: T3NativeFilePresentation?
 
   public func definition() -> ModuleDefinition {
-    // SharedRef<UIImage> arguments stay in definition(); the @JS macro binds
-    // only the plain members below.
-    Function("projectIconPng") { (image: SharedRef<UIImage>, maximumSize: Int) -> String? in
-      Self.projectIconPng(image.ref, maximumSize: maximumSize)
-    }
     Constants {
       if #available(iOS 26.0, *) {
         return [
@@ -39,15 +32,22 @@ public final class T3NativeControlsModule: Module {
 
     View(T3SidebarTabBarView.self) {
       ViewName("SidebarTabBar")
-      Events("onSelectionChange")
-      Prop("selectedIndex") { (view: T3SidebarTabBarView, value: Int) in view.selectedIndex = value }
+      Events("onSelectionChange", "onCompose")
+      Prop("tabs") { (view: T3SidebarTabBarView, value: [String]) in view.tabs = value }
+      Prop("selectedTab") { (view: T3SidebarTabBarView, value: String) in view.selectedTab = value }
       Prop("selectedColor") { (view: T3SidebarTabBarView, value: UIColor) in view.selectedColor = value }
+      Prop("showsCompose") { (view: T3SidebarTabBarView, value: Bool) in view.showsCompose = value }
+      Prop("compact") { (view: T3SidebarTabBarView, value: Bool) in view.compact = value }
       Prop("appearance") { (view: T3SidebarTabBarView, value: String) in view.appearance = value }
     }
 
     View(T3LayoutMetricsView.self) {
       ViewName("LayoutMetrics")
       Events("onMetricsChange")
+    }
+
+    View(T3ScrollEdgeBleedView.self) {
+      ViewName("ScrollEdgeBleed")
     }
 
     AsyncFunction("presentVideo") { (url: URL, title: String, sourceIdentifier: String, identifier: String, promise: Promise) in
@@ -160,12 +160,8 @@ public final class T3NativeControlsModule: Module {
     }
   }
 
-  // The geometry request above can fail transiently (for example before the
-  // scene is foreground-active), so callers poll this until it settles.
-  // Screen bounds — not the scene's interface orientation — decide the
-  // answer because they match the captured framebuffer: with iPadOS
-  // windowing active, a floating landscape window still reports a portrait
-  // screen, and screenshots would come out portrait.
+  // Geometry requests can fail before foreground activation; callers retry until bounds match.
+  // Use screen bounds because iPadOS floating-window orientation can differ from the captured framebuffer.
   @JS
   @MainActor
   func getInterfaceOrientation() async -> String {
@@ -235,21 +231,6 @@ public final class T3NativeControlsModule: Module {
   func markShowcaseReady(scene: String) async {
     let readyPath = NSHomeDirectory() + "/Library/Caches/T3ShowcaseReadyScene"
     try? scene.write(toFile: readyPath, atomically: true, encoding: .utf8)
-  }
-
-  /// Repaints a decoded SVG/ICO before encoding: the original format can
-  /// survive decoding, and SDWebImage's disk cache cannot encode those formats.
-  private static func projectIconPng(_ source: UIImage, maximumSize: Int) -> String? {
-    guard source.size.width > 0, source.size.height > 0 else { return nil }
-    let limit = CGFloat(max(1, min(maximumSize, 96)))
-    let scale = min(1, limit / max(source.size.width, source.size.height))
-    let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
-    let format = UIGraphicsImageRendererFormat()
-    format.scale = 1
-    let data = UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
-      source.draw(in: CGRect(origin: .zero, size: size))
-    }
-    return "data:image/png;base64," + data.base64EncodedString()
   }
 
   private func presentVideo(url: URL, title: String, sourceIdentifier: String, identifier: String, promise: Promise) throws {

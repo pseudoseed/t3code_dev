@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "./ui/AppText";
-import { AppLogo } from "./AppLogo";
+import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
@@ -19,10 +19,7 @@ export function CompactBrandTitle(
   props: {
     readonly allowFontScaling?: boolean;
     readonly accessibilityLabel?: string;
-    /**
-     * Fills the parent row and drops the stage badge when the full title does not fit.
-     * Narrow Android sidebar headers otherwise draw their actions over the badge.
-     */
+    /** Fills the row and hides the stage badge when the full title does not fit. */
     readonly fit?: boolean;
   } = {},
 ) {
@@ -41,7 +38,7 @@ export function CompactBrandTitle(
         props.fit && showStage ? (event) => setFullWidth(event.nativeEvent.layout.width) : undefined
       }
       aria-level={1}
-      accessibilityLabel={props.accessibilityLabel ?? "PseudoCode, Threads"}
+      accessibilityLabel={props.accessibilityLabel ?? "T3 Code, Threads"}
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"
@@ -51,13 +48,13 @@ export function CompactBrandTitle(
         props.fit && { flexShrink: 0 },
       ]}
     >
-      <AppLogo height={Math.round(24 * scale)} />
+      <T3Wordmark colorClassName="accent-icon" height={Math.round(15 * scale)} />
       <Text
         allowFontScaling={props.allowFontScaling}
         className="font-t3-medium text-foreground-muted"
         style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
       >
-        PseudoCode
+        Code
       </Text>
       {showStage ? (
         <View

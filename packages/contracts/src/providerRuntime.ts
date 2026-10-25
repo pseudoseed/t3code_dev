@@ -259,14 +259,8 @@ const ThreadMetadataUpdatedPayload = Schema.Struct({
 export type ThreadMetadataUpdatedPayload = typeof ThreadMetadataUpdatedPayload.Type;
 
 /**
- * How a thread's running cost figure was arrived at.
- *
- * - `providerReported` - the provider handed us a cost for the turn.
- * - `modelPriced` - we priced the thread's tokens against the rate table.
- *
- * Mirrors `UsageCostSource` from the usage contract, minus `unpriced`: a
- * thread with no usable cost carries no `costUsd` at all rather than a zero
- * that reads as "free".
+ * `UsageCostSource` minus `unpriced`: a thread with no usable cost omits `costUsd` rather than
+ * carrying a zero that reads as free.
  */
 export const ThreadCostSource = Schema.Literals(["providerReported", "modelPriced"]);
 export type ThreadCostSource = typeof ThreadCostSource.Type;
@@ -289,14 +283,9 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
   compactsAutomatically: Schema.optional(Schema.Boolean),
   autoCompactThreshold: Schema.optional(PositiveInt),
   /**
-   * Billed tokens accumulated across the provider session so far, split the
-   * way rates are. Only providers that report running totals set these
-   * (Codex); they exist so orchestration can price a thread without
-   * reconstructing per-turn deltas from a stream of snapshots.
-   * `sessionInputTokens` is inclusive of the cached and cache-creation
-   * portions, matching how Codex reports it. Totals reset whenever the
-   * provider session restarts; orchestration reads a drop as a restart and
-   * carries the earlier session's cost forward.
+   * Session-cumulative billed tokens from providers that report running totals (Codex), including
+   * cached and cache-creation input. A drop means the session restarted; orchestration carries the
+   * earlier session's cost forward.
    */
   pendingCostTokens: Schema.optional(Schema.Record(Schema.String, UsageTokenTotals)),
   costRevision: Schema.optional(NonNegativeInt),
@@ -306,11 +295,8 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
   sessionCacheCreationTokens: Schema.optional(NonNegativeInt),
   sessionOutputTokens: Schema.optional(NonNegativeInt),
   /**
-   * USD the provider has billed over its current session so far, as the
-   * provider itself reports it. Cumulative, not per turn: Claude's result
-   * message carries the session total while the `usage` beside it covers only
-   * the turn, so this must be differenced rather than summed. Orchestration
-   * charges the thread the increase between snapshots.
+   * Provider-reported session total in USD, not per turn (Claude's result carries the session total
+   * beside per-turn usage), so orchestration charges the increase between snapshots.
    */
   sessionCostUsd: Schema.optional(Schema.Number),
   /**
@@ -365,10 +351,7 @@ const TurnStartedPayload = Schema.Struct({
 });
 export type TurnStartedPayload = typeof TurnStartedPayload.Type;
 
-/**
- * Input includes cache reads and writes. Output includes reasoning, and
- * reasoningTokens is an optional subset.
- */
+// Input includes cache reads/writes; output includes the optional reasoningTokens subset.
 const TurnTokenUsageCommonFields = {
   usageScope: Schema.Literal("main_agent"),
   cachedInputTokens: Schema.optional(NonNegativeInt),
@@ -545,10 +528,7 @@ const UserInputResolvedPayload = Schema.Struct({
 });
 export type UserInputResolvedPayload = typeof UserInputResolvedPayload.Type;
 
-/**
- * Claude reports per-activation deltas; Codex reports cumulative totals — the
- * merge strategy is provider-specific and lives in client-runtime.
- */
+/** Claude reports activation deltas; Codex reports cumulative totals. Merge per provider in client-runtime. */
 export const RuntimeTaskUsage = Schema.Struct({
   totalTokens: NonNegativeInt,
   inputTokens: Schema.optional(NonNegativeInt),
@@ -570,15 +550,12 @@ export const TaskRunHandles = Schema.Struct({
   runId: Schema.optional(TrimmedNonEmptyStringSchema),
   scriptPath: Schema.optional(TrimmedNonEmptyStringSchema),
   transcriptDir: Schema.optional(TrimmedNonEmptyStringSchema),
-  /** Only http/https URLs may be stored here — sanitized at the adapter. */
+  /** Only http/https URLs, sanitized by the adapter. */
   sessionUrl: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 export type TaskRunHandles = typeof TaskRunHandles.Type;
 
-/**
- * Repeated on progress and terminal rows (not just start) so client folds can
- * reconstruct an agent even when its start row aged out of activity retention.
- */
+// Repeat on progress and terminal rows so agents survive start-row eviction.
 const taskAgentLinkageFields = {
   taskType: Schema.optional(TrimmedNonEmptyStringSchema),
   agentKind: Schema.optional(Schema.Literals(["agent", "background"])),
@@ -598,10 +575,7 @@ const taskAgentLinkageFields = {
   runHandles: Schema.optional(TaskRunHandles),
   outputFile: Schema.optional(TrimmedNonEmptyStringSchema),
   agentPath: Schema.optional(TrimmedNonEmptyStringSchema),
-  /**
-   * Set on provider-synthesized child-agent events (Codex) whose activity
-   * belongs in the Agents surface, never the parent timeline.
-   */
+  /** Provider-synthesized child events belong in Agents, never the parent timeline. */
   timelineBypass: Schema.optional(Schema.Boolean),
 } as const;
 

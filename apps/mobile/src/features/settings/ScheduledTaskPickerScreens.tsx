@@ -49,8 +49,6 @@ export function ScheduledTaskModelPickerRouteScreen() {
 
   return (
     <ThreadSettingsPickerScreen
-      subagentModel={null}
-      onSelectSubagentModel={null}
       environmentId={editor.environmentId}
       projectId={projectId}
       providerGroups={providerGroups}

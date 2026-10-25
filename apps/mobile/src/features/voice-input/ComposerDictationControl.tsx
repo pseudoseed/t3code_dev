@@ -235,10 +235,7 @@ const VoiceWaveform = memo(function VoiceWaveform(props: {
   );
 });
 
-/**
- * Renders the recording time in the system font: DM Sans has no tabular
- * figures, so `tabular-nums` alone would still let the width jitter.
- */
+/** Use system tabular figures; DM Sans lacks them and would jitter. */
 export function DictationElapsedTime(props: {
   readonly seconds: number;
   readonly className?: string;
@@ -316,39 +313,39 @@ function VoiceActionButton(props: {
   );
 }
 
-export function ComposerDictationFeedback(props: {
+export function ComposerDictationStatus(props: {
+  readonly audioLevels: SharedValue<number[]>;
+  readonly elapsedSeconds: number;
+  readonly phase: VoiceInputPhase;
   readonly presentation: VoiceComposerPresentation;
-  readonly recoverableTranscript: string | null;
-  readonly onInsertRecovery: () => void;
-  readonly onDiscardRecovery: () => void;
-  readonly onDismiss: () => void;
+  readonly onDismissError: () => void;
 }) {
-  if (props.presentation.showsDictation) return null;
+  const recordingVisibility = useSharedValue(props.phase === "recording" ? 1 : 0);
+  useLayoutEffect(() => {
+    recordingVisibility.value = withTiming(props.phase === "recording" ? 1 : 0, DICTATION_TIMING);
+  }, [props.phase, recordingVisibility]);
+  const waveformStyle = useAnimatedStyle(() => ({
+    opacity: recordingVisibility.value,
+  }));
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: 1 - recordingVisibility.value,
+  }));
+
+  if (!props.presentation.statusLabel) return null;
   const isError = props.presentation.statusKind === "error";
-  const message = props.presentation.statusLabel;
   return (
-    <>
-      {message ? (
-        <View className="min-w-0 flex-row items-center gap-2 px-3 py-1">
-          <Text
-            accessibilityLiveRegion="polite"
-            className={
-              isError
-                ? "min-w-0 flex-1 text-xs text-danger-foreground"
-                : "min-w-0 flex-1 text-xs text-foreground-muted"
-            }
-            numberOfLines={2}
-          >
-            {message}
+    <View className="relative h-11 min-w-0 flex-1 justify-center">
+      {isError ? (
+        <View className="min-w-0 flex-row items-center gap-1.5 px-2">
+          <Text className="min-w-0 flex-1 text-sm text-danger-foreground" numberOfLines={2}>
+            {props.presentation.statusLabel}
           </Text>
           <Pressable
-            accessibilityLabel={
-              isError ? "Dismiss voice input error" : "Dismiss voice input notice"
-            }
+            accessibilityLabel="Dismiss voice input error"
             accessibilityRole="button"
-            className="size-8 items-center justify-center active:opacity-70"
+            className="size-7 items-center justify-center active:opacity-70"
             hitSlop={8}
-            onPress={props.onDismiss}
+            onPress={props.onDismissError}
           >
             <SymbolView
               name="xmark"
@@ -358,69 +355,30 @@ export function ComposerDictationFeedback(props: {
             />
           </Pressable>
         </View>
-      ) : null}
-      {props.recoverableTranscript ? (
-        <View className="min-w-0 flex-row items-center gap-3 px-3 py-1">
-          <Text className="min-w-0 flex-1 text-xs text-foreground-muted" numberOfLines={2}>
-            Saved dictation: {props.recoverableTranscript}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add saved dictation"
-            className="min-h-11 justify-center py-2 active:opacity-70"
-            onPress={props.onInsertRecovery}
-          >
-            <Text className="text-xs text-foreground">Add</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Discard saved dictation"
-            className="min-h-11 justify-center py-2 active:opacity-70"
-            onPress={props.onDiscardRecovery}
-          >
-            <Text className="text-xs text-foreground-muted">Discard</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </>
-  );
-}
-
-export function ComposerDictationStatus(props: {
-  readonly audioLevels: SharedValue<number[]>;
-  readonly elapsedSeconds: number;
-  readonly phase: VoiceInputPhase;
-  readonly presentation: VoiceComposerPresentation;
-}) {
-  const recordingVisibility = useSharedValue(props.phase === "recording" ? 1 : 0);
-  useLayoutEffect(() => {
-    recordingVisibility.value = withTiming(props.phase === "recording" ? 1 : 0, DICTATION_TIMING);
-  }, [props.phase, recordingVisibility]);
-  const waveformStyle = useAnimatedStyle(() => ({ opacity: recordingVisibility.value }));
-  const labelStyle = useAnimatedStyle(() => ({ opacity: 1 - recordingVisibility.value }));
-
-  if (!props.presentation.statusLabel) return null;
-  return (
-    <View className="relative h-11 min-w-0 flex-1 justify-center">
-      <View
-        accessible
-        accessibilityLabel={props.presentation.statusLabel}
-        accessibilityLiveRegion={props.phase === "recording" ? "none" : "polite"}
-        className="h-11"
-      >
-        <Animated.View
-          className="absolute inset-0 min-w-0 flex-row items-center gap-2 px-1"
-          style={waveformStyle}
+      ) : (
+        <View
+          accessible
+          accessibilityLabel={props.presentation.statusLabel}
+          accessibilityLiveRegion={props.phase === "recording" ? "none" : "polite"}
+          className="h-11"
         >
-          <VoiceWaveform audioLevels={props.audioLevels} />
-          <DictationElapsedTime className="text-foreground-muted" seconds={props.elapsedSeconds} />
-        </Animated.View>
-        <Animated.View className="absolute inset-0 justify-center px-2" style={labelStyle}>
-          <Text className="text-center text-sm text-foreground-muted" numberOfLines={1}>
-            {props.presentation.statusLabel}
-          </Text>
-        </Animated.View>
-      </View>
+          <Animated.View
+            className="absolute inset-0 min-w-0 flex-row items-center gap-2 px-1"
+            style={waveformStyle}
+          >
+            <VoiceWaveform audioLevels={props.audioLevels} />
+            <DictationElapsedTime
+              className="text-foreground-muted"
+              seconds={props.elapsedSeconds}
+            />
+          </Animated.View>
+          <Animated.View className="absolute inset-0 justify-center px-2" style={labelStyle}>
+            <Text className="text-center text-sm text-foreground-muted" numberOfLines={1}>
+              {props.presentation.statusLabel}
+            </Text>
+          </Animated.View>
+        </View>
+      )}
     </View>
   );
 }
@@ -434,11 +392,7 @@ export function ComposerDictationCancelAction(props: {
   return (
     <VoiceActionButton
       size={props.size}
-      accessibilityLabel={
-        props.presentation.statusLabel === "Cleaning up"
-          ? "Use original transcription"
-          : "Cancel dictation"
-      }
+      accessibilityLabel="Cancel dictation"
       icon="xmark"
       onPress={props.onCancel}
     />
@@ -450,7 +404,6 @@ export function ComposerDictationPrimaryAction(props: {
   readonly state: VoiceInputState;
   readonly presentation: VoiceComposerPresentation;
   readonly isAvailable: boolean;
-  readonly hasPendingRecovery?: boolean;
   readonly disabled?: boolean;
   readonly onStart: () => void;
   readonly onConfirm: () => void;
@@ -481,7 +434,6 @@ export function ComposerDictationStartAction(props: {
   readonly size?: "regular" | "large";
   readonly state: VoiceInputState;
   readonly isAvailable: boolean;
-  readonly hasPendingRecovery?: boolean;
   readonly disabled?: boolean;
   readonly onStart: () => void;
   readonly onCancel: () => void;
@@ -491,16 +443,8 @@ export function ComposerDictationStartAction(props: {
   return (
     <VoiceActionButton
       size={props.size}
-      accessibilityLabel={
-        props.hasPendingRecovery
-          ? "Add or discard saved dictation before recording again"
-          : openSettings
-            ? "Open microphone settings"
-            : props.state.phase === "error"
-              ? "Retry dictation"
-              : "Start dictation"
-      }
-      disabled={props.disabled || props.hasPendingRecovery}
+      accessibilityLabel={openSettings ? "Open microphone settings" : "Start dictation"}
+      disabled={props.disabled}
       icon="mic"
       onPress={
         openSettings

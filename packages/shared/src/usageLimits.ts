@@ -132,10 +132,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
   usageLimits: provider.usageLimits,
 });
 
-/**
- * Pass every enabled login, read or not, so an unreadable workspace still
- * counts as one.
- */
+// Include every enabled login, even unreadable workspaces.
 function accountKeyResolver(reports: Iterable<AccountReport>) {
   const workspaces = new Map<string, Set<string>>();
   for (const report of reports) {
@@ -184,11 +181,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
   const creditSources = new Map<string, LimitAccount>();
   const hubRedeems = new Map<string, LimitAccount>();
   const merge = (key: string, next: LimitAccount) => {
-    // Redeeming through a hub also clears the routing cooldown that hub holds
-    // for the account. Redeeming natively against the same subscription resets
-    // it upstream but leaves the hub refusing to route to the account until
-    // its own cooldown expires, so a hub target wins the redemption outright
-    // while the displayed balance still follows the freshest read.
+    // Prefer hub redemption to clear its routing cooldown too; displayed balance still follows the freshest read.
     const previousHub = hubRedeems.get(key);
     if (
       next.redeem &&
@@ -430,11 +423,7 @@ function accountSortName(account: LimitAccount): string {
   return (account.displayName ?? account.email ?? account.key).toLowerCase();
 }
 
-/**
- * Codex ids are slots, not allowances: a weekly-only plan reports its weekly
- * window as `primary`, other plans as `secondary`. Its windows pool by kind;
- * other drivers' ids name distinct allowances.
- */
+// Codex ids name slots, so pool by kind; other drivers' ids identify distinct allowances.
 function poolKey(driver: ServerProvider["driver"], window: ServerProviderUsageWindow): string {
   return driver === "codex" ? window.kind : `${window.kind}:${window.id}`;
 }
@@ -503,9 +492,7 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
     const first = members[0]!.window;
     const id = members[0]!.account.driver === "codex" ? key : first.id;
     const usedPercent = members.reduce((sum, m) => sum + m.window.usedPercent, 0) / members.length;
-    // Pace compares spend against the clock, so it is judged only over the
-    // members that have a clock; a window with no reset would otherwise
-    // count as spend with no time elapsed and skew the verdict.
+    // Judge pace only for windows with reset clocks; others add spend without elapsed time.
     const timed = members.flatMap((m) => {
       const share = elapsedShare(m.window, now);
       return share === null ? [] : [{ used: m.window.usedPercent, elapsed: share }];
@@ -635,18 +622,9 @@ export function limitSeverity(usedPercent: number): LimitSeverity {
 }
 
 /**
- * The two windows a dial draws as concentric rings, plus every window the card
- * lists as a bar underneath.
- *
- *   - `current` is the short window that decides whether a turn can start now:
- *     the session window when the account reports one, else the first.
- *   - `overall` is the long window that decides how much of the subscription
- *     is left this cycle: the first weekly, else the first monthly, else the
- *     next window after `current`.
- *
- * `rest` is every window except `current`, so the long window keeps its exact
- * percent and reset in the list even though the outer ring already shows its
- * shape. A single-window account gets a lone inner ring and no outer one.
+ * `current` is the short window that gates starting a turn (session, else first); `overall` is the
+ * long one (weekly, else monthly, else next). `rest` is every window but `current`, so the list
+ * keeps the long window's exact numbers. One-window accounts get only the inner ring.
  */
 export function splitDialWindows(windows: readonly ServerProviderUsageWindow[]): {
   readonly current: ServerProviderUsageWindow | null;
@@ -665,12 +643,8 @@ export function splitDialWindows(windows: readonly ServerProviderUsageWindow[]):
 }
 
 /**
- * The dial's measurements, in CSS pixels, shared so the web (SVG in the DOM)
- * and mobile (react-native-svg) dials cannot drift apart. The SVG viewBox is
- * `size` too, so one unit is one pixel and nothing has to be scaled by hand.
- *
- * The outer ring's far edge (`radius + width / 2`) stays inside `size / 2`,
- * which is what keeps the stroke from being clipped by the viewBox.
+ * Shared by the web and mobile dials so they cannot drift. The viewBox is `size`, one unit per CSS
+ * pixel; the outer stroke edge (`radius + width / 2`) stays inside `size / 2` to avoid clipping.
  */
 export const DIAL = {
   size: 176,
@@ -679,15 +653,8 @@ export const DIAL = {
 } as const;
 
 /**
- * The largest square that fits inside the inner ring, which is what the
- * reading in the middle of the dial is allowed to occupy.
- *
- * A circle's usable width is a chord, not its diameter: a line of text sitting
- * away from the centre has far less room than one across the middle, so sizing
- * the text against the diameter is how it ends up crossing the stroke. The
- * inscribed square is the one box every line can occupy at any height, so
- * constraining the whole block to it makes the overlap impossible rather than
- * unlikely.
+ * The square inscribed in the inner ring. Off-centre lines have only a chord's width, so sizing text
+ * to the diameter crosses the stroke; the inscribed square fits every line at any height.
  */
 export function dialSafeBoxSize(dial: typeof DIAL = DIAL): number {
   return Math.floor((dial.inner.radius - dial.inner.width / 2) * Math.SQRT2);
@@ -945,11 +912,8 @@ export function collectLimitsGroups(
 }
 
 /**
- * Every usage-limit source across connected environments, keyed so two
- * environments pointing at the same hub still get their own rows. The label
- * carries the environment only when more than one environment has sources.
- * A native provider with usable limits takes precedence over the same account
- * in a source, even when it belongs to another connected environment.
+ * Keyed per environment so two environments on one hub keep separate rows; labels name the
+ * environment only when several have sources. Native provider limits win over the same account.
  */
 export function collectLimitSources(
   presentations: ReadonlyMap<

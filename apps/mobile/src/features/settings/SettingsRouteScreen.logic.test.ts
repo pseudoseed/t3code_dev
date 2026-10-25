@@ -1,4 +1,3 @@
-import { resolveVoicePlatformPresentation } from "./SettingsRouteScreen.logic";
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -43,15 +42,5 @@ describe("resolveAutoSettleReferenceEnvironmentId", () => {
         { environmentId: secondId, canWriteSettings: false },
       ]),
     ).toBe(firstId);
-  });
-});
-
-describe("resolveVoicePlatformPresentation", () => {
-  it("keeps the row on Android and says why it does nothing there", () => {
-    expect(resolveVoicePlatformPresentation("android")).toEqual({
-      supported: false,
-      value: "iOS only",
-    });
-    expect(resolveVoicePlatformPresentation("ios")).toEqual({ supported: true, value: undefined });
   });
 });

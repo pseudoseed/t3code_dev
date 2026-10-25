@@ -288,17 +288,3 @@ export async function shareGeneratedAttachment(input: {
     cached.preview.dispose();
   }
 }
-
-/** Shares generated text through the same retained cache and OS handoff as attachments. */
-export async function shareGeneratedTextFile(input: {
-  readonly name: string;
-  readonly mimeType: string;
-  readonly contents: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await shareGeneratedAttachment({
-    attachment: { name: input.name, mimeType: input.mimeType },
-    bytes: new TextEncoder().encode(input.contents),
-    signal: input.signal,
-  });
-}

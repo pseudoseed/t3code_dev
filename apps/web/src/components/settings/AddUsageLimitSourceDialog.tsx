@@ -66,10 +66,7 @@ const KINDS: ReadonlyArray<{
   },
 ];
 
-/**
- * The management key is sent once and kept in that server's secret store; settings only ever
- * carry a redaction marker for it afterwards.
- */
+/** Send the management key once to server secret storage; settings retain only a redaction marker. */
 export function AddUsageLimitSourceDialog({
   open,
   onOpenChange,

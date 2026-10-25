@@ -95,7 +95,6 @@ function EdgeDictationPill(props: { readonly collapseRef: RefObject<(() => void)
   const presentation = resolveVoiceComposerPresentation(voice.state, voice.elapsedSeconds);
   const phase = voice.state.phase;
   const isError = phase === "error";
-  const isNotice = presentation.statusKind === "notice";
   const openSettings = isError && voice.state.errorAction === "settings";
   const label = voice.label ?? "Draft";
 
@@ -129,8 +128,6 @@ function EdgeDictationPill(props: { readonly collapseRef: RefObject<(() => void)
                   tintColorClassName="accent-danger-foreground"
                   type="monochrome"
                 />
-              ) : isNotice ? (
-                <SymbolView name="info.circle" size={16} tintColorClassName="accent-icon-muted" />
               ) : phase === "recording" ? (
                 <>
                   <View className="size-2 rounded-full bg-danger-foreground" />
@@ -153,13 +150,7 @@ function EdgeDictationPill(props: { readonly collapseRef: RefObject<(() => void)
             style={[{ width: expandedWidth }, expandedStyle]}
           >
             <Pressable
-              accessibilityLabel={
-                isError
-                  ? "Dismiss voice input error"
-                  : isNotice
-                    ? "Dismiss dictation notice"
-                    : "Cancel dictation"
-              }
+              accessibilityLabel={isError ? "Dismiss voice input error" : "Cancel dictation"}
               accessibilityRole="button"
               className="size-[30px] items-center justify-center active:opacity-70"
               onPress={voice.cancel}
@@ -172,7 +163,7 @@ function EdgeDictationPill(props: { readonly collapseRef: RefObject<(() => void)
               />
             </Pressable>
             <Pressable
-              accessibilityLabel={isError || isNotice ? (presentation.statusLabel ?? label) : label}
+              accessibilityLabel={isError ? (presentation.statusLabel ?? label) : label}
               accessibilityHint="Hides dictation controls"
               accessibilityRole="button"
               className="min-w-0 flex-1 justify-center self-stretch active:opacity-70"
@@ -185,7 +176,7 @@ function EdgeDictationPill(props: { readonly collapseRef: RefObject<(() => void)
                 )}
                 numberOfLines={1}
               >
-                {isError || isNotice ? presentation.statusLabel : label}
+                {isError ? presentation.statusLabel : label}
               </Text>
             </Pressable>
             {phase === "recording" ? (
@@ -230,7 +221,7 @@ function EdgeDictationPill(props: { readonly collapseRef: RefObject<(() => void)
                   <SymbolView name="mic" size={16} tintColorClassName="accent-icon" />
                 </Pressable>
               ) : null
-            ) : isNotice ? null : (
+            ) : (
               <View
                 accessibilityLabel={presentation.statusLabel ?? undefined}
                 className="size-[30px] items-center justify-center"

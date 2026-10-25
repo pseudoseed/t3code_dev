@@ -6,10 +6,6 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import {
-  MAX_CLEANUP_PROMPT_LENGTH,
-  MAX_LEARNED_CORRECTIONS,
-} from "@t3tools/client-runtime/voice-input";
-import {
   EnvironmentId,
   PullRequestInvolvement,
   PullRequestListFilters,
@@ -25,17 +21,6 @@ import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../l
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
-
-/**
- * Voice text is capped on the way in.
- *
- * These live in the one preferences blob, which is read-modify-written whole on
- * every save. Bounded values are fine there; an unbounded one would make every
- * unrelated preference write more expensive over time.
- */
-const MAX_VOICE_CORRECTION_TEXT_LENGTH = 8_000;
-/** Five minutes of speech, with room to spare. */
-const MAX_VOICE_PENDING_TRANSCRIPT_LENGTH = 20_000;
 
 const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
@@ -62,13 +47,40 @@ const PullRequestListPreferences = Schema.Struct({
 });
 export type PullRequestListPreferences = typeof PullRequestListPreferences.Type;
 
+/**
+ * The page each workspace tab last showed, reopened when the tab returns with columns. `key` is
+ * that page's route key: reopening under the same key reuses the screen a tab kept mounted.
+ */
+const WorkspaceSelections = Schema.Struct({
+  threads: Schema.optional(
+    Schema.Struct({
+      environmentId: Schema.String,
+      threadId: Schema.String,
+      key: Schema.optional(Schema.String),
+    }),
+  ),
+  pullRequests: Schema.optional(
+    Schema.Struct({
+      environmentId: Schema.String,
+      projectId: Schema.String,
+      repository: Schema.String,
+      number: Schema.Number,
+      host: Schema.optional(Schema.String),
+      key: Schema.optional(Schema.String),
+    }),
+  ),
+  settings: Schema.optional(Schema.String),
+  settingsKey: Schema.optional(Schema.String),
+});
+export type WorkspaceSelections = typeof WorkspaceSelections.Type;
+
 const isThreadListFilters = Schema.is(ThreadListFilters);
+const isWorkspaceSelections = Schema.is(WorkspaceSelections);
 const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
 
 export interface Preferences {
-  /** Use APNs credentials configured on paired environments instead of Cloud Connect. */
-  readonly directPushEnabled?: boolean;
-  readonly directLiveActivitiesEnabled?: boolean;
+  readonly navigationTabOrder?: readonly string[];
+  readonly hiddenNavigationTabs?: readonly string[];
   readonly pullRequestHideTestFiles?: boolean;
   readonly pullRequestMergeMethod?: PullRequestMergeMethod;
   readonly liveActivitiesEnabled?: boolean;
@@ -84,9 +96,8 @@ export interface Preferences {
   readonly mathRenderingEnabled?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
   readonly collapsedProjectGroups?: readonly string[];
-  /** Environments whose "reclaim database space" notice was dismissed. */
   readonly dismissedDatabaseStorageNotices?: readonly string[];
-  /** What the Return key does in the composer on a hardware keyboard. iOS only. */
+  /** Hardware Return behavior is iOS-only. */
   readonly composerEnterBehavior?: ComposerEnterBehavior;
   readonly followUpBehavior?: FollowUpBehavior;
   readonly microphones?: ReadonlyArray<MicrophoneEntry>;
@@ -100,54 +111,10 @@ export interface Preferences {
   }>;
   readonly threadListSettledShelfExpanded?: boolean;
   readonly threadListSnoozedShelfExpanded?: boolean;
-  /**
-   * On-device dictation, all device-scoped rather than environment-scoped: the
-   * model runs on this phone no matter which environment the composer is
-   * attached to.
-   */
-  readonly voiceSpeechModelId?: string;
-  /** Only honoured by models whose backend can tell voices apart. */
-  readonly voiceSpeakerFilteringEnabled?: boolean;
-  /** Off keeps multi-hundred-megabyte downloads off a metered connection. */
-  readonly voiceDownloadOnCellular?: boolean;
-  /**
-   * How the hardware-keyboard shortcut behaves. Undefined means hold-to-talk,
-   * where the recording lasts exactly as long as the keys are down.
-   */
-  readonly voiceDictationShortcut?: "hold" | "toggle" | "off";
-  readonly voiceCleanupEnabled?: boolean;
-  readonly voiceCleanupModelId?: string;
-  /** Undefined means the shipped default prompt, which can change per release. */
-  readonly voiceCleanupPrompt?: string;
-  /** Raw editor text, parsed into hints at prompt-build time. */
-  readonly voiceCleanupPreferredSpellings?: string;
-  readonly voiceCleanupCorrections?: string;
-  /**
-   * Mappings the learning loop picked up from words the user fixed by hand.
-   *
-   * Capped, oldest dropped first, and every entry is listed and deletable in
-   * voice settings. Nothing is learned that the user cannot see and undo.
-   */
-  readonly voiceLearnedCorrections?: ReadonlyArray<{
-    readonly wrong: string;
-    readonly right: string;
-  }>;
-  /**
-   * A transcript written down before cleanup started and not yet committed.
-   *
-   * Only present when the process died between the two, which is the one
-   * failure that raises no error to catch. The next launch offers it back into
-   * the draft it belongs to, or discards it if that draft has moved on.
-   */
-  readonly voicePendingTranscript?: {
-    readonly ownerKey: string;
-    readonly revision: number;
-    readonly text: string;
-    readonly capturedAt: number;
-  };
   readonly threadListWorkingShelfExpanded?: boolean;
   readonly threadListFilters?: ThreadListFilters;
   readonly pullRequestListFilters?: PullRequestListPreferences;
+  readonly workspaceSelections?: WorkspaceSelections;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -189,6 +156,8 @@ export class MobilePreferencesStore extends Context.Service<
 
 function sanitizePreferences(parsed: Preferences): Preferences {
   const preferences: {
+    navigationTabOrder?: readonly string[];
+    hiddenNavigationTabs?: readonly string[];
     pullRequestHideTestFiles?: boolean;
     pullRequestMergeMethod?: PullRequestMergeMethod;
     liveActivitiesEnabled?: boolean;
@@ -215,26 +184,23 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     modelFavorites?: Preferences["modelFavorites"];
     threadListSettledShelfExpanded?: boolean;
     threadListSnoozedShelfExpanded?: boolean;
-    voiceSpeechModelId?: string;
-    voiceSpeakerFilteringEnabled?: boolean;
-    voiceDownloadOnCellular?: boolean;
-    voiceDictationShortcut?: "hold" | "toggle" | "off";
-    voiceCleanupEnabled?: boolean;
-    voiceCleanupModelId?: string;
-    voiceCleanupPrompt?: string;
-    voiceCleanupPreferredSpellings?: string;
-    voiceCleanupCorrections?: string;
-    voiceLearnedCorrections?: ReadonlyArray<{ readonly wrong: string; readonly right: string }>;
-    voicePendingTranscript?: {
-      readonly ownerKey: string;
-      readonly revision: number;
-      readonly text: string;
-      readonly capturedAt: number;
-    };
     threadListWorkingShelfExpanded?: boolean;
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
+    workspaceSelections?: WorkspaceSelections;
   } = {};
+
+  if (Array.isArray(parsed.hiddenNavigationTabs)) {
+    preferences.hiddenNavigationTabs = parsed.hiddenNavigationTabs.filter(
+      (tab): tab is string => typeof tab === "string",
+    );
+  }
+
+  if (Array.isArray(parsed.navigationTabOrder)) {
+    preferences.navigationTabOrder = parsed.navigationTabOrder.filter(
+      (tab): tab is string => typeof tab === "string",
+    );
+  }
 
   if (typeof parsed.pullRequestHideTestFiles === "boolean") {
     preferences.pullRequestHideTestFiles = parsed.pullRequestHideTestFiles;
@@ -352,71 +318,6 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (typeof parsed.threadListSnoozedShelfExpanded === "boolean") {
     preferences.threadListSnoozedShelfExpanded = parsed.threadListSnoozedShelfExpanded;
   }
-
-  if (typeof parsed.voiceSpeechModelId === "string") {
-    preferences.voiceSpeechModelId = parsed.voiceSpeechModelId;
-  }
-  if (typeof parsed.voiceSpeakerFilteringEnabled === "boolean") {
-    preferences.voiceSpeakerFilteringEnabled = parsed.voiceSpeakerFilteringEnabled;
-  }
-  if (typeof parsed.voiceDownloadOnCellular === "boolean") {
-    preferences.voiceDownloadOnCellular = parsed.voiceDownloadOnCellular;
-  }
-  if (
-    parsed.voiceDictationShortcut === "hold" ||
-    parsed.voiceDictationShortcut === "toggle" ||
-    parsed.voiceDictationShortcut === "off"
-  ) {
-    preferences.voiceDictationShortcut = parsed.voiceDictationShortcut;
-  }
-  if (typeof parsed.voiceCleanupEnabled === "boolean") {
-    preferences.voiceCleanupEnabled = parsed.voiceCleanupEnabled;
-  }
-  if (typeof parsed.voiceCleanupModelId === "string") {
-    preferences.voiceCleanupModelId = parsed.voiceCleanupModelId;
-  }
-  if (typeof parsed.voiceCleanupPrompt === "string") {
-    preferences.voiceCleanupPrompt = parsed.voiceCleanupPrompt.slice(0, MAX_CLEANUP_PROMPT_LENGTH);
-  }
-  if (typeof parsed.voiceCleanupPreferredSpellings === "string") {
-    preferences.voiceCleanupPreferredSpellings = parsed.voiceCleanupPreferredSpellings.slice(
-      0,
-      MAX_VOICE_CORRECTION_TEXT_LENGTH,
-    );
-  }
-  if (typeof parsed.voiceCleanupCorrections === "string") {
-    preferences.voiceCleanupCorrections = parsed.voiceCleanupCorrections.slice(
-      0,
-      MAX_VOICE_CORRECTION_TEXT_LENGTH,
-    );
-  }
-  if (Array.isArray(parsed.voiceLearnedCorrections)) {
-    preferences.voiceLearnedCorrections = parsed.voiceLearnedCorrections
-      .filter(
-        (pair): pair is { wrong: string; right: string } =>
-          typeof pair === "object" &&
-          pair !== null &&
-          typeof (pair as { wrong?: unknown }).wrong === "string" &&
-          typeof (pair as { right?: unknown }).right === "string",
-      )
-      .slice(-MAX_LEARNED_CORRECTIONS);
-  }
-  const pendingTranscript = parsed.voicePendingTranscript;
-  if (
-    typeof pendingTranscript === "object" &&
-    pendingTranscript !== null &&
-    typeof pendingTranscript.ownerKey === "string" &&
-    typeof pendingTranscript.revision === "number" &&
-    typeof pendingTranscript.text === "string" &&
-    typeof pendingTranscript.capturedAt === "number"
-  ) {
-    preferences.voicePendingTranscript = {
-      ownerKey: pendingTranscript.ownerKey,
-      revision: pendingTranscript.revision,
-      text: pendingTranscript.text.slice(0, MAX_VOICE_PENDING_TRANSCRIPT_LENGTH),
-      capturedAt: pendingTranscript.capturedAt,
-    };
-  }
   if (typeof parsed.threadListWorkingShelfExpanded === "boolean") {
     preferences.threadListWorkingShelfExpanded = parsed.threadListWorkingShelfExpanded;
   }
@@ -425,6 +326,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (isPullRequestListPreferences(parsed.pullRequestListFilters)) {
     preferences.pullRequestListFilters = parsed.pullRequestListFilters;
+  }
+  if (isWorkspaceSelections(parsed.workspaceSelections)) {
+    preferences.workspaceSelections = parsed.workspaceSelections;
   }
   return preferences;
 }

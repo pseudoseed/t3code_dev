@@ -14,7 +14,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import Constants from "expo-constants";
 import * as Network from "expo-network";
@@ -28,16 +28,7 @@ import { clearThreadOutboxEnvironment } from "../state/thread-outbox-removal";
 import { clearComposerDraftsEnvironment } from "../state/use-composer-drafts";
 import { clearThreadComposerErrorsForEnvironment } from "../state/thread-composer-error";
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
-import { recordConnectionDiagnostic } from "./diagnostics";
 import * as ConnectionStorage from "./storage";
-
-/**
- * iOS reports a path change several times around a wake, and a resume-time
- * query can briefly answer "no path" while the socket underneath is fine. The
- * supervisor probes live connections when the path looks lost, so a flap is
- * settled here before it can trigger a probe per bounce.
- */
-const NETWORK_CHANGE_DEBOUNCE = "1 second";
 
 function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "online" {
   if (state.isConnected === false) {
@@ -49,54 +40,22 @@ function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "on
   return "unknown";
 }
 
-type MobileNetworkStatus = ReturnType<typeof networkStatus>;
-
-const queryNetworkStatus = Effect.tryPromise({
-  try: () => Network.getNetworkStateAsync(),
-  catch: () => undefined,
-}).pipe(
-  Effect.match({
-    onFailure: () => "unknown" as const,
-    onSuccess: networkStatus,
-  }),
-);
-
-// One native listener feeds every environment supervisor. Each supervisor
-// used to install its own listener and its own resume-time path query, which
-// on iOS spins up a fresh path monitor per call on the busiest frame of the
-// resume.
-class MobileNetworkState extends Context.Service<
-  MobileNetworkState,
-  {
-    readonly status: Effect.Effect<MobileNetworkStatus>;
-    readonly changes: Stream.Stream<MobileNetworkStatus>;
-    readonly pathChanges: Stream.Stream<"network-changed">;
-  }
->()("@t3/mobile/MobileNetworkState") {}
-
-const layerNetworkState = Layer.effect(
-  MobileNetworkState,
-  Effect.gen(function* () {
-    const updates = yield* PubSub.unbounded<MobileNetworkStatus>();
-    const paths = yield* PubSub.unbounded<"network-changed">();
-    let latest: MobileNetworkStatus | null = null;
-    let previousType: Network.NetworkStateType | undefined;
-    const publish = (state: Network.NetworkState, source: string) => {
-      const status = networkStatus(state);
-      recordConnectionDiagnostic("network", `${status} type=${state.type ?? "?"} (${source})`);
-      const type = state.isConnected === true ? state.type : undefined;
-      if (previousType !== undefined && type !== undefined && type !== previousType) {
-        PubSub.publishUnsafe(paths, "network-changed");
-      }
-      previousType = type ?? previousType;
-      latest = status;
-      PubSub.publishUnsafe(updates, status);
-    };
-    yield* Effect.acquireRelease(
+const layerConnectivity = Connectivity.layer({
+  status: Effect.tryPromise({
+    try: () => Network.getNetworkStateAsync(),
+    catch: () => undefined,
+  }).pipe(
+    Effect.match({
+      onFailure: () => "unknown" as const,
+      onSuccess: networkStatus,
+    }),
+  ),
+  changes: Stream.callback((queue) =>
+    Effect.acquireRelease(
       Effect.sync(() => {
         let active = true;
         const networkSubscription = Network.addNetworkStateListener((state) => {
-          if (active) publish(state, "listener");
+          Queue.offerUnsafe(queue, networkStatus(state));
         });
         const appStateSubscription = AppState.addEventListener("change", (state) => {
           if (state !== "active") {
@@ -104,79 +63,90 @@ const layerNetworkState = Layer.effect(
           }
           void Network.getNetworkStateAsync()
             .then((current) => {
-              if (active) publish(current, "resume");
+              if (active) {
+                Queue.offerUnsafe(queue, networkStatus(current));
+              }
             })
             .catch(() => undefined);
         });
-        void Network.getNetworkStateAsync()
-          .then((state) => {
-            if (active && latest === null) publish(state, "initial");
-          })
-          .catch(() => undefined);
-        return () => {
-          active = false;
-          networkSubscription.remove();
-          appStateSubscription.remove();
+        return {
+          close: () => {
+            active = false;
+            networkSubscription.remove();
+            appStateSubscription.remove();
+          },
         };
       }),
-      (close) => Effect.sync(close),
-    );
-    return MobileNetworkState.of({
-      status: Effect.suspend(() => (latest === null ? queryNetworkStatus : Effect.succeed(latest))),
-      changes: Stream.fromPubSub(updates).pipe(Stream.debounce(NETWORK_CHANGE_DEBOUNCE)),
-      pathChanges: Stream.fromPubSub(paths),
-    });
-  }),
+      ({ close }) => Effect.sync(close),
+    ).pipe(Effect.asVoid),
+  ),
+});
+
+/** Wake connections on network path changes; online/offline misses Wi-Fi-to-cellular moves. */
+const networkPathChanges = Stream.callback<"network-changed">((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      let active = true;
+      let previous: Network.NetworkStateType | undefined;
+      const record = (state: Network.NetworkState) => {
+        const type = state.isConnected === true ? state.type : undefined;
+        if (previous !== undefined && type !== undefined && type !== previous) {
+          Queue.offerUnsafe(queue, "network-changed");
+        }
+        previous = type ?? previous;
+      };
+      // Seed the current type: the listener reports only changes and would miss the first move.
+      void Network.getNetworkStateAsync()
+        .then((state) => {
+          if (active && previous === undefined && state.isConnected === true) {
+            previous = state.type;
+          }
+        })
+        .catch(() => undefined);
+      const subscription = Network.addNetworkStateListener(record);
+      return {
+        remove: () => {
+          active = false;
+          subscription.remove();
+        },
+      };
+    }),
+    (subscription) => Effect.sync(() => subscription.remove()),
+  ).pipe(Effect.asVoid),
 );
 
-const layerConnectivity = Layer.effect(
-  Connectivity.Connectivity,
-  Effect.map(MobileNetworkState, ({ status, changes }) =>
-    Connectivity.Connectivity.of({ status, changes }),
-  ),
-).pipe(Layer.provide(layerNetworkState));
-
-const layerWakeups = Layer.effect(
-  Wakeups.ConnectionWakeups,
-  Effect.gen(function* () {
-    const network = yield* MobileNetworkState;
-    const wakeups = yield* PubSub.unbounded<
-      "application-active-probe" | "application-active-reconnect"
-    >();
-    yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        let backgroundedAtMs = AppState.currentState === "background" ? Date.now() : null;
-        return AppState.addEventListener("change", (state) => {
-          recordConnectionDiagnostic("app-state", state);
-          if (state === "background") {
-            backgroundedAtMs = Date.now();
-            return;
-          }
-          if (state === "active") {
-            const wakeup = mobileApplicationActiveWakeup(backgroundedAtMs, Date.now());
-            recordConnectionDiagnostic(
-              "wakeup",
-              backgroundedAtMs === null
-                ? wakeup
-                : `${wakeup} after ${Math.round((Date.now() - backgroundedAtMs) / 1000)}s`,
-            );
-            backgroundedAtMs = null;
-            PubSub.publishUnsafe(wakeups, wakeup);
-          }
-        });
-      }),
-      (subscription) => Effect.sync(() => subscription.remove()),
-    );
-    return Wakeups.ConnectionWakeups.of({
-      changes: Stream.merge(
-        Stream.merge(Stream.fromPubSub(wakeups), network.pathChanges),
-        managedRelayAccountChanges(appAtomRegistry).pipe(
-          Stream.map(() => "credentials-changed" as const),
-        ),
+const layerWakeups = Wakeups.layer({
+  changes: Stream.mergeAll(
+    [
+      Stream.callback<"application-active-probe" | "application-active-reconnect">((queue) =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            let backgroundedAtMs = AppState.currentState === "background" ? Date.now() : null;
+            return AppState.addEventListener("change", (state) => {
+              if (state === "background") {
+                backgroundedAtMs = Date.now();
+                return;
+              }
+              if (state === "active") {
+                Queue.offerUnsafe(
+                  queue,
+                  mobileApplicationActiveWakeup(backgroundedAtMs, Date.now()),
+                );
+                backgroundedAtMs = null;
+              }
+            });
+          }),
+          (subscription) => Effect.sync(() => subscription.remove()),
+        ).pipe(Effect.asVoid),
       ),
-    });
-  }),
-).pipe(Layer.provide(layerNetworkState));
+      managedRelayAccountChanges(appAtomRegistry).pipe(
+        Stream.map(() => "credentials-changed" as const),
+      ),
+      networkPathChanges,
+    ],
+    { concurrency: "unbounded" },
+  ),
+});
 
 const layerCapabilities = Layer.effectContext(
   Effect.gen(function* () {
@@ -192,7 +162,7 @@ const layerCapabilities = Layer.effectContext(
           if (session === null) {
             return yield* new ConnectionBlockedError({
               reason: "authentication",
-              detail: "Sign in to Cloud Connect to connect this environment.",
+              detail: "Sign in to T3 Connect to connect this environment.",
             });
           }
           const token = yield* session.readClerkToken().pipe(
@@ -207,7 +177,7 @@ const layerCapabilities = Layer.effectContext(
           if (token === null) {
             return yield* new ConnectionBlockedError({
               reason: "authentication",
-              detail: "The Cloud Connect session is unavailable.",
+              detail: "The T3 Connect session is unavailable.",
             });
           }
           return token;

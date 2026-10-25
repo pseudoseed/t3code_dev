@@ -12,11 +12,8 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 const SSH_PORT = 22;
 /**
- * Resolution spawns `tailscale status` and probes sshd, each under a 5 s
- * budget, and it sits on the critical path of every client's first config
- * frame. Targets change on the order of minutes (tailscaled up or down, a
- * hostname edit), so a reconnecting client gets the last answer at once and
- * the refresh runs behind it.
+ * Resolution probes Tailscale and sshd (5 s each) on every client's first config frame, while
+ * targets change over minutes, so reconnecting clients get the last answer while it refreshes.
  */
 export const REMOTE_OPEN_TARGETS_TTL_MS = 60_000;
 
@@ -27,7 +24,7 @@ export class RemoteOpenTargets extends Context.Service<
   }
 >()("t3/environment/RemoteOpenTargets") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const net = yield* NetService.NetService;
@@ -60,8 +57,7 @@ export const make = Effect.gen(function* () {
     const targets: Array<RemoteOpenTarget> = [];
 
     if (!sshdListening) {
-      // Tailscale SSH answers on the tailnet name with no local sshd, so only
-      // that name can work. A running tailscaled alone is not an SSH route.
+      // Tailscale SSH needs no local sshd; tailscaled alone does not prove an SSH route.
       if (
         magicDnsName !== null &&
         (yield* readTailscaleSshEnabled.pipe(
@@ -86,8 +82,7 @@ export const make = Effect.gen(function* () {
       });
     }
 
-    // os.hostname() may already be an FQDN (macOS often reports
-    // "Name.local"); mDNS names are always `<first-label>.local`.
+    // hostname() may be an FQDN; mDNS always uses <first-label>.local.
     const hostname = yield* HostProcess.Hostname;
     const shortHostname = hostname.split(".")[0]?.trim();
     if (shortHostname !== undefined && shortHostname.length > 0) {

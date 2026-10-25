@@ -16,10 +16,7 @@ interface WorkspacePaneDividerProps {
 }
 
 export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
-  const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
-  // The pan callbacks fire after render, so effect events read the latest props
-  // while the gesture object stays stable across renders.
   const handleResizeStart = useEffectEvent(() => {
     setDragging(true);
     props.onResizeStart?.();
@@ -59,7 +56,7 @@ export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
   return (
     <GestureDetector gesture={resizeGesture}>
       <Pressable
-        className="relative z-[100] -mx-[22px] w-11 self-stretch justify-center cursor-pointer"
+        className="relative z-[100] -mx-[22px] w-11 self-stretch justify-center"
         accessibilityActions={[
           { name: "increment", label: "Make pane wider" },
           { name: "decrement", label: "Make pane narrower" },
@@ -70,17 +67,15 @@ export function WorkspacePaneDivider(props: WorkspacePaneDividerProps) {
           now: Math.round(props.currentWidth),
           text: `${Math.round(props.currentWidth)} points wide`,
         }}
-        onHoverIn={() => setHovered(true)}
-        onHoverOut={() => setHovered(false)}
         onAccessibilityAction={handleAccessibilityAction}
       >
         <View
           className={cn(
             "h-full self-center bg-border opacity-70",
-            hovered || dragging ? "w-0.5 bg-primary opacity-100" : "w-px",
+            dragging ? "w-0.5 bg-primary opacity-100" : "w-px",
             Platform.OS === "android" && !dragging && "opacity-0",
           )}
-          style={[styles.line, (hovered || dragging) && styles.activeLine]}
+          style={[styles.line, dragging && styles.activeLine]}
         />
       </Pressable>
     </GestureDetector>

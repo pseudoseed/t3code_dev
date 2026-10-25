@@ -17,7 +17,6 @@ public final class T3KeyboardCommandsModule: Module {
 public final class T3KeyboardCommandsView: ExpoView {
   let onCommand = EventDispatcher()
   private var enabledCommands = Set<String>()
-  private var dictationHeld = false
   private let shortcutInputView = UIView(frame: .zero)
 
   public override var canBecomeFirstResponder: Bool { true }
@@ -57,7 +56,6 @@ public final class T3KeyboardCommandsView: ExpoView {
         title: "Copy PR Link or Thread ID"
       ),
       enabledCommand("toggleSidebar", input: "\\", modifiers: .command, action: #selector(handleToggleSidebar), title: "Toggle Sidebar"),
-      enabledCommand("toggleDictation", input: "d", modifiers: .alternate, action: #selector(handleToggleDictation), title: "Dictate"),
       enabledCommand("cycleHost", input: "h", modifiers: [.command, .shift], action: #selector(cycleHost), title: "Next Machine"),
     ].compactMap { $0 }
     if isPad {
@@ -74,72 +72,8 @@ public final class T3KeyboardCommandsView: ExpoView {
     return commands
   }
 
-  /// Whether dictation is bound to hold-to-talk rather than tap-to-toggle.
-  ///
-  /// The two cannot both be live on the same chord: a matching `UIKeyCommand`
-  /// consumes the key before `pressesBegan` sees it, and hold-to-talk needs the
-  /// release, which a key command never reports.
-  private var holdsToTalk: Bool { enabledCommands.contains("dictationHoldStart") }
-
-  public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    if holdsToTalk, Self.isDictationChord(presses) {
-      if !dictationHeld {
-        dictationHeld = true
-        onCommand(["command": "dictationHoldStart"])
-      }
-      return
-    }
-
-    super.pressesBegan(presses, with: event)
-  }
-
-  public override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    // The modifier can be released before D. Matching the original chord at
-    // key-up misses that order and leaves capture running indefinitely.
-    if dictationHeld, presses.contains(where: { press in
-      guard let key = press.key else { return false }
-      return key.charactersIgnoringModifiers.lowercased() == "d"
-        || !key.modifierFlags.contains(.alternate)
-    }) {
-      endDictationHold()
-      return
-    }
-
-    super.pressesEnded(presses, with: event)
-  }
-
-  public override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    // A cancelled press still has to stop the recording, or releasing the key
-    // outside the app leaves the microphone running.
-    if dictationHeld {
-      endDictationHold()
-      return
-    }
-
-    super.pressesCancelled(presses, with: event)
-  }
-
-  private func endDictationHold() {
-    guard dictationHeld else { return }
-    dictationHeld = false
-    onCommand(["command": "dictationHoldEnd"])
-  }
-
-  /// Option plus D, matched on the unmodified character so a layout that puts
-  /// something else on that key still works. Command is deliberately not part
-  /// of it: iPadOS binds Command plus Option plus D to showing the dock.
-  private static func isDictationChord(_ presses: Set<UIPress>) -> Bool {
-    presses.contains { press in
-      guard let key = press.key else { return false }
-      return key.charactersIgnoringModifiers.lowercased() == "d"
-        && key.modifierFlags.contains(.alternate)
-        && !key.modifierFlags.contains(.command)
-    }
-  }
-
   func setEnabledCommands(_ commands: [String]) {
     enabledCommands = Set(commands)
-    if !holdsToTalk { endDictationHold() }
     if isFirstResponder {
       resignFirstResponder()
     }
@@ -187,7 +121,6 @@ public final class T3KeyboardCommandsView: ExpoView {
 
   public override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window == nil { endDictationHold() }
     reclaimFirstResponderIfAvailable()
   }
 
@@ -224,7 +157,6 @@ public final class T3KeyboardCommandsView: ExpoView {
   @objc private func openReview() { emit("review") }
   @objc private func copyThreadReference() { emit("copyThreadReference") }
   @objc private func handleToggleSidebar() { emit("toggleSidebar") }
-  @objc private func handleToggleDictation() { emit("toggleDictation") }
   @objc private func cycleHost() { emit("cycleHost") }
 
   private func emit(_ command: String) {

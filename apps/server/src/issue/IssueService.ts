@@ -1,10 +1,6 @@
 /**
- * Issues for one project at a time.
- *
- * The panel follows the project it was opened beside, so unlike the change request service this
- * one never spans a workspace: it resolves one project to one repository on one host, and asks
- * that host. What it shares with its neighbour is how a self-hosted remote is recognised, since
- * an instance that carries no well-known hostname is only identified by asking its CLI.
+ * One project, one repository, one host: the panel follows the project it opened beside. Self-hosted
+ * remotes are recognised like change requests, by asking the host's CLI.
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -12,7 +8,6 @@ import * as Layer from "effect/Layer";
 import {
   IssueOperationError,
   IssueUnavailableError,
-  pullRequestHostOf,
   type IssueCreateResult,
   type IssueDetail,
   type IssueListEntry,
@@ -24,7 +19,7 @@ import {
 } from "@t3tools/contracts";
 
 import { ProjectService } from "../project/ProjectService.ts";
-import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
+import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { IssueProviderRegistry } from "./IssueProviderRegistry.ts";
 import type { IssueProviderApi, IssueProviderError } from "./IssueProvider.ts";
@@ -116,7 +111,7 @@ const make = Effect.gen(function* () {
         const repository =
           project === undefined
             ? null
-            : sourceControlRepositorySelector(project.repositoryIdentity);
+            : sourceControlDefinitions.repositorySelector(project.repositoryIdentity);
         if (project === undefined || !identity || repository === null) {
           return Effect.fail(
             new IssueUnavailableError({
@@ -159,7 +154,7 @@ const make = Effect.gen(function* () {
               api,
               cwd: project.workspaceRoot,
               repository,
-              host: pullRequestHostOf(identity, kind),
+              host: sourceControlDefinitions.changeRequestHost(identity, kind),
               kind,
               projectId,
               projectTitle: project.title,

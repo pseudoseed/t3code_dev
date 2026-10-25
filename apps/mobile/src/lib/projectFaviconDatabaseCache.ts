@@ -25,42 +25,21 @@ const runDatabase = <A, E>(
     ? Effect.runPromise(use(database))
     : Promise.reject(new Error("Project icon storage is not attached."));
 
-/**
- * The native decoder writes the downsized frame to expo-image's disk cache,
- * which is the only encode path it exposes; the temporary entry is removed once
- * its bytes are read.
- */
+/** expo-image encodes only through disk cache; remove the temporary frame after reading bytes. */
 export async function downscaleProjectFavicon(
   image: { readonly url: string },
   signal: AbortSignal,
 ) {
-  // Loaded lazily with the other native modules so the cache stays importable
-  // in tests, where react-native's Flow entry point cannot be parsed.
-  // Expo inlines EXPO_OS at build time. A dynamic import of react-native would
-  // copy its exports, and React Native 0.88 throws on the removed
-  // InteractionManager getter.
   const [{ Image }, { File }] = await Promise.all([
     import("expo-image"),
     import("expo-file-system"),
   ]);
   for (const size of [PROJECT_FAVICON_THUMBNAIL_SIZE, PROJECT_FAVICON_THUMBNAIL_SIZE / 2]) {
-    if (signal.aborted) throw new Error("Project icon request aborted.");
+    signal.throwIfAborted();
     const decoded = await Image.loadAsync(image.url, { maxWidth: size, maxHeight: size });
     const cacheKey = `t3-favicon-thumbnail:${size}:${image.url}`;
     try {
-      if (signal.aborted) throw new Error("Project icon request aborted.");
-      if (process.env.EXPO_OS === "ios") {
-        const { requireNativeModule } = await import("expo-modules-core");
-        const native = requireNativeModule<{
-          projectIconPng: (
-            image: import("expo-image").ImageRef,
-            maximumSize: number,
-          ) => string | null;
-        }>("T3NativeControls");
-        const dataUrl = native.projectIconPng(decoded, size);
-        if (dataUrl && dataUrl.length <= PROJECT_FAVICON_MAX_DATA_URL_LENGTH) return dataUrl;
-        continue;
-      }
+      signal.throwIfAborted();
       if (decoded.width > size || decoded.height > size) {
         throw new Error("Project icon was not resized.");
       }
@@ -71,7 +50,7 @@ export async function downscaleProjectFavicon(
       try {
         if (file.size > PROJECT_FAVICON_MAX_DATA_URL_LENGTH) continue;
         const base64 = await file.base64();
-        // Detect the cache encoding rather than trusting the source extension.
+        // SDWebImage chooses JPEG for opaque images and PNG for transparency; Glide always writes PNG.
         const mimeType = base64.startsWith("/9j/")
           ? "image/jpeg"
           : base64.startsWith("iVBORw0KGgo")

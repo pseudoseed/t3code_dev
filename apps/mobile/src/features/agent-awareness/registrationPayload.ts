@@ -3,9 +3,7 @@ import type { RelayDeviceRegistrationRequest } from "@t3tools/contracts/relay";
 import type { Preferences } from "../../persistence/mobile-preferences";
 import { supportsAgentAwarenessPush } from "./capabilities";
 
-// Development builds are Xcode-signed and receive sandbox APNs tokens;
-// preview and production builds are distribution-signed and use production
-// APNs. The relay routes each device's pushes accordingly.
+// Development builds use sandbox APNs; distribution builds use production APNs.
 export function resolveApsEnvironment(appVariant: unknown): "sandbox" | "production" {
   return appVariant === "development" ? "sandbox" : "production";
 }
@@ -26,9 +24,7 @@ export function makeRelayDeviceRegistrationRequest(
     | { readonly platform: "android"; readonly androidApiLevel: number }
   ),
 ): RelayDeviceRegistrationRequest {
-  const pushAvailable =
-    supportsAgentAwarenessPush() &&
-    (input.platform === "android" || input.preferences.directPushEnabled !== true);
+  const pushAvailable = supportsAgentAwarenessPush();
   const liveActivitiesEnabled = pushAvailable && input.preferences.liveActivitiesEnabled !== false;
   return {
     deviceId: input.deviceId,

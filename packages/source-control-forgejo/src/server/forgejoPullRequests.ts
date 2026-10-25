@@ -101,6 +101,10 @@ export function toForgejoChangeRequest(raw: typeof ForgejoPullRequestSchema.Type
   return {
     ...normalizeForgejoPullRequestRecord(raw),
     provider: SourceControlProviderKind.make("forgejo"),
+    isCrossRepository:
+      raw.head.repo != null &&
+      raw.base.repo != null &&
+      raw.head.repo.full_name !== raw.base.repo.full_name,
     headRepositoryNameWithOwner: raw.head.repo?.full_name ?? null,
     headRepositoryOwnerLogin: raw.head.repo?.owner?.login ?? null,
     isDraft: raw.draft ?? /^(?:\[WIP\]|WIP:)/i.test(raw.title),

@@ -1,5 +1,4 @@
 const fs = require("node:fs");
-const { createHash } = require("node:crypto");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { getDefaultConfig } = require("expo/metro-config");
@@ -9,13 +8,6 @@ const extraThemes = require("./generated-uniwind-theme-names.json");
 /** @type {import("expo/metro-config").MetroConfig} */
 const config = getDefaultConfig(__dirname);
 const workspaceRoot = path.resolve(__dirname, "../..");
-// Babel plugins can change across worktrees without the application sources changing.
-// Never reuse worklet transforms compiled against another dependency graph.
-config.cacheVersion = createHash("sha256")
-  .update(config.cacheVersion ?? "")
-  .update(workspaceRoot)
-  .update(fs.readFileSync(path.join(workspaceRoot, "pnpm-lock.yaml")))
-  .digest("hex");
 const generatedLicenseModuleRoot = path.join(__dirname, ".generated", "third-party-licenses");
 const licenseGeneratorSource = path.join(
   workspaceRoot,
@@ -24,23 +16,8 @@ const licenseGeneratorSource = path.join(
   "third-party-licenses.ts",
 );
 const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const mobileShikiRoot = path.dirname(require.resolve("shiki/package.json", { paths: [__dirname] }));
 const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-stream");
 const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
-const resolveShikiDependencyRoot = (packageName) => {
-  const entryPath = require.resolve(packageName, { paths: [mobileShikiRoot] });
-  let currentDir = path.dirname(entryPath);
-
-  while (!fs.existsSync(path.join(currentDir, "package.json"))) {
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      throw new Error(`Could not resolve package root for ${packageName}`);
-    }
-    currentDir = parentDir;
-  }
-
-  return currentDir;
-};
 
 config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
 config.resolver = {
@@ -58,14 +35,6 @@ config.resolver = {
     "@t3tools/mobile-third-party-licenses": generatedLicenseModuleRoot,
     "@t3tools/mobile-device-stream": generatedDeviceStreamRoot,
     "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
-    shiki: mobileShikiRoot,
-    "@shikijs/core": resolveShikiDependencyRoot("@shikijs/core"),
-    "@shikijs/engine-javascript": resolveShikiDependencyRoot("@shikijs/engine-javascript"),
-    "@shikijs/engine-oniguruma": resolveShikiDependencyRoot("@shikijs/engine-oniguruma"),
-    "@shikijs/langs": resolveShikiDependencyRoot("@shikijs/langs"),
-    "@shikijs/themes": resolveShikiDependencyRoot("@shikijs/themes"),
-    "@shikijs/types": resolveShikiDependencyRoot("@shikijs/types"),
-    "@shikijs/vscode-textmate": resolveShikiDependencyRoot("@shikijs/vscode-textmate"),
   },
 };
 

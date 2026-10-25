@@ -1,4 +1,3 @@
-import { Share } from "react-native";
 import * as Dialog from "../../components/ui/Dialog";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import Constants from "expo-constants";
@@ -23,7 +22,7 @@ export function SettingsAboutRouteScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <SettingsScreen title="About PseudoCode">
+    <SettingsScreen title="About T3 Code">
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -43,8 +42,7 @@ function AppSettingsSection() {
   const hiddenUpdateTapCount = useRef(0);
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
-  // Fall back to "production" to match resolveAppVariant in app.config.ts, so a
-  // missing variant never mislabels a production build as development.
+  // Match app.config.ts's production fallback to avoid mislabeling builds as development.
   const variant = (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? "production";
   const variantLabel = variant === "production" ? "" : capitalize(variant);
   const versionLabel = variantLabel ? `${version} · ${variantLabel}` : version;
@@ -59,8 +57,7 @@ function AppSettingsSection() {
   }, [updateState]);
 
   async function checkForUpdate() {
-    // `disabled={busy}` only takes effect on the next render, so two taps in the
-    // same frame would both get through. The ref closes that window.
+    // disabled updates next render; the ref blocks same-frame double taps.
     if (updateInFlight.current) return;
     updateInFlight.current = true;
     // Failures arrive through onFailure; the settled result only matters for unlocking.
@@ -118,11 +115,6 @@ function AppSettingsSection() {
   return (
     <SettingsSection title="App">
       <SettingsRow icon="internaldrive" label="Client Storage" target="SettingsClientStorage" />
-      <SettingsRow
-        icon="antenna.radiowaves.left.and.right"
-        label="Connection Log"
-        onPress={() => void shareConnectionLog()}
-      />
       <SettingsRow icon="stethoscope" label="Diagnostics" target="SettingsDiagnostics" />
       <SettingsRow
         icon="doc.on.doc"
@@ -148,19 +140,4 @@ function AppSettingsSection() {
 
 function capitalize(value: string): string {
   return value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value;
-}
-
-/** The device-side log behind a bad resume; the share sheet also offers Copy. */
-async function shareConnectionLog(): Promise<void> {
-  try {
-    const { connectionDiagnosticsText } = await import("../../connection/diagnostics");
-    const text = await connectionDiagnosticsText();
-    if (text.length === 0) {
-      Dialog.alert("Connection Log", "Nothing recorded yet.");
-      return;
-    }
-    await Share.share({ message: text, title: "PseudoCode connection log" });
-  } catch (error) {
-    Dialog.alert("Connection Log", error instanceof Error ? error.message : "Could not share.");
-  }
 }

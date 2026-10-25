@@ -37,7 +37,7 @@ function endpointLabel(environment: RelayClientEnvironmentRecord): string {
 
 function confirmDeregister(environment: RelayClientEnvironmentRecord, onConfirm: () => void) {
   const title = "Deregister server?";
-  const message = `“${environment.label}” will be removed from this account. Cloud Connect access will be revoked, any managed tunnel will be removed, and a host space will become available. Local connections on your devices are not changed.`;
+  const message = `“${environment.label}” will be removed from this account. T3 Connect access will be revoked, any managed tunnel will be removed, and a host space will become available. Local connections on your devices are not changed.`;
   Dialog.confirm({ title, message, confirmText: "Deregister", destructive: true, onConfirm });
 }
 
@@ -49,8 +49,7 @@ export function T3ConnectProfilePage() {
   const [deregisteringEnvironmentId, setDeregisteringEnvironmentId] =
     useState<EnvironmentId | null>(null);
   const mutationPendingRef = useRef(false);
-  // Deregistered rows stay in the cached list until the refresh lands, so hide
-  // them by the linkedAt they had. A re-link produces a new linkedAt and shows again.
+  // Hide cached rows by linkedAt until refresh; re-linking changes linkedAt and restores visibility.
   const [removedEnvironments, setRemovedEnvironments] = useState<{
     readonly accountId: string | null;
     readonly linkedAtById: ReadonlyMap<EnvironmentId, string>;
@@ -133,7 +132,7 @@ export function T3ConnectProfilePage() {
       {environmentsState.error ? (
         <>
           <ClerkRow
-            title="Could not load Cloud Connect environments"
+            title="Could not load T3 Connect environments"
             subtitle={environmentsState.error}
           />
           {errorTraceId ? (
@@ -193,7 +192,7 @@ export function T3ConnectProfilePage() {
       ) : (
         <ClerkRow
           title="No servers registered"
-          subtitle="Link a server from its local Settings to reach it through Cloud Connect."
+          subtitle="Link a server from its local Settings to reach it through T3 Connect."
         />
       )}
 

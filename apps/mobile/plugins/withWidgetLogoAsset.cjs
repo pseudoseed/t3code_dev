@@ -1,9 +1,6 @@
 "use strict";
 
-// ORDERING: must be listed BEFORE "expo-widgets" in the plugins array. That
-// matters twice: expo-widgets' dangerous mod rmSync's ios/ExpoWidgetsTarget/
-// (deleting any catalog written before it), and its xcodeproj mod is what
-// creates the widget target.
+// Precede expo-widgets so its reverse-ordered mods create and wipe the target before assets are added.
 
 const path = require("path");
 const fs = require("fs");
@@ -12,17 +9,18 @@ const { addWidgetAssetCatalog } = require("./lib/addWidgetAssetCatalog.cjs");
 
 const TARGET_NAME = "ExpoWidgetsTarget";
 const CATALOG_NAME = "Assets.xcassets";
-const IMAGE_SET = "AppMark.imageset";
-const IMAGE_NAME = "AppMark.png";
+const IMAGE_SET = "T3Mark.imageset";
+const SVG_NAME = "T3Mark.svg";
 
 const CATALOG_CONTENTS = JSON.stringify({ info: { author: "expo", version: 1 } }, null, 2) + "\n";
 const IMAGE_SET_CONTENTS =
   JSON.stringify(
     {
-      images: [{ idiom: "universal", filename: IMAGE_NAME }],
+      images: [{ idiom: "universal", filename: SVG_NAME }],
       info: { author: "expo", version: 1 },
       properties: {
-        "template-rendering-intent": "original",
+        "preserves-vector-representation": true,
+        "template-rendering-intent": "template",
       },
     },
     null,
@@ -33,16 +31,13 @@ function withAssetFiles(config) {
   return withDangerousMod(config, [
     "ios",
     (cfg) => {
-      const source = path.resolve(
-        cfg.modRequest.projectRoot,
-        "../../assets/pseudocode/app-icon-180.png",
-      );
+      const source = path.join(cfg.modRequest.projectRoot, "assets", "widget", SVG_NAME);
       const catalogDir = path.join(cfg.modRequest.platformProjectRoot, TARGET_NAME, CATALOG_NAME);
       const imageSetDir = path.join(catalogDir, IMAGE_SET);
       fs.mkdirSync(imageSetDir, { recursive: true });
       fs.writeFileSync(path.join(catalogDir, "Contents.json"), CATALOG_CONTENTS);
       fs.writeFileSync(path.join(imageSetDir, "Contents.json"), IMAGE_SET_CONTENTS);
-      fs.copyFileSync(source, path.join(imageSetDir, IMAGE_NAME));
+      fs.copyFileSync(source, path.join(imageSetDir, SVG_NAME));
       return cfg;
     },
   ]);

@@ -171,12 +171,12 @@ export function useRemoteConnections() {
       if (environment.isRelayManaged) {
         Dialog.alert(
           "Remove from this device?",
-          `Forget ${environment.environmentLabel} and its cached threads on this device.\n\nIt stays on your Cloud Connect account and keeps its host space. Deregister it under Cloud account → Cloud Connect to free it.`,
+          `Forget ${environment.environmentLabel} and its cached threads on this device.\n\nIt stays on your T3 Connect account and keeps its host space. Deregister it under T3 Account → T3 Connect to free it.`,
           [
             { text: "Cancel", style: "cancel" },
             {
-              text: "Open Cloud account",
-              onPress: () => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" }),
+              text: "Open T3 Account",
+              onPress: () => navigation.navigate("SettingsAuth"),
             },
             remove,
           ],

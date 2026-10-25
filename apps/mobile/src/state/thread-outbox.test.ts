@@ -347,25 +347,6 @@ describe("thread outbox", () => {
     });
   });
 
-  it("carries a queued task's subagent model through the persisted schema", () => {
-    const message = {
-      ...queuedMessage({
-        messageId: "message-subagent",
-        createdAt: "2026-06-08T10:00:01.000Z",
-      }),
-      modelSelection: {
-        instanceId: ProviderInstanceId.make("codex"),
-        model: "gpt-5.4",
-      },
-      subagentModelSelection: {
-        instanceId: ProviderInstanceId.make("codex"),
-        model: "gpt-5.4-mini",
-      },
-    } satisfies QueuedThreadMessage;
-
-    expect(decodeQueuedThreadMessage(encodeQueuedThreadMessage(message))).toEqual(message);
-  });
-
   it("normalizes queued plan mode against the queued provider, not the current thread", () => {
     const codex = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.6-sol" };
     const antigravity = {
@@ -1141,6 +1122,19 @@ describe("thread outbox", () => {
         threadBusy: false,
       }),
     ).toBe("send");
+  });
+
+  it("removes a missing-thread message only after a settled family read when idle children can be omitted", () => {
+    const missing = {
+      isCreation: false,
+      threadExists: false,
+      shellStatus: "live",
+      environmentConnected: true,
+      threadBusy: false,
+    } as const;
+    expect(resolveThreadOutboxDeliveryAction({ ...missing, familyRead: "pending" })).toBe("wait");
+    expect(resolveThreadOutboxDeliveryAction({ ...missing, familyRead: "failed" })).toBe("wait");
+    expect(resolveThreadOutboxDeliveryAction({ ...missing, familyRead: "settled" })).toBe("remove");
   });
 
   it("sends existing-thread messages whenever connected so queued messages can steer", () => {
