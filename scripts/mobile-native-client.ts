@@ -438,12 +438,6 @@ export const main = Command.make(
       }),
     };
     if (mode === "ensure") {
-      if (platform === "ios") {
-        // Prepare generated native inputs before fingerprinting or running CocoaPods.
-        const voiceScripts = path.join((yield* roots).mobile, "modules/t3-voice/scripts");
-        yield* command("bash", [path.join(voiceScripts, "fetch-bundled-model.sh")], true);
-        yield* command("bash", [path.join(voiceScripts, "build-llama-xcframework.sh")], true);
-      }
       yield* Console.log(yield* encodeOutput(yield* ensureClient(operations)));
     } else {
       const current = yield* operations.fingerprint;

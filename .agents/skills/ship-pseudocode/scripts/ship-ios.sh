@@ -33,14 +33,6 @@ else
 fi
 export T3CODE_IOS_BUILD_NUMBER="$NEXT"
 
-# On-device dictation links a llama.cpp xcframework and ships a speech model
-# inside the app. Both are built or fetched by these scripts and neither is in
-# git, so a fresh clone has an app that will not link. Both no-op when the
-# artifact is already present at the pinned version.
-echo "Preparing voice artifacts"
-bash apps/mobile/modules/t3-voice/scripts/fetch-bundled-model.sh
-bash apps/mobile/modules/t3-voice/scripts/build-llama-xcframework.sh
-
 APP="$T3CODE_APP_NAME"
 cd apps/mobile
 mkdir -p build
