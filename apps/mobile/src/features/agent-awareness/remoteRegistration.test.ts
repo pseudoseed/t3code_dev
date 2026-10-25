@@ -88,7 +88,6 @@ vi.mock("expo-widgets", () => ({
   addPushToStartTokenListener: vi.fn(() => ({ remove: vi.fn() })),
 }));
 
-vi.mock("expo-linking", () => ({ createURL: () => "t3code-dev:///" }));
 vi.mock("./agentLiveActivity", () => ({
   dismissEndedAgentLiveActivities: widgetMocks.dismissEnded,
   getAgentLiveActivities: widgetMocks.getInstances,

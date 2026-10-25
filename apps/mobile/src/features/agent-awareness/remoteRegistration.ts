@@ -1,4 +1,3 @@
-import * as Linking from "expo-linking";
 import { type LiveActivity } from "expo-widgets";
 import {
   configureAndroidAgentNotifications,
@@ -37,7 +36,7 @@ import {
   loadPreferences,
   saveAgentAwarenessRegistrationRecord,
 } from "../../persistence/imperative";
-import type { AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
+import type { AgentActivityProps } from "../../widgets/AgentActivity";
 import {
   dismissEndedAgentLiveActivities,
   getAgentLiveActivities,
@@ -490,7 +489,6 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     const nowIso = new Date(Date.now()).toISOString();
     const activity = startAgentLiveActivity(
       {
-        appScheme: Linking.createURL("/").split(":")[0],
         title: "PseudoCode",
         subtitle: "Agent work in progress",
         activeCount: 1,
@@ -1085,7 +1083,6 @@ export const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
           try: () =>
             startAgentLiveActivity(
               {
-                appScheme: Linking.createURL("/").split(":")[0],
                 title: aggregate.title,
                 subtitle: aggregate.subtitle,
                 activeCount: aggregate.activeCount,

@@ -21,14 +21,13 @@ update, and colored status text. Tap an individual row to open that thread.
 Project icons are saved when you open the connected app; a folder appears until
 an icon is available. The existing PseudoCode widget remains available.
 
-Overview and Live Activities can include AI progress summaries when the host has
-an enabled, signed-in Claude provider. Summaries use Haiku through that connection
+The Overview widget can include AI progress summaries when the host has an
+enabled, signed-in Claude provider. Summaries use Haiku through that connection
 and consume provider usage. They refresh as work changes, with a rate limit;
 approval, input, and completion labels come directly from the thread status and
 do not wait for a summary. If a summary is unavailable, a factual status appears.
-Direct background updates require **Apple notifications from my servers**; Cloud
-Connect supplies summaries to its Live Activities. iOS still controls delivery
-and widget refresh timing.
+Direct background updates require **Apple notifications from my servers**. iOS
+still controls delivery and widget refresh timing.
 
 Live Activities on the Lock Screen and Dynamic Island are a separate feature.
 Enable them through Cloud Connect, or under **Apple notifications from my servers**
@@ -37,10 +36,11 @@ Open the app while work is active to create a card. It can then receive updates
 while the app is in the background, and ends when work finishes. Open the app
 again during subsequent work to create a new card.
 
-Each card shows the PseudoCode icon, task title, project, and a short status. The
-Lock Screen card highlights the task that needs attention, with a prompt to reply
-or approve, and a concise progress update when available. Hold the Dynamic Island to see the
-highlighted task; its compact view shows the app icon and active count or action.
+Each card shows the number of active agents and how many need attention, then up
+to five tasks with their project and status, requests for input or approval first.
+Tap the card to open the task that needs attention. Hold the Dynamic Island to see
+up to three tasks; its compact view shows the app icon and a status icon, or
+**Approval**, **Input**, or **Failed** when a task needs you.
 
 Completed and failed tasks appear among recent results for up to an hour when
 activity refreshes. Failures show **Needs review** and a short error explanation
