@@ -35,11 +35,23 @@ export async function downscaleProjectFavicon(
     import("expo-file-system"),
   ]);
   for (const size of [PROJECT_FAVICON_THUMBNAIL_SIZE, PROJECT_FAVICON_THUMBNAIL_SIZE / 2]) {
-    signal.throwIfAborted();
+    // React Native's AbortSignal has `aborted` but not `throwIfAborted`.
+    if (signal.aborted) throw new Error("Project icon request aborted.");
     const decoded = await Image.loadAsync(image.url, { maxWidth: size, maxHeight: size });
     const cacheKey = `t3-favicon-thumbnail:${size}:${image.url}`;
     try {
-      signal.throwIfAborted();
+      if (signal.aborted) throw new Error("Project icon request aborted.");
+      // SDWebImage's disk cache cannot re-encode decoded SVG/ICO, so iOS repaints to PNG natively.
+      // EXPO_OS is inlined at build time; import("react-native") throws on React Native 0.88.
+      if (process.env.EXPO_OS === "ios") {
+        const { requireNativeModule } = await import("expo");
+        const native = requireNativeModule<{
+          projectIconPng: (image: typeof decoded, maximumSize: number) => string | null;
+        }>("T3NativeControls");
+        const dataUrl = native.projectIconPng(decoded, size);
+        if (dataUrl && dataUrl.length <= PROJECT_FAVICON_MAX_DATA_URL_LENGTH) return dataUrl;
+        continue;
+      }
       if (decoded.width > size || decoded.height > size) {
         throw new Error("Project icon was not resized.");
       }

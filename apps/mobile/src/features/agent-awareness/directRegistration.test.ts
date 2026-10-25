@@ -66,7 +66,8 @@ vi.mock("../../state/atom-registry", () => ({ appAtomRegistry: {} }));
 vi.mock("../../persistence/imperative", () => ({
   loadOrCreateAgentAwarenessDeviceId: async () => "phone",
 }));
-vi.mock("../../widgets/AgentActivity", () => ({ AgentActivity: "layout" }));
+vi.mock("expo-linking", () => ({ createURL: () => "t3code-dev:///" }));
+vi.mock("../../widgets/pseudocode/OverviewActivity", () => ({ AgentActivity: "layout" }));
 vi.mock("./registrationPayload", () => ({ resolveApsEnvironment: () => "production" }));
 vi.mock("expo-constants", () => ({
   default: { expoConfig: { ios: { bundleIdentifier: "test.app" }, extra: {} } },

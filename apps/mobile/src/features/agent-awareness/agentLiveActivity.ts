@@ -1,5 +1,5 @@
 import type { LiveActivity } from "expo-widgets";
-import type { AgentActivityProps } from "../../widgets/AgentActivity";
+import type { AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
 
 export function dismissEndedAgentLiveActivities(): void {}
 

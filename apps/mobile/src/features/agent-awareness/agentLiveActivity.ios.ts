@@ -1,4 +1,4 @@
-import AgentActivity, { type AgentActivityProps } from "../../widgets/AgentActivity";
+import AgentActivity, { type AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
 
 export function dismissEndedAgentLiveActivities() {
   AgentActivity.dismissEnded();

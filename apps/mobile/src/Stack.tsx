@@ -42,6 +42,7 @@ import {
 } from "./components/RenderErrorBoundary";
 import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { useAgentNotificationNavigation } from "./features/agent-awareness/notificationNavigation";
+import { AgentWidgetSync } from "./features/agent-awareness/AgentWidgetSync";
 import { DirectPushCoordinator } from "./features/agent-awareness/DirectPushCoordinator";
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
@@ -537,6 +538,7 @@ function RootStackLayout(props: {
     >
       <HardwareKeyboardCommandProvider pathname={pathname}>
         <ThreadOutboxDrainWorker />
+        <AgentWidgetSync />
         <DirectPushCoordinator />
         <ShowcaseCaptureCoordinator pathname={pathname} />
         <SettingsEnvironmentFilterProvider open={settingsOpen}>

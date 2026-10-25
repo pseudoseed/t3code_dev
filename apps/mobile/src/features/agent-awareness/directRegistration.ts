@@ -10,6 +10,7 @@ import {
   runInEnvironment,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import * as Linking from "expo-linking";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
 import * as Notifications from "expo-notifications";
@@ -19,7 +20,7 @@ import { connectionAtomRuntime } from "../../connection/runtime";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadOrCreateAgentAwarenessDeviceId } from "../../persistence/imperative";
 import { relativeTime } from "../../lib/time";
-import type { AgentActivityProps } from "../../widgets/AgentActivity";
+import type { AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
 
 const command = createRuntimeCommand(connectionAtomRuntime, {
   label: "direct-push",
@@ -75,7 +76,7 @@ async function factory(environmentId: EnvironmentId) {
   if (existing) return existing;
   const [{ createLiveActivity }, { AgentActivity }] = await Promise.all([
     import("expo-widgets"),
-    import("../../widgets/AgentActivity"),
+    import("../../widgets/pseudocode/OverviewActivity"),
   ]);
   const created = createLiveActivity(`DirectAgentActivity:${environmentId}`, AgentActivity);
   factories.set(environmentId, created);
@@ -156,7 +157,7 @@ export function syncDirectPush(
         listeners.delete(environmentId);
       } else if (!activity && AppState.currentState === "active") {
         activity = activityFactory.start(
-          status.activity,
+          { ...status.activity, appScheme: Linking.createURL("/").split(":")[0] },
           undefined,
           new Date(Date.now() + 600_000),
         );
@@ -164,7 +165,10 @@ export function syncDirectPush(
       if (activity) {
         const token = await attachToken(environmentId, activity);
         if (token) registrations.set(environmentId, { ...registration, activityToken: token });
-        await activity.update(status.activity, new Date(Date.now() + 600_000));
+        await activity.update(
+          { ...status.activity, appScheme: Linking.createURL("/").split(":")[0] },
+          new Date(Date.now() + 600_000),
+        );
       }
     } catch {
       activityFailed = true;

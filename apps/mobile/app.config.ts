@@ -149,6 +149,13 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
     enableAndroid: true,
     widgets: [
       {
+        name: "PseudoCodeOverview",
+        displayName: "PseudoCode Overview",
+        description: "Project updates, concise summaries, and requests that need you.",
+        android: null,
+        ios: { supportedFamilies: ["systemMedium", "systemLarge"] },
+      },
+      {
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
         description: "Subscription quotas from your connected PseudoCode environments.",
@@ -200,8 +207,8 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       },
       {
         name: "AgentActivity",
-        displayName: "Agent Activity",
-        description: "Shows the current state of active PseudoCode agents.",
+        displayName: "PseudoCode",
+        description: "Follow your tasks, answer requests, and review recent results.",
         android: null,
         ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
       },

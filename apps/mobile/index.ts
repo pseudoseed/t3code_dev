@@ -6,6 +6,7 @@ import { LogBox } from "react-native";
 import { featureFlags } from "react-native-screens";
 
 import App from "./src/App";
+import "./src/features/agent-awareness/widgetBackgroundTask";
 
 // Enables iOS FormSheet sizing for nested native stacks in non-fitToContents sheets.
 featureFlags.experiment.synchronousScreenUpdatesEnabled = true;

@@ -10,6 +10,10 @@ public final class T3NativeControlsModule: Module {
   private var filePresentation: T3NativeFilePresentation?
 
   public func definition() -> ModuleDefinition {
+    // SharedRef<UIImage> arguments stay in definition(); the @JS macro binds only plain members.
+    Function("projectIconPng") { (image: SharedRef<UIImage>, maximumSize: Int) -> String? in
+      Self.projectIconPng(image.ref, maximumSize: maximumSize)
+    }
     Constants {
       if #available(iOS 26.0, *) {
         return [
@@ -231,6 +235,21 @@ public final class T3NativeControlsModule: Module {
   func markShowcaseReady(scene: String) async {
     let readyPath = NSHomeDirectory() + "/Library/Caches/T3ShowcaseReadyScene"
     try? scene.write(toFile: readyPath, atomically: true, encoding: .utf8)
+  }
+
+  /// Repaints a decoded SVG/ICO before encoding: the original format can
+  /// survive decoding, and SDWebImage's disk cache cannot encode those formats.
+  private static func projectIconPng(_ source: UIImage, maximumSize: Int) -> String? {
+    guard source.size.width > 0, source.size.height > 0 else { return nil }
+    let limit = CGFloat(max(1, min(maximumSize, 96)))
+    let scale = min(1, limit / max(source.size.width, source.size.height))
+    let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let data = UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
+      source.draw(in: CGRect(origin: .zero, size: size))
+    }
+    return "data:image/png;base64," + data.base64EncodedString()
   }
 
   private func presentVideo(url: URL, title: String, sourceIdentifier: String, identifier: String, promise: Promise) throws {
