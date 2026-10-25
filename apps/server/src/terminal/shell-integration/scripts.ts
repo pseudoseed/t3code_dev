@@ -61,7 +61,7 @@ if [[ -z "\${__t3code_integration_loaded:-}" ]]; then
       builtin unset __t3code_command_running
     fi
     __t3code_mark_prompt
-    builtin printf '\\033]133;A\\007'
+    builtin printf '\\033]133;A;redraw=last\\007'
   }
 
   __t3code_preexec() {
@@ -116,7 +116,7 @@ if [[ -z "\${__t3code_integration_loaded:-}" ]]; then
     fi
     __t3code_first_prompt=
     __t3code_in_command=
-    printf '\\033]133;A\\007'
+    printf '\\033]133;A;redraw=last\\007'
   }
 
   if [[ \${BASH_VERSINFO[0]} -gt 4 || ( \${BASH_VERSINFO[0]} -eq 4 && \${BASH_VERSINFO[1]} -ge 4 ) ]]; then
