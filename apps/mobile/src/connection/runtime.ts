@@ -1,4 +1,4 @@
-import { Connection } from "@t3tools/client-runtime/connection";
+import { Connection, EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
 import { PullRequestDiffLoader } from "@t3tools/client-runtime/state/pull-requests";
 import {
@@ -6,14 +6,56 @@ import {
   ThreadHistoryController,
 } from "@t3tools/client-runtime/state/threads";
 import * as Layer from "effect/Layer";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import type { FoundationHotModule } from "../lib/foundation-fast-refresh";
 import { hotSwappableAtomRuntime } from "../lib/hot-swappable-atom-runtime";
 import * as Runtime from "../lib/runtime";
 import { appAtomRegistry } from "../state/atom-registry";
+import { recordConnectionDiagnostic } from "./diagnostics";
 import * as BackgroundActivity from "./background-activity";
 import * as ConnectionPlatform from "./platform";
+
+/** Mirrors every supervisor phase change into the device connection log. */
+const connectionDiagnosticsLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+    const tracked = new Set<EnvironmentId>();
+    yield* Stream.concat(
+      Stream.fromEffect(SubscriptionRef.get(registry.entries)),
+      SubscriptionRef.changes(registry.entries),
+    ).pipe(
+      Stream.runForEach((entries) =>
+        Effect.forEach(
+          [...entries].filter(([environmentId]) => !tracked.has(environmentId)),
+          ([environmentId, entry]) => {
+            tracked.add(environmentId);
+            return registry.stateChanges(environmentId).pipe(
+              Stream.runForEach((state) =>
+                Effect.sync(() =>
+                  recordConnectionDiagnostic(
+                    "connection",
+                    `${entry.target.label}: ${state.phase}${state.stage ? `/${state.stage}` : ""} attempt=${state.attempt} gen=${state.generation} net=${state.network}${
+                      state.lastFailure ? ` failure=${state.lastFailure.detail}` : ""
+                    }`,
+                  ),
+                ),
+              ),
+              Effect.ignore,
+              Effect.forkScoped,
+            );
+          },
+          { discard: true },
+        ),
+      ),
+      Effect.forkScoped,
+    );
+  }),
+);
 
 declare const module: { readonly hot?: FoundationHotModule } | undefined;
 
@@ -47,9 +89,10 @@ const layerProvidedClientConnection = layerSnapshotLoader.pipe(
   ),
 );
 
-const layerConnection = BackgroundActivity.layerReporter.pipe(
-  Layer.provideMerge(layerProvidedClientConnection),
-);
+const layerConnection = Layer.merge(
+  BackgroundActivity.layerReporter,
+  connectionDiagnosticsLayer,
+).pipe(Layer.provideMerge(layerProvidedClientConnection));
 
 export const connectionAtomRuntime: Atom.AtomRuntime<
   Layer.Success<ConnectionLayerSource>,

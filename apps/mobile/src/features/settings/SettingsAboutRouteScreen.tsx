@@ -3,7 +3,7 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 import Constants from "expo-constants";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, Share, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -115,6 +115,11 @@ function AppSettingsSection() {
   return (
     <SettingsSection title="App">
       <SettingsRow icon="internaldrive" label="Client Storage" target="SettingsClientStorage" />
+      <SettingsRow
+        icon="antenna.radiowaves.left.and.right"
+        label="Connection Log"
+        onPress={() => void shareConnectionLog()}
+      />
       <SettingsRow icon="stethoscope" label="Diagnostics" target="SettingsDiagnostics" />
       <SettingsRow
         icon="doc.on.doc"
@@ -140,4 +145,19 @@ function AppSettingsSection() {
 
 function capitalize(value: string): string {
   return value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+/** The device-side log behind a bad resume; the share sheet also offers Copy. */
+async function shareConnectionLog(): Promise<void> {
+  try {
+    const { connectionDiagnosticsText } = await import("../../connection/diagnostics");
+    const text = await connectionDiagnosticsText();
+    if (text.length === 0) {
+      Dialog.alert("Connection Log", "Nothing recorded yet.");
+      return;
+    }
+    await Share.share({ message: text, title: "PseudoCode connection log" });
+  } catch (error) {
+    Dialog.alert("Connection Log", error instanceof Error ? error.message : "Could not share.");
+  }
 }

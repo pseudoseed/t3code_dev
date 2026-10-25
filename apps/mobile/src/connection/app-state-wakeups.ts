@@ -1,6 +1,11 @@
 import type { Wakeups } from "@t3tools/client-runtime/connection";
 
-export const MOBILE_BACKGROUND_RECONNECT_AFTER_MS = 10_000;
+/**
+ * iOS suspends the app about 30 seconds after backgrounding and SocketRocket never reports a
+ * flow that died while suspended. Short trips keep the socket via a probe; past this window the
+ * probe would mostly time out on a dead socket, and a shell rebuild from its cursor is cheap.
+ */
+export const MOBILE_BACKGROUND_RECONNECT_AFTER_MS = 30_000;
 
 export type MobileApplicationActiveWakeup = Extract<
   Wakeups.ConnectionWakeup,
