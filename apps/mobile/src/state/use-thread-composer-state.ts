@@ -13,7 +13,7 @@ import {
   deriveThreadRuntime,
   threadRuntimeHasInterruptibleRun,
 } from "@t3tools/client-runtime/state/thread-execution";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CommandId,
@@ -34,6 +34,11 @@ import {
   submitCodexFeedback,
   type CodexFeedbackSubmission,
 } from "@t3tools/client-runtime/state/threads";
+import {
+  deriveLatestContextWindowSnapshot,
+  deriveThreadCostSnapshot,
+  latestProviderTurnTokenUsage,
+} from "@t3tools/client-runtime/context-window";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { composerContextSendBlockReason, reidentifyComposerContext } from "../lib/composerContext";
@@ -280,6 +285,39 @@ export function useThreadComposerState() {
       );
     }
   }, [acknowledgedMessages, selectedThreadMessages]);
+
+  const selectedThreadContextWindow = useMemo(() => {
+    const projection = selectedThreadProjection?.projection;
+    const activeProviderThread = projection?.providerThreads.find(
+      (thread) => thread.id === projection.thread.activeProviderThreadId,
+    );
+    const liveUsage = latestProviderTurnTokenUsage(
+      projection?.providerTurns ?? [],
+      projection,
+      activeProviderThread,
+    );
+    const context = deriveLatestContextWindowSnapshot(
+      selectedThreadVisibleTurnItems,
+      liveUsage,
+      activeProviderThread?.contextUsage
+        ? activeProviderThread
+        : projection?.thread.legacyContextUsage
+          ? {
+              contextUsage: projection.thread.legacyContextUsage,
+              updatedAt: projection.thread.updatedAt,
+            }
+          : activeProviderThread,
+    );
+    return context === null
+      ? null
+      : {
+          ...context,
+          ...deriveThreadCostSnapshot(
+            projection?.thread.legacyContextUsage,
+            projection?.providerThreads ?? [],
+          ),
+        };
+  }, [selectedThreadVisibleTurnItems, selectedThreadProjection]);
 
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const followUpBehavior = AsyncResult.isSuccess(preferencesResult)
@@ -877,6 +915,7 @@ export function useThreadComposerState() {
     feedbackSubmissions,
     dismissFeedback,
     selectedThreadFeed,
+    selectedThreadContextWindow,
     selectedThreadActivityRun,
     selectedThreadQueueCount,
     selectedThreadQueuedMessages,

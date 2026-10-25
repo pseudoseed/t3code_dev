@@ -1,3 +1,5 @@
+import { ContextWindowMeter } from "../../components/ContextWindowMeter";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/context-window";
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -240,6 +242,7 @@ export interface ThreadComposerProps {
   readonly threadSyncPhase?: "loading" | "syncing" | null;
   readonly selectedThread: EnvironmentThreadShell;
   readonly reportedModelSelection?: ModelSelection | null;
+  readonly contextWindow?: ContextWindowSnapshot | null;
   readonly hasCompactableConversation: boolean;
   readonly serverConfig: T3ServerConfig | null;
   readonly queueCount: number;
@@ -1001,6 +1004,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 }
               >
                 {modelControl}
+                {props.contextWindow ? <ContextWindowMeter usage={props.contextWindow} /> : null}
                 <ComposerDictationStartAction
                   size={hasSidebarTabBar ? "large" : "regular"}
                   state={voiceInput.state}
@@ -1220,7 +1224,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                       onPickMedia={props.onPickDraftMedia}
                       onPickFiles={props.onPickDraftFiles}
                     />
-                    {modelControl}
+                    <View className="min-w-0 shrink flex-row items-center justify-end">
+                      <View className="min-w-0 shrink" style={{ maxWidth: 152 }}>
+                        {modelControl}
+                      </View>
+                      {props.contextWindow ? (
+                        <ContextWindowMeter usage={props.contextWindow} />
+                      ) : null}
+                    </View>
                   </View>
                 )}
                 <View className="shrink-0 flex-row items-center">
