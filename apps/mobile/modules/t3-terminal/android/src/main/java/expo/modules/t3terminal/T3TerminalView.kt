@@ -30,6 +30,8 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
   private val onInput by EventDispatcher()
   private val onResize by EventDispatcher()
   private val onCapture by EventDispatcher()
+
+  // The native snapshot holds only the viewport, so Android ignores iOS's captureScope="screen".
   var captureRequest: Double = 0.0
     set(value) {
       if (field == value || value <= 0) return
