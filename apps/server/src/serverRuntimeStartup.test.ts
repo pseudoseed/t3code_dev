@@ -40,6 +40,7 @@ import * as ThreadLaunch from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "./orchestration-v2/ThreadManagementService.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ProjectService from "./project/ProjectService.ts";
+import * as DirectPush from "./push/DirectPush.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { ServerActivation } from "./serverActivation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -47,12 +48,19 @@ import * as ServerSettings from "./serverSettings.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 
-it.effect.each([
+const bootstrapScenarios = [
   "disabled-codex",
   "disabled-default",
   "launch-failure",
   "project-failure",
-] as const)("keeps bootstrap launch failures separate from project failures: %s", (scenario) =>
+] as const;
+
+const runBootstrapStartup = (
+  scenario: (typeof bootstrapScenarios)[number],
+  directPush: Layer.Layer<DirectPush.DirectPush> = Layer.mock(DirectPush.DirectPush)({
+    start: () => Effect.void,
+  }),
+) =>
   Effect.scoped(
     Effect.gen(function* () {
       const projectId = ProjectId.make("bootstrap-project");
@@ -118,6 +126,7 @@ it.effect.each([
         Layer.mock(Orchestrator.OrchestratorV2)({ recoverDelegatedTasks: Effect.void }),
         Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ shutdown: Effect.void }),
         Layer.mock(AgentAwarenessRelay.AgentAwarenessRelay)({ start: () => Effect.void }),
+        directPush,
         Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({ runOnce: Effect.never }),
         Layer.mock(ServerLifecycleEvents.ServerLifecycleEvents)({
           publish: (event) =>
@@ -239,7 +248,22 @@ it.effect.each([
         Effect.provideService(ServerActivation, Effect.never),
       );
     }),
-  ),
+  );
+
+it.effect.each(bootstrapScenarios)(
+  "keeps bootstrap launch failures separate from project failures: %s",
+  (scenario) => runBootstrapStartup(scenario),
+);
+
+it.effect("starts the direct push sender during startup", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    yield* runBootstrapStartup(
+      "disabled-codex",
+      Layer.mock(DirectPush.DirectPush)({ start: () => Deferred.succeed(started, undefined) }),
+    );
+    assert.isTrue(yield* Deferred.isDone(started));
+  }),
 );
 
 it.effect("interrupts the effect worker when awareness relay startup fails", () =>
