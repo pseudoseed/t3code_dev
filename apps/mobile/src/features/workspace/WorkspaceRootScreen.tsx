@@ -62,6 +62,7 @@ function WorkspaceRootTitle(props: {
         brand={
           <CompactBrandTitle
             accessibilityLabel={`PseudoCode, ${enabled.length ? TAB_TITLES[state.selectedTab] : "Navigation"}`}
+            fit
           />
         }
         maxWidth={props.maxWidth}
