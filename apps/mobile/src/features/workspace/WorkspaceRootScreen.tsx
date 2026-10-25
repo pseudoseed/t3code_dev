@@ -61,7 +61,7 @@ function WorkspaceRootTitle(props: {
       <WorkspaceConnectionTitle
         brand={
           <CompactBrandTitle
-            accessibilityLabel={`T3 Code, ${enabled.length ? TAB_TITLES[state.selectedTab] : "Navigation"}`}
+            accessibilityLabel={`PseudoCode, ${enabled.length ? TAB_TITLES[state.selectedTab] : "Navigation"}`}
           />
         }
         maxWidth={props.maxWidth}
@@ -170,7 +170,7 @@ function WorkspaceRootContent() {
           />
         ) : (
           <AndroidScreenHeader
-            title="T3 Code"
+            title="PseudoCode"
             titleContent={renderHeaderTitle()}
             actions={[
               ...(state.selectedTab === "threads" || state.selectedTab === "pullRequests"

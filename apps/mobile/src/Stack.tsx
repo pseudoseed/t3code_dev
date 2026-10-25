@@ -295,7 +295,7 @@ const SETTINGS_SCREENS = {
   SettingsAbout: createNativeStackScreen({
     screen: SettingsAboutRouteScreen,
     linking: "settings/about",
-    options: { ...SETTINGS_PAGE_OPTIONS, title: "About T3 Code" },
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "About PseudoCode" },
   }),
   SettingsEnvironmentNew: createNativeStackScreen({
     screen: ConnectionsNewRouteScreen,
@@ -970,7 +970,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: {
         // Android root formSheets lack a native stack bar; the route provides AndroidSheetHeader.
         ...(Platform.OS === "android" ? { headerShown: false } : SHEET_SOLID_HEADER_OPTIONS),
-        title: "Set up T3 Connect",
+        title: "Set up Cloud Connect",
         gestureEnabled: true,
         ...HORIZONTAL_FORM_SHEET_OPTIONS,
         sheetAllowedDetents: formSheetDetents(0.6, 0.95),

@@ -14,7 +14,20 @@ const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
 
-const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+// Fork identity for builds on a team other than T3 Tools. T3CODE_IOS_PERSONAL_TEAM only
+// controls capability stripping; the PERSONAL_TEAM-suffixed names stay accepted.
+const iosBundleIdentifierOverride = (
+  repoEnv.T3CODE_IOS_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
+)?.trim();
+const appNameOverride = repoEnv.T3CODE_APP_NAME?.trim();
+// Path to a 1024x1024 PNG, relative to the repository root.
+const appIconOverride = repoEnv.T3CODE_APP_ICON?.trim() || "assets/pseudocode/app-icon-1024.png";
+// App Store Connect rejects a reused build number, so fork TestFlight uploads set this.
+const iosBuildNumberOverride = repoEnv.T3CODE_IOS_BUILD_NUMBER?.trim();
+// Optional: Xcode's automatic signing picks the sole available team when unset.
+const iosTeamIdOverride = (
+  repoEnv.T3CODE_IOS_TEAM_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_ID
+)?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
@@ -22,11 +35,19 @@ const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (
   isIosPersonalTeamBuild &&
-  (!personalTeamBundleIdentifier ||
-    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
+  (!iosBundleIdentifierOverride || !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride))
 ) {
   throw new Error(
-    "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
+    "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
+  );
+}
+
+if (
+  iosBundleIdentifierOverride &&
+  !IOS_BUNDLE_IDENTIFIER_PATTERN.test(iosBundleIdentifierOverride)
+) {
+  throw new Error(
+    "T3CODE_IOS_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code.",
   );
 }
 
@@ -71,7 +92,7 @@ const RELEASE_ASSETS = {
 
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
+    appName: "PseudoCode Dev",
     scheme: "t3code-dev",
     iosBundleIdentifier: "com.t3tools.t3code.dev",
     androidPackage: "com.t3tools.t3code.dev",
@@ -79,7 +100,7 @@ const VARIANT_CONFIG = {
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "T3 Code Preview",
+    appName: "PseudoCode Preview",
     scheme: "t3code-preview",
     iosBundleIdentifier: "com.t3tools.t3code.preview",
     androidPackage: "com.t3tools.t3code.preview",
@@ -87,7 +108,7 @@ const VARIANT_CONFIG = {
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "T3 Code",
+    appName: "PseudoCode",
     scheme: "t3code",
     iosBundleIdentifier: "com.t3tools.t3code",
     androidPackage: "com.t3tools.t3code",
@@ -108,9 +129,8 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
-const iosBundleIdentifier = isIosPersonalTeamBuild
-  ? personalTeamBundleIdentifier!
-  : variant.iosBundleIdentifier;
+const iosBundleIdentifier = iosBundleIdentifierOverride ?? variant.iosBundleIdentifier;
+const overriddenAppIcon = fromRepoRoot(appIconOverride);
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -131,7 +151,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
-        description: "Subscription quotas from your connected T3 Code environments.",
+        description: "Subscription quotas from your connected PseudoCode environments.",
         ios: {
           configuration: {
             title: "Subscription usage",
@@ -181,7 +201,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "AgentActivity",
         displayName: "Agent Activity",
-        description: "Shows the current state of active T3 Code agents.",
+        description: "Shows the current state of active PseudoCode agents.",
         android: null,
         ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
       },
@@ -216,7 +236,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 // Match iOS PostScript names on Android so RN and the native composer share fonts before runtime loading.
 
 const config: ExpoConfig = {
-  name: variant.appName,
+  name: appNameOverride ?? variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
@@ -226,7 +246,7 @@ const config: ExpoConfig = {
     policy: runtimeVersionPolicy,
   },
   orientation: "portrait",
-  icon: variant.assets.appIcon,
+  icon: overriddenAppIcon,
   userInterfaceStyle: "automatic",
   updates: {
     enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
@@ -235,16 +255,27 @@ const config: ExpoConfig = {
     fallbackToCacheTimeout: 0,
   },
   ios: {
-    icon: variant.assets.iosIcon,
+    icon: overriddenAppIcon,
     supportsTablet: true,
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
+    ...(iosBuildNumberOverride ? { buildNumber: iosBuildNumberOverride } : {}),
     // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    // A Personal Team build signs with its own team, or leaves the choice to automatic signing.
+    ...(iosTeamIdOverride
+      ? { appleTeamId: iosTeamIdOverride }
+      : isIosPersonalTeamBuild
+        ? {}
+        : { appleTeamId: "ARK85ZXQ4Z" }),
+    // Associated Domains needs a paid membership; Personal Team builds lose universal links.
+    ...(isIosPersonalTeamBuild
+      ? {}
+      : {
+          associatedDomains: [
+            `applinks:${variant.relyingParty}`,
+            `webcredentials:${variant.relyingParty}`,
+          ],
+        }),
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
     },
@@ -258,8 +289,8 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+        "Allow PseudoCode to connect to PseudoCode servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow PseudoCode to save images to your photo library.",
       // System picture in picture needs background audio to start and survive outside the app.
       UIBackgroundModes: ["audio"],
       ITSAppUsesNonExemptEncryption: false,
@@ -277,7 +308,7 @@ const config: ExpoConfig = {
     },
   },
   android: {
-    icon: variant.assets.appIcon,
+    icon: overriddenAppIcon,
     package: variant.androidPackage,
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }
@@ -287,7 +318,7 @@ const config: ExpoConfig = {
       ...(variant.assets.androidAdaptiveBackgroundImage
         ? { backgroundImage: variant.assets.androidAdaptiveBackgroundImage }
         : {}),
-      foregroundImage: variant.assets.androidAdaptiveForeground,
+      foregroundImage: overriddenAppIcon,
       monochromeImage: variant.assets.androidMonochromeIcon,
     },
     // JS back dispatch needs RN's Android 16 shim and withAndroidPredictiveBackCompat on Android 13-15.
@@ -296,9 +327,12 @@ const config: ExpoConfig = {
     blockedPermissions: ["android.permission.ACTIVITY_RECOGNITION"],
   },
   web: {
-    favicon: variant.assets.appIcon,
+    favicon: overriddenAppIcon,
   },
   plugins: [
+    // First on purpose: same-type mods run last-registered-first, so its entitlements mod runs
+    // after expo-notifications and Clerk have written aps-environment and sign-in.
+    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
     "expo-asset",
     "react-native-pdf-jsi",
     [
@@ -338,7 +372,7 @@ const config: ExpoConfig = {
         mode: APP_VARIANT === "development" ? "development" : "production",
       },
     ],
-    // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
+    // Gate Clerk here: its plugin also writes native sign-in config the entitlement stripper leaves behind.
     ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
     "expo-web-browser",
     [
@@ -346,7 +380,7 @@ const config: ExpoConfig = {
       {
         androidIcons: {
           shortcut_icon: {
-            foregroundImage: variant.assets.androidAdaptiveForeground,
+            foregroundImage: overriddenAppIcon,
             backgroundColor: variant.assets.androidAdaptiveBackgroundColor,
             ...(variant.assets.androidAdaptiveBackgroundImage
               ? { backgroundImage: variant.assets.androidAdaptiveBackgroundImage }
@@ -358,7 +392,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
+        microphonePermission: "Allow PseudoCode to use your microphone for voice input.",
         recordAudioAndroid: false,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -367,7 +401,8 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission:
+          "Allow PseudoCode to access your camera so you can scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
@@ -377,12 +412,12 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        image: variant.assets.splashIcon,
+        image: overriddenAppIcon,
         resizeMode: "contain",
         backgroundColor: "#ffffff",
         imageWidth: 220,
         dark: {
-          image: variant.assets.splashIcon,
+          image: overriddenAppIcon,
           backgroundColor: "#0a0a0a",
         },
         android: {
@@ -426,7 +461,6 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
   ],
   extra: {
     appVariant: APP_VARIANT,

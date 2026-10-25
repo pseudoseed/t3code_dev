@@ -107,7 +107,7 @@ function ConfiguredSettingsRouteScreen() {
         <SettingsSection title="Connections">
           <SettingsRow
             icon="person.crop.circle"
-            label="T3 Account"
+            label="Cloud account"
             value={accountLabel}
             disabled={!isLoaded}
             onPress={() => navigation.navigate("SettingsAuth")}
@@ -254,7 +254,7 @@ function SettingsIndexSections() {
       </SettingsSection>
 
       <SettingsSection title="App">
-        <SettingsRow icon="info.circle" label="About T3 Code" target="SettingsAbout" />
+        <SettingsRow icon="info.circle" label="About PseudoCode" target="SettingsAbout" />
       </SettingsSection>
     </>
   );
