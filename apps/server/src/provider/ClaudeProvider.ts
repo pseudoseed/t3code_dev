@@ -146,7 +146,7 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
  * omits `tokenSource` when signed in and reports the string `"none"` when signed out, so it is
  * evidence only when it names a real source.
  */
-export function hasClaudeAccountEvidence(capabilities: {
+function hasClaudeAccountEvidence(capabilities: {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;

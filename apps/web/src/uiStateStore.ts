@@ -266,12 +266,9 @@ export function markThreadVisited(state: UiState, threadId: string, visitedAt: s
 
 /**
  * The visit timestamp that leaves a completion looking unseen: one tick before
- * it landed. Shared with the server-side rewind so both records agree on what
- * "unread" means for the same thread.
+ * it landed.
  */
-export function unreadVisitedAtFor(
-  latestTurnCompletedAt: string | null | undefined,
-): string | null {
+function unreadVisitedAtFor(latestTurnCompletedAt: string | null | undefined): string | null {
   if (!latestTurnCompletedAt) {
     return null;
   }
