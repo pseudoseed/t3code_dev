@@ -1,5 +1,9 @@
-import * as Linking from "expo-linking";
-import type { DirectPushRegistration, DirectPushStatus, EnvironmentId } from "@t3tools/contracts";
+import type {
+  DirectPushDelivery,
+  DirectPushRegistration,
+  DirectPushStatus,
+  EnvironmentId,
+} from "@t3tools/contracts";
 import { requestDirectPush } from "@t3tools/client-runtime/rpc";
 import {
   createRuntimeCommand,
@@ -14,7 +18,8 @@ import { AppState } from "react-native";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { loadOrCreateAgentAwarenessDeviceId } from "../../persistence/imperative";
-import type { AgentActivityProps } from "../../widgets/pseudocode/OverviewActivity";
+import { relativeTime } from "../../lib/time";
+import type { AgentActivityProps } from "../../widgets/AgentActivity";
 
 const command = createRuntimeCommand(connectionAtomRuntime, {
   label: "direct-push",
@@ -70,7 +75,7 @@ async function factory(environmentId: EnvironmentId) {
   if (existing) return existing;
   const [{ createLiveActivity }, { AgentActivity }] = await Promise.all([
     import("expo-widgets"),
-    import("../../widgets/pseudocode/OverviewActivity"),
+    import("../../widgets/AgentActivity"),
   ]);
   const created = createLiveActivity(`DirectAgentActivity:${environmentId}`, AgentActivity);
   factories.set(environmentId, created);
@@ -151,7 +156,7 @@ export function syncDirectPush(
         listeners.delete(environmentId);
       } else if (!activity && AppState.currentState === "active") {
         activity = activityFactory.start(
-          { ...status.activity, appScheme: Linking.createURL("/").split(":")[0] },
+          status.activity,
           undefined,
           new Date(Date.now() + 600_000),
         );
@@ -159,10 +164,7 @@ export function syncDirectPush(
       if (activity) {
         const token = await attachToken(environmentId, activity);
         if (token) registrations.set(environmentId, { ...registration, activityToken: token });
-        await activity.update(
-          { ...status.activity, appScheme: Linking.createURL("/").split(":")[0] },
-          new Date(Date.now() + 600_000),
-        );
+        await activity.update(status.activity, new Date(Date.now() + 600_000));
       }
     } catch {
       activityFailed = true;
@@ -192,4 +194,12 @@ export async function disableDirectPush(environmentId: EnvironmentId) {
   } finally {
     await request(environmentId, { action: "unregister" });
   }
+}
+
+/** Apple's answer to the server's latest send, the one thing that tells a bad token from a quiet agent. */
+export function describeDirectPushDelivery(delivery: DirectPushDelivery): string {
+  if (delivery.status === 200) return `Last push: delivered ${relativeTime(delivery.at)} ago`;
+  if (delivery.status === null)
+    return `Last push: no answer from Apple${delivery.reason ? ` (${delivery.reason})` : ""}`;
+  return `Last push: rejected by Apple (${delivery.reason ?? `HTTP ${delivery.status}`})`;
 }

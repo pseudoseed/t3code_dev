@@ -3,7 +3,7 @@ import { Atom, AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { DirectPushDelivery, EnvironmentId } from "@t3tools/contracts";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";
 import { mobilePreferencesAtom } from "../../state/preferences";
@@ -22,6 +22,15 @@ function setStatus(id: EnvironmentId, status: string) {
     directPushStatusAtom,
     new Map(appAtomRegistry.get(directPushStatusAtom)).set(id, status),
   );
+}
+export const directPushDeliveryAtom = Atom.make<ReadonlyMap<EnvironmentId, DirectPushDelivery>>(
+  new Map(),
+);
+function setDelivery(id: EnvironmentId, delivery: DirectPushDelivery | undefined) {
+  const next = new Map(appAtomRegistry.get(directPushDeliveryAtom));
+  if (delivery) next.set(id, delivery);
+  else next.delete(id);
+  appAtomRegistry.set(directPushDeliveryAtom, next);
 }
 
 function Coordinator() {
@@ -117,6 +126,7 @@ function Coordinator() {
         void syncDirectPush(id, liveEnabled)
           .then((status) => {
             if (cancelled) return;
+            setDelivery(id, status?.lastDelivery);
             setStatus(
               id,
               status?.registered

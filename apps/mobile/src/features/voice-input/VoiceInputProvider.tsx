@@ -1,4 +1,4 @@
-import { RegistryContext, useAtomMount, useAtomSet } from "@effect/atom-react";
+import { RegistryContext, useAtomMount } from "@effect/atom-react";
 import {
   AudioModule,
   RecordingPresets,
@@ -30,38 +30,20 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
-import { getLocalVoiceCleanup } from "../../native/voiceCleanup";
-import { evictResidentModels } from "../../native/t3Voice";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
-  resolveVoiceCleanupSettings,
-  resolveVoiceTranscriptionSettings,
-} from "./voiceCleanupSettings";
-import {
   VOICE_RECORDING_LIMIT_SECONDS,
   voiceInputBlocksSubmission,
-  addLearnedCorrections,
-  diffCorrections,
-  resolveEditedSpan,
-  type DictationAnchor,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
 import { createLazyVoiceRecorder, type LazyVoiceRecorder } from "./lazyVoiceRecorder";
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { VoiceInputSession } from "./voiceInputSession";
 
-const INITIAL_STATE: VoiceInputState = {
-  phase: "idle",
-  error: null,
-  errorAction: null,
-  notice: null,
-};
-// Only recovery records from a previous process should be offered back to a draft.
-export const VOICE_SESSION_STARTED_AT = Date.now();
+const INITIAL_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
 const VOICE_METERING_INTERVAL_MS = 80;
-// The native constructor takes platform-flattened options, as `useAudioRecorder`
-// builds them with expo-audio's internal `createRecordingOptions`.
+// The native constructor expects platform-flattened options, as built by useAudioRecorder.
 const { ios: IOS_RECORDING_OPTIONS, android: ANDROID_RECORDING_OPTIONS } =
   RecordingPresets.HIGH_QUALITY;
 const VOICE_RECORDING_OPTIONS = {
@@ -77,8 +59,7 @@ async function releaseVoiceRecordingAudio(): Promise<void> {
   try {
     await setAudioModeAsync({ allowsRecording: false });
   } finally {
-    // Expo does not deactivate AVAudioSession when recording stops or its
-    // category changes. Explicit deactivation resumes interrupted app audio.
+    // Expo never deactivates AVAudioSession after recording; do so to resume interrupted audio.
     await setIsAudioActiveAsync(false);
   }
 }
@@ -117,13 +98,6 @@ function useVoiceInputRuntime() {
   const registry = use(RegistryContext);
   useAtomMount(mobilePreferencesAtom);
   useAtomMount(updateMobilePreferencesAtom);
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
-  const persistPreferences = useAtomSet(updateMobilePreferencesAtom, { mode: "promise" });
-  const savePreferencesRef = useRef(savePreferences);
-  savePreferencesRef.current = savePreferences;
-  const persistPreferencesRef = useRef(persistPreferences);
-  persistPreferencesRef.current = persistPreferences;
-  const anchorRef = useRef<DictationAnchor | null>(null);
   const [{ state, ownerKey, label }, setState] = useState({
     state: INITIAL_STATE,
     ownerKey: null as string | null,
@@ -177,28 +151,7 @@ function useVoiceInputRuntime() {
     recorderRef.current = recorder;
     sessionRef.current = new VoiceInputSession({
       recorder,
-      getTranscriber: () => {
-        const result = registry.get(mobilePreferencesAtom);
-        const settings = AsyncResult.isSuccess(result) ? result.value : null;
-        return settings
-          ? getLocalVoiceTranscriber(resolveVoiceTranscriptionSettings(settings))
-          : null;
-      },
-      getCleanup: () => {
-        const result = registry.get(mobilePreferencesAtom);
-        const settings = AsyncResult.isSuccess(result) ? result.value : null;
-        return settings ? getLocalVoiceCleanup(resolveVoiceCleanupSettings(settings)) : null;
-      },
-      persistPendingTranscript: async (pending) => {
-        await persistPreferencesRef.current({
-          voicePendingTranscript: { ...pending, capturedAt: Date.now() },
-        });
-      },
-      clearPendingTranscript: () =>
-        savePreferencesRef.current({ voicePendingTranscript: undefined }),
-      onDictationCommitted: (anchor) => {
-        anchorRef.current = anchor;
-      },
+      getTranscriber: getLocalVoiceTranscriber,
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -219,51 +172,9 @@ function useVoiceInputRuntime() {
   const controller = session.controller;
   const recorder = recorderRef.current;
 
-  // Feedback outlives the dictation, including when its composer is off screen.
-  useEffect(() => {
-    if (state.phase !== "idle" || !state.notice) return;
-    const timeout = setTimeout(() => {
-      if (controller.currentState === state) controller.cancel();
-    }, 8_000);
-    return () => clearTimeout(timeout);
-  }, [controller, state]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener("memoryWarning", () => {
-      void evictResidentModels();
-    });
-    return () => subscription.remove();
-  }, []);
-
-  const learnFromSubmission = useCallback(
-    (ownerKey: string | null, text: string) => {
-      if (session.ownerKey === ownerKey && controller.currentState.phase === "idle") {
-        controller.cancel();
-      }
-      const anchor = anchorRef.current;
-      if (!anchor || anchor.ownerKey !== ownerKey) return;
-      anchorRef.current = null;
-      const edited = resolveEditedSpan(anchor, text);
-      if (edited === null) return;
-      const learned = diffCorrections(anchor.insertedText, edited);
-      if (learned.length === 0) return;
-      savePreferencesRef.current({
-        transform: (current) => ({
-          voiceLearnedCorrections: addLearnedCorrections(
-            current.voiceLearnedCorrections ?? [],
-            learned,
-          ),
-        }),
-      });
-    },
-    [controller, session],
-  );
-
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
-      // iOS reports `inactive` while its permission dialog is open. Only the
-      // real background state cancels preparation; recorder status handles
-      // calls and route interruptions during capture.
+      // iOS permission dialogs report inactive; cancel preparation only on background. Recorder status handles capture interruptions.
       if (nextState === "background") controller.appMovedToBackground();
     });
     return () => subscription.remove();
@@ -305,7 +216,6 @@ function useVoiceInputRuntime() {
     const sampleRecording = () => {
       if (controller.currentState.phase !== "recording") return;
       const status = recorder.getStatus();
-      if (status) void controller.handleRecordingProgress(status);
       if (!status?.isRecording) return;
 
       const level = normalizeVoiceInputDecibels(status.metering);
@@ -334,13 +244,8 @@ function useVoiceInputRuntime() {
   const stop = useCallback(() => controller.stop(), [controller]);
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
-  const preferences = registry.get(mobilePreferencesAtom);
   return {
-    isAvailable:
-      (AsyncResult.isSuccess(preferences) &&
-        getLocalVoiceTranscriber(resolveVoiceTranscriptionSettings(preferences.value)) !== null) ||
-      getNativeShowcaseScene() !== null,
-    learnFromSubmission,
+    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
     state,
     audioLevels,
     elapsedSeconds,

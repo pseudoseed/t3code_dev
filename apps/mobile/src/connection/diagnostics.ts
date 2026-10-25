@@ -1,11 +1,7 @@
 /**
- * Device-side connection log. The server only ever sees a socket arrive or
- * vanish; what the phone saw in between (app state flips, path changes,
- * probe outcomes, background widget pushes) is recorded here so a bad
- * resume can be explained from Settings instead of guessed at from traces.
- *
- * In-memory ring, flushed to the cache directory shortly after each write so
- * the entries from a headless background task or a killed app survive.
+ * Device-side connection log: what the phone saw (app state, path changes, probes, widget pushes)
+ * that the server cannot. An in-memory ring, flushed to the cache directory shortly after each
+ * write so entries from a headless background task or a killed app survive.
  */
 export interface ConnectionDiagnosticEntry {
   readonly at: number;
@@ -85,12 +81,6 @@ export function formatConnectionDiagnostics(log: ReadonlyArray<ConnectionDiagnos
 export async function connectionDiagnosticsText(): Promise<string> {
   await load();
   return formatConnectionDiagnostics(entries);
-}
-
-export async function clearConnectionDiagnostics(): Promise<void> {
-  await load();
-  entries = [];
-  await persist();
 }
 
 void load();

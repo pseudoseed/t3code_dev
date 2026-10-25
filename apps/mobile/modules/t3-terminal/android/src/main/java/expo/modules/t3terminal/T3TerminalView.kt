@@ -30,6 +30,8 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
   private val onInput by EventDispatcher()
   private val onResize by EventDispatcher()
   private val onCapture by EventDispatcher()
+
+  // The native snapshot holds only the viewport, so Android ignores iOS's captureScope="screen".
   var captureRequest: Double = 0.0
     set(value) {
       if (field == value || value <= 0) return
@@ -276,7 +278,6 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
           onInput(mapOf("data" to "\u007F"))
           true
         }
-        // Hardware keyboard Ctrl+A..Z -> control bytes 0x01..0x1A (Ctrl+C, Ctrl+Z, ...).
         event.isCtrlPressed && keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z -> {
           onInput(
             mapOf("data" to (keyCode - KeyEvent.KEYCODE_A + 1).toChar().toString()),

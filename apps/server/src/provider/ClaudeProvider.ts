@@ -142,22 +142,11 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
 }
 
 /**
- * Whether a capabilities probe found a signed-in account.
- *
- * Only first-party (Anthropic OAuth / API key) auth is decided here. An
- * `apiProvider` of anything else means the runtime authenticates against a
- * cloud backend whose credentials live outside Claude's config directory, and
- * the account fields are empty by design.
- *
- * Observed on Claude Code 2.1.260, probing one config directory each way:
- *
- * - signed in — `email` and `subscriptionType` set, `tokenSource` absent
- * - signed out — `email` and `subscriptionType` absent, `tokenSource: "none"`
- *
- * `tokenSource` is therefore evidence only when it names an actual source; the
- * SDK spells "no credentials" as the string `"none"` rather than omitting it.
+ * First-party auth only; other `apiProvider`s have no account fields by design. Claude Code 2.1.260
+ * omits `tokenSource` when signed in and reports the string `"none"` when signed out, so it is
+ * evidence only when it names a real source.
  */
-export function hasClaudeAccountEvidence(capabilities: {
+function hasClaudeAccountEvidence(capabilities: {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
@@ -202,11 +191,7 @@ function apiProviderAuthMetadata(
   return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
 }
 
-/**
- * The capability probe resolves for a logged-out CLI, so a completed probe only proves Claude
- * Code started. `tokenSource: "none"` is the CLI reporting it found no token at all, and is the
- * one shape that disproves authentication.
- */
+/** Probe completion only proves Claude started. Only tokenSource: "none" disproves auth. */
 function claudeAuthStatus(
   capabilities: Pick<
     ClaudeCapabilitiesProbe,
@@ -217,16 +202,14 @@ function claudeAuthStatus(
     return "authenticated";
   }
   if (capabilities.tokenSource !== "none") return "authenticated";
-  // An `ANTHROPIC_API_KEY` install reports no token source but is authenticated
-  // all the same, so the key and account fields still get a say.
+  // API keys can authenticate with tokenSource: none; also check key and account fields.
   const hasApiKey = Boolean(capabilities.apiKeySource) && capabilities.apiKeySource !== "none";
   return hasApiKey || capabilities.email || capabilities.subscriptionType
     ? "authenticated"
     : "unauthenticated";
 }
 
-// Amazon Bedrock initializes far slower than first-party auth: the SDK boots the Bedrock
-// backend and runs the `awsAuthRefresh` credential hook before returning account info.
+// Bedrock initialization includes backend startup and awsAuthRefresh, taking longer than first-party auth.
 const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 // Native CLI startup on Windows can exceed the shared probe deadline.
 const CLAUDE_VERSION_CHECK_TIMEOUT_MS = 20_000;
@@ -249,23 +232,17 @@ export function buildClaudeCapabilitiesProbeQueryOptions(input: {
     pathToClaudeCodeExecutable: input.executablePath,
     abortController: input.abortController,
     settingSources: [...CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES],
-    // The probe keeps filesystem setting sources for slash-command discovery,
-    // but must not run the user's hooks: it fires every few minutes, so
-    // SessionStart hooks would run on every health check.
+    // Keep settings for slash-command discovery, but disable hooks so health checks do not run SessionStart repeatedly.
     settings: { disableAllHooks: true },
     allowedTools: [],
-    // Ignore MCP definitions from every filesystem setting source above. The
-    // SDK combines this empty explicit map with --strict-mcp-config, which
-    // Claude refuses next to a managed-mcp.json that already excludes them.
+    // Exclude filesystem MCP servers; omit strict mode when managed-mcp.json already excludes them and forbids the flag.
     mcpServers: {},
     ...(input.managedMcpConfig ? {} : { strictMcpConfig: true }),
     env: {
       ...input.environment,
-      // Connected claude.ai MCP servers are discovered outside filesystem
-      // config; disable them independently for this health check.
+      // Disable claude.ai MCP separately; it is discovered outside filesystem config.
       ENABLE_CLAUDEAI_MCP_SERVERS: "false",
-      // Skipping it also avoids Claude spawning a Windows `tasklist | findstr` process tree on
-      // every periodic refresh.
+      // Skipping this avoids a Windows tasklist | findstr process tree on every refresh.
       FORCE_CODE_TERMINAL: undefined,
       CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
       CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: "1",
@@ -286,18 +263,10 @@ export type ClaudeCapabilitiesProbe = {
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
   readonly apiKeySource: string | undefined;
-  /**
-   * Active API backend reported by the SDK's `AccountInfo`. Anthropic OAuth
-   * login only applies when `"firstParty"`; for Amazon Bedrock (`"bedrock"`)
-   * the subscription/token fields are absent and auth is external AWS creds.
-   */
+  /** OAuth applies only to firstParty; Bedrock uses external AWS credentials and omits subscription/token fields. */
   readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
-  /**
-   * Subscription windows from the SDK's `get_usage` control request, or
-   * `undefined` when the request itself failed. Absent windows on an
-   * otherwise successful response mean the account has none (API key).
-   */
+  /** Undefined means get_usage failed; absent windows on success mean no subscription windows, as with API keys. */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
   readonly usageCheckedAt?: string;
 };
@@ -374,12 +343,7 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * We pass a never-yielding AsyncIterable as the prompt so that no user message is ever written
- * to the subprocess stdin. This means the Claude Code subprocess completes its local
- * initialization IPC (returning account info and slash commands) but never starts an API
- * request to Anthropic.
- */
+/** A never-yielding prompt allows local initialization IPC without sending an Anthropic request. */
 const probeClaudeCapabilities = (
   claudeSettings: ClaudeSettings,
   environment?: NodeJS.ProcessEnv,
@@ -396,9 +360,7 @@ const probeClaudeCapabilities = (
     const managedMcpConfig = yield* hasClaudeManagedMcpConfig();
     return yield* Effect.tryPromise(async () => {
       const q = claudeQuery({
-        // Never yield — we only need initialization data, not a conversation.
-        // This prevents any prompt from reaching the Anthropic API.
-        // oxlint-disable-next-line require-yield
+        // oxlint-disable-next-line require-yield -- never yields, so no prompt reaches the API
         prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
           await waitForAbortSignal(abort.signal);
         })(),
@@ -692,12 +654,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined);
   const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
 
-  // A successful probe only proves the runtime started. On first-party auth it
-  // reports an account — an email, a subscription, or a token source — once
-  // credentials exist, and reports none when the config directory has never
-  // been signed in to. Third-party backends (Bedrock, Vertex) authenticate with
-  // external cloud credentials and carry no account fields, so they are not
-  // held to this.
+  // A successful probe only proves the runtime started; first-party auth reports an account once
+  // credentials exist. Bedrock and Vertex use external cloud credentials, so they are exempt.
   if (!hasClaudeAccountEvidence(capabilities)) {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,

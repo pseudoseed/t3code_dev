@@ -22,17 +22,9 @@ private enum GhosttyRuntime {
   }
 }
 
-/// Encodes hardware-keyboard combos that UITextField never surfaces through its
-/// text-editing delegate (control combos, Escape, Tab, arrow keys) into the byte
-/// sequences a terminal expects.
-///
-/// Capture uses UIKeyCommand with `wantsPriorityOverSystemBehavior` rather than
-/// `pressesBegan`: while a text field is first responder, iPadOS routes hardware key
-/// events through the text-input system, which can consume presses before they reach
-/// responder press callbacks. Registered key commands are matched deterministically
-/// before that happens.
+/// While a text field is first responder, iPadOS may consume presses before pressesBegan.
+/// Priority UIKeyCommands capture terminal shortcuts before the text-input system handles them.
 private enum TerminalHardwareKeyEncoder {
-  /// Characters that produce a control byte when combined with Ctrl.
   private static let controlInputs = "abcdefghijklmnopqrstuvwxyz@[\\]^_-? "
 
   static func makeKeyCommands(action: Selector) -> [UIKeyCommand] {
@@ -97,7 +89,6 @@ private enum TerminalHardwareKeyEncoder {
   private static func controlSequence(for scalar: Unicode.Scalar) -> String? {
     switch scalar {
     case "a"..."z":
-      // Ctrl+A..Z -> 0x01..0x1A (Ctrl+C = ETX, Ctrl+Z = SUB, ...).
       return UnicodeScalar(scalar.value - 96).map(String.init)
     case " ", "@":
       return "\u{00}"
@@ -216,30 +207,41 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   let onInput = EventDispatcher()
   let onResize = EventDispatcher()
   let onCapture = EventDispatcher()
+  /// "screen" includes scrollback; anything else reads the viewport.
+  var captureScope = "viewport"
+  private var hasPendingCapture = false
   var captureRequest: Double = 0 {
     didSet {
       guard captureRequest > 0, captureRequest != oldValue else { return }
-      guard let surface else { onCapture(["text": ""]); return }
-      let selection = ghostty_selection_s(
-        top_left: ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
-        bottom_right: ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
-        rectangle: false)
-      var captured = ghostty_text_s()
-      guard ghostty_surface_read_text(surface, selection, &captured) else { onCapture(["text": ""]); return }
-      defer { ghostty_surface_free_text(surface, &captured) }
-      let text = captured.text.flatMap { String(bytes: UnsafeBufferPointer(start: UnsafeRawPointer($0).assumingMemoryBound(to: UInt8.self), count: Int(captured.text_len)), encoding: .utf8) } ?? ""
-      // Android joins snapshot rows with "\n" and trims each row's trailing whitespace, so do
-      // the same here: identical terminal content must capture identically on both platforms.
-      let normalized = text.split(separator: "\n", omittingEmptySubsequences: false)
-        .map { row -> String in
-          var line = String(row)
-          // Kotlin's trimEnd only strips ASCII whitespace; match it exactly.
-          while let last = line.last, last.isASCII && last.isWhitespace { line.removeLast() }
-          return line
-        }
-        .joined(separator: "\n")
-      onCapture(["text": normalized])
+      // Read after the whole prop batch so a captureScope sent alongside is applied first.
+      hasPendingCapture = true
     }
+  }
+
+  func capturePendingRequest() {
+    guard hasPendingCapture else { return }
+    hasPendingCapture = false
+    guard let surface else { onCapture(["text": ""]); return }
+    let tag = captureScope == "screen" ? GHOSTTY_POINT_SCREEN : GHOSTTY_POINT_VIEWPORT
+    let selection = ghostty_selection_s(
+      top_left: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+      bottom_right: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+      rectangle: false)
+    var captured = ghostty_text_s()
+    guard ghostty_surface_read_text(surface, selection, &captured) else { onCapture(["text": ""]); return }
+    defer { ghostty_surface_free_text(surface, &captured) }
+    let text = captured.text.flatMap { String(bytes: UnsafeBufferPointer(start: UnsafeRawPointer($0).assumingMemoryBound(to: UInt8.self), count: Int(captured.text_len)), encoding: .utf8) } ?? ""
+    // Android joins snapshot rows with "\n" and trims each row's trailing whitespace, so do
+    // the same here: identical terminal content must capture identically on both platforms.
+    let normalized = text.split(separator: "\n", omittingEmptySubsequences: false)
+      .map { row -> String in
+        var line = String(row)
+        // Kotlin's trimEnd only strips ASCII whitespace; match it exactly.
+        while let last = line.last, last.isASCII && last.isWhitespace { line.removeLast() }
+        return line
+      }
+      .joined(separator: "\n")
+    onCapture(["text": normalized])
   }
 
   var terminalKey: String = "" {

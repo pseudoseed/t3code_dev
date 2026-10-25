@@ -1,4 +1,3 @@
-import { useMemo, useCallback } from "react";
 import { useComposerAttachmentActions } from "./use-composer-attachment-actions";
 import * as Dialog from "../components/ui/Dialog";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
@@ -14,7 +13,7 @@ import {
   deriveThreadRuntime,
   threadRuntimeHasInterruptibleRun,
 } from "@t3tools/client-runtime/state/thread-execution";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CommandId,
@@ -37,8 +36,8 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import {
   deriveLatestContextWindowSnapshot,
-  latestProviderTurnTokenUsage,
   deriveThreadCostSnapshot,
+  latestProviderTurnTokenUsage,
 } from "@t3tools/client-runtime/context-window";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
@@ -151,10 +150,7 @@ export function appendReviewCommentToDraft(input: {
   }
 }
 
-/**
- * Resolved per call rather than captured, so a callback created before the
- * edit began still writes to the right place.
- */
+/** Resolve per call so callbacks created before editing still target the current draft. */
 function activeComposerDraftKey(thread: {
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;
@@ -195,9 +191,6 @@ export function useThreadComposerState() {
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
-  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
-    reportFailure: false,
-  });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -495,7 +488,6 @@ export function useThreadComposerState() {
     const draft = getComposerDraftSnapshot(queuedEditDraftKey(threadKey, edit.runId));
     const text = draft.text.trim();
     if (text.length === 0) {
-      // The server rejects an empty queued message, attachments or not.
       Dialog.alert("Add a message", "A queued message cannot be left empty.");
       return;
     }
@@ -582,9 +574,7 @@ export function useThreadComposerState() {
     if (!selectedThreadShell) {
       return null;
     }
-    // The server has not created this thread yet. Queuing a follow-up against
-    // its id would strand the message: if the creation is rejected the thread
-    // never appears and the drain drops the orphan. The composer disables its
+    // Before thread creation succeeds, follow-ups could become orphaned and be dropped by the drain.
     if (selectedThreadCreation !== null) {
       return null;
     }
@@ -614,10 +604,7 @@ export function useThreadComposerState() {
     if (text.length === 0 && attachments.length === 0) {
       return null;
     }
-    // A send-failure restore appends with allowOverflow so it never drops the
-    // user's files, which can leave the draft over the cap. Sending it anyway
-    // would enqueue a message that outbox recovery rejects forever, so block
-    // here until the user removes attachments.
+    // Recovery preserves over-cap attachments; require trimming or outbox delivery would reject indefinitely.
     if (attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
       Dialog.alert(
         "Too many attachments",
@@ -715,12 +702,9 @@ export function useThreadComposerState() {
       }
     }
 
-    // Resolved here rather than at drain time: the outbox can deliver minutes
-    // later, and the choice belongs to the moment the user pressed send.
-    // Steering travels as "auto" so a turn that ends in the meantime degrades
-    // to a queued run on the server instead of failing the delivery and
-    // bouncing the message back into the draft.
-    // A redirect declined approvals to steer the waiting turn, not to queue behind it.
+    // Resolve at send time because outbox delivery may be delayed.
+    // Steering uses "auto" so an ended turn queues a run instead of restoring the draft.
+    // An approval redirect must steer the waiting turn instead of queueing behind it.
     const activeTurnDefault = beforeDispatch !== undefined ? "steer" : followUpBehavior;
     const followUpAction = resolveComposerDispatchMode({
       running: activeThreadBusy && canSteerActiveTurn,
@@ -762,10 +746,7 @@ export function useThreadComposerState() {
     enqueuePromise.then(
       () => scheduleUnusedComposerAttachmentCleanup(attachments),
       (error: unknown) => {
-        // Restore text via merge (idempotent) but attachments via the uncapped
-        // append: the merge path slots existing attachments first and truncates
-        // at the send limit, which would silently drop this message's images if
-        // the user attached new ones while the write was in flight.
+        // Restore with uncapped append; capped merge could drop attachments added during the failed write.
         void mergeComposerDraftContent(threadKey, {
           text,
           context: draft.context,
@@ -930,29 +911,6 @@ export function useThreadComposerState() {
     });
   };
 
-  /**
-   * Written straight to the thread instead of the composer draft: the server
-   * restarts the provider session around this value, so it has to be there
-   * before the next turn rather than riding along with the send. Null clears
-   * the override back to inherit.
-   */
-  const onUpdateSubagentModelSelection = useCallback(
-    (model: string | null) => {
-      if (!selectedThread || !selectedThreadShell) {
-        return;
-      }
-      const instanceId = selectedThread.modelSelection.instanceId;
-      void updateThreadMetadata({
-        environmentId: selectedThreadShell.environmentId,
-        input: {
-          threadId: selectedThread.id,
-          subagentModelSelection: model === null ? null : { instanceId, model },
-        },
-      });
-    },
-    [selectedThread, selectedThreadShell, updateThreadMetadata],
-  );
-
   return {
     feedbackSubmissions,
     dismissFeedback,
@@ -990,14 +948,6 @@ export function useThreadComposerState() {
     onRemoveDraftImage,
     onSendMessage,
     onUpdateModelSelection,
-    onUpdateSubagentModelSelection,
-    // Read from the shell, not the detail: metadata edits never reach the
-    // thread detail subscription, so the detail keeps whatever override it was
-    // fetched with and the row would stay on "Inherit" after every change.
-    subagentModelSelection:
-      selectedThreadShell && selectedThreadShell.subagentModelSelection !== undefined
-        ? selectedThreadShell.subagentModelSelection
-        : (selectedThread?.subagentModelSelection ?? null),
     onUpdateRuntimeMode,
     onUpdateInteractionMode,
   };

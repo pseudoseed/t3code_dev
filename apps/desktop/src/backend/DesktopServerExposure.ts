@@ -74,15 +74,7 @@ const isUsableLanIpv4Address = (address: string): boolean =>
   !address.startsWith("169.254.") &&
   !isTailscaleIpv4Address(address);
 
-/**
- * Bridges, tunnels and VM adapters whose private address other devices on the
- * LAN usually cannot reach: macOS's Thunderbolt Bridge (`bridge0`, which can
- * keep a manual address while nothing is plugged in) and Internet Sharing
- * bridges, VPN tunnels, and container or VM networks. Their addresses are only
- * advertised when no other interface has one. Host bridges such as `br0`,
- * Proxmox's `vmbr0` and Hyper-V's `vEthernet` external switches often carry
- * the LAN address, so they are not listed.
- */
+// Private bridges and VM adapters are fallbacks; host bridges can carry the real LAN address.
 const HOST_ONLY_INTERFACE =
   /^(bridge\d|utun|ipsec|ppp|tun|tap|wg|docker|br-|veth|virbr|vmnet|vboxnet|VirtualBox|VMware)/;
 
@@ -113,12 +105,8 @@ const usableLanInterfaces = (
 };
 
 /**
- * Picks the address pairing links advertise. A machine with Wi-Fi and wired
- * on the same subnet lists Wi-Fi first, but the OS routes replies over the
- * default-route interface and idles the other radio, so a phone paired to
- * the Wi-Fi address sees minutes of unreachable host while the server is
- * fine. When the default-route interface is known it wins; otherwise the
- * first usable interface stands, as before.
+ * Prefers the default-route interface: with Wi-Fi and wired on one subnet the OS replies over the
+ * default route and idles the other radio, so a phone paired to it sees an unreachable host.
  */
 const resolveLanAdvertisedHost = (
   networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
@@ -501,7 +489,7 @@ const requiresBackendRelaunch = (previous: RuntimeState, next: RuntimeState): bo
   previous.bindHost !== next.bindHost ||
   previous.localHttpUrl !== next.localHttpUrl;
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const config = yield* DesktopConfig.DesktopConfig;
   const networkInterfaces = yield* DesktopNetworkInterfaces.DesktopNetworkInterfaces;
@@ -509,9 +497,7 @@ export const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const stateRef = yield* Ref.make(initialRuntimeState());
-  // Each change reads the runtime state, persists settings, then writes the
-  // state back. Run them one at a time so a change never writes over another
-  // with values it read before that change persisted.
+  // Serialize read-persist-write changes so stale runtime state cannot overwrite another update.
   const changePermit = yield* Semaphore.make(1);
 
   // Key status by interface addresses so network changes bypass stale DNS and
@@ -679,9 +665,7 @@ export const make = Effect.gen(function* () {
       customHttpsEndpointUrls: config.desktopHttpsEndpointUrls,
     });
 
-    // Don't spawn the Tailscale CLI when the user hasn't opted into any
-    // network exposure. The spawn itself triggers a macOS "Other apps"
-    // TCC prompt on Mac App Store Tailscale builds.
+    // Spawning Mac App Store Tailscale can prompt for TCC access even when exposure is disabled.
     if (state.mode !== "network-accessible" && !state.tailscaleServeEnabled) {
       return coreEndpoints;
     }

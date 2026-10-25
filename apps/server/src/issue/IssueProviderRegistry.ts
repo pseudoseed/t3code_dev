@@ -2,6 +2,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { SourceControlProviderKind } from "@t3tools/contracts";
+import * as ForgejoTransport from "@t3tools/source-control-forgejo/server/ForgejoTransport";
+import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
 
 import * as ForgejoIssueProvider from "./ForgejoIssueProvider.ts";
 import * as GitHubIssueProvider from "./GitHubIssueProvider.ts";
@@ -36,4 +38,7 @@ const make = Effect.map(
   fromProviders,
 );
 
-export const layer = Layer.effect(IssueProviderRegistry, make);
+// Drivers keep their host clients private, so issues build their own GitHub and Forgejo clients.
+export const layer = Layer.effect(IssueProviderRegistry, make).pipe(
+  Layer.provide(Layer.mergeAll(GitHubRest.layerWithDependencies, ForgejoTransport.layerWithCli)),
+);

@@ -27,7 +27,7 @@ function createSession() {
   };
   const prepare = vi.fn(async (): Promise<PreparedVoiceTranscription> => ({
     locale: "en-US",
-    transcribe: async () => ({ text: "spoken text" }),
+    transcribe: async () => "spoken text",
   }));
   const session = new VoiceInputSession({
     recorder,
@@ -114,7 +114,7 @@ describe("global voice input", () => {
           locale: "en-US",
           transcribe: () => {
             transcriptionEntered.resolve();
-            return transcription.promise.then((text) => ({ text }));
+            return transcription.promise;
           },
         });
         await starting;
@@ -129,7 +129,7 @@ describe("global voice input", () => {
       expect(session.ownerKey).toBe("first");
       expect(session.controller.currentState.phase).toBe(phase);
       expect(prepare).toHaveBeenCalledTimes(1);
-      preparation.resolve({ locale: "en-US", transcribe: async () => ({ text: "spoken text" }) });
+      preparation.resolve({ locale: "en-US", transcribe: async () => "spoken text" });
       await starting;
       transcription.resolve("spoken text");
       await (stopping ?? session.controller.stop());
@@ -210,7 +210,6 @@ describe("global voice input", () => {
       phase: "idle",
       error: null,
       errorAction: null,
-      notice: null,
     });
     expect(commit).not.toHaveBeenCalled();
   });
@@ -246,7 +245,7 @@ describe("global voice input", () => {
     );
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(recorder.record).not.toHaveBeenCalled();
-    preparation.resolve({ locale: "en-US", transcribe: async () => ({ text: "old transcript" }) });
+    preparation.resolve({ locale: "en-US", transcribe: async () => "old transcript" });
     await firstStart;
     await nextStart;
     await session.controller.stop();

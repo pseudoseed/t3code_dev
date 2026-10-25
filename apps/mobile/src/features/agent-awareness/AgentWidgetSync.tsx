@@ -11,6 +11,13 @@ import { saveWidgetSnapshot } from "../../widgets/widgetStorage";
 
 const WIDGET_REFRESH_MS = 10 * 60_000;
 
+// The React Compiler cannot lower `import()`, so it stays outside the component.
+const loadWidgetLayouts = () =>
+  Promise.all([
+    import("../../widgets/AgentWidget"),
+    import("../../widgets/pseudocode/OverviewWidget"),
+  ]);
+
 /** Updates the shared widget snapshot from existing connections, including
  * direct connections without a Cloud Connect account. No transcript subscriptions. */
 function IosAgentWidgetSync() {
@@ -68,10 +75,7 @@ function IosAgentWidgetSync() {
     if (canPublish && previousContent.current === contentKey && refreshTick === lastTick.current)
       return;
     let cancelled = false;
-    void Promise.all([
-      import("../../widgets/AgentWidget"),
-      import("../../widgets/pseudocode/OverviewWidget"),
-    ])
+    void loadWidgetLayouts()
       .then(async () => {
         if (cancelled || !canPublish) return;
         await saveWidgetSnapshot(snapshot);

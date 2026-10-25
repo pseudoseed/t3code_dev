@@ -33,4 +33,17 @@ describe.skipIf(!NodeFS.existsSync("/bin/zsh"))("zsh prompt integration", () => 
   it("preserves custom prompts and adds exactly one invisible input marker", () => {
     expect(prompt("CUSTOM %~ > ")).toBe("CUSTOM %~ > %{\x1b]133;B\x07%}");
   });
+
+  // Ghostty clears from the prompt start to the bottom on resize by default, which blanks output
+  // that arrived while the shell sat at its prompt (a reopened mobile terminal lost its history).
+  it("asks the terminal to redraw only the prompt's last line on resize", () => {
+    const result = NodeChildProcess.spawnSync("/bin/zsh", ["-f"], {
+      input: `${ZSH_SCRIPTS[".zshrc"]}\n__t3code_precmd`,
+      env: { PATH: "/usr/bin:/bin", HOME: "/nonexistent-t3-prompt-test", TERM: "xterm-256color" },
+      timeout: 5_000,
+      encoding: "utf8",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("\x1b]133;A;redraw=last\x07");
+  });
 });

@@ -16,12 +16,8 @@ const RING_STROKE = 2.5;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 /**
- * Composer readout for how full the context window is and what the thread has
- * cost so far.
- *
- * The trigger stays to two short values because it shares a row with the model
- * pill and the send button; tapping it opens the full breakdown, which is the
- * mobile stand-in for web's hover popover.
+ * Composer readout of context window fill and thread cost. Two short values fit beside the model
+ * pill and send button; tapping opens the full breakdown, mobile's stand-in for web's popover.
  */
 export function ContextWindowMeter(props: { readonly usage: ContextWindowSnapshot }) {
   const { usage } = props;
@@ -32,8 +28,8 @@ export function ContextWindowMeter(props: { readonly usage: ContextWindowSnapsho
   const costNoun = usage.costSource === "modelPriced" ? "estimated cost" : "cost";
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const isOverloaded = normalizedPercentage > 90;
-  const trackColor = theme["--color-usage-track"];
-  const fillColor = isOverloaded ? theme["--color-usage-critical"] : theme["--color-icon-muted"];
+  const trackColor = theme["--color-border"];
+  const fillColor = isOverloaded ? theme["--color-danger-foreground"] : theme["--color-icon-muted"];
 
   const showDetails = () => {
     const lines = [

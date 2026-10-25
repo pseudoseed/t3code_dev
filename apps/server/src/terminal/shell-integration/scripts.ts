@@ -1,14 +1,8 @@
 /**
- * Shell integration scripts, embedded as strings.
- *
- * They are written to disk at spawn time rather than shipped as files because
- * the server runs bundled (and inside an Electron asar), where a
- * source-relative path does not survive packaging.
- *
- * Each script sources the user's real configuration first and only then emits
- * OSC 133 markers and styles stock zsh prompts. Custom prompt themes stay in
- * control. The markers let the client tell prompt, typed input, and command
- * output apart; libghostty-vt parses them natively.
+ * Embedded as strings and written at spawn time: the bundled server (and the
+ * Electron asar) has no source-relative path to ship files from. Each script
+ * sources the user's real config first, then emits OSC 133 markers and styles
+ * only stock zsh prompts, so custom prompt themes stay in control.
  */
 
 /**
@@ -61,7 +55,7 @@ if [[ -z "\${__t3code_integration_loaded:-}" ]]; then
       builtin unset __t3code_command_running
     fi
     __t3code_mark_prompt
-    builtin printf '\\033]133;A\\007'
+    builtin printf '\\033]133;A;redraw=last\\007'
   }
 
   __t3code_preexec() {
@@ -116,7 +110,7 @@ if [[ -z "\${__t3code_integration_loaded:-}" ]]; then
     fi
     __t3code_first_prompt=
     __t3code_in_command=
-    printf '\\033]133;A\\007'
+    printf '\\033]133;A;redraw=last\\007'
   }
 
   if [[ \${BASH_VERSINFO[0]} -gt 4 || ( \${BASH_VERSINFO[0]} -eq 4 && \${BASH_VERSINFO[1]} -ge 4 ) ]]; then

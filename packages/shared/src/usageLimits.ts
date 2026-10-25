@@ -9,7 +9,6 @@ import {
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
   type UsageLimitSourceSnapshots,
-  type UsageLimitSourceSnapshot,
   type UsageLimitSourceClearCooldownInput,
 } from "@t3tools/contracts";
 
@@ -132,10 +131,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
   usageLimits: provider.usageLimits,
 });
 
-/**
- * Pass every enabled login, read or not, so an unreadable workspace still
- * counts as one.
- */
+// Include every enabled login, even unreadable workspaces.
 function accountKeyResolver(reports: Iterable<AccountReport>) {
   const workspaces = new Map<string, Set<string>>();
   for (const report of reports) {
@@ -184,11 +180,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
   const creditSources = new Map<string, LimitAccount>();
   const hubRedeems = new Map<string, LimitAccount>();
   const merge = (key: string, next: LimitAccount) => {
-    // Redeeming through a hub also clears the routing cooldown that hub holds
-    // for the account. Redeeming natively against the same subscription resets
-    // it upstream but leaves the hub refusing to route to the account until
-    // its own cooldown expires, so a hub target wins the redemption outright
-    // while the displayed balance still follows the freshest read.
+    // Prefer hub redemption to clear its routing cooldown too; displayed balance still follows the freshest read.
     const previousHub = hubRedeems.get(key);
     if (
       next.redeem &&
@@ -430,11 +422,7 @@ function accountSortName(account: LimitAccount): string {
   return (account.displayName ?? account.email ?? account.key).toLowerCase();
 }
 
-/**
- * Codex ids are slots, not allowances: a weekly-only plan reports its weekly
- * window as `primary`, other plans as `secondary`. Its windows pool by kind;
- * other drivers' ids name distinct allowances.
- */
+// Codex ids name slots, so pool by kind; other drivers' ids identify distinct allowances.
 function poolKey(driver: ServerProvider["driver"], window: ServerProviderUsageWindow): string {
   return driver === "codex" ? window.kind : `${window.kind}:${window.id}`;
 }
@@ -503,9 +491,7 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
     const first = members[0]!.window;
     const id = members[0]!.account.driver === "codex" ? key : first.id;
     const usedPercent = members.reduce((sum, m) => sum + m.window.usedPercent, 0) / members.length;
-    // Pace compares spend against the clock, so it is judged only over the
-    // members that have a clock; a window with no reset would otherwise
-    // count as spend with no time elapsed and skew the verdict.
+    // Judge pace only for windows with reset clocks; others add spend without elapsed time.
     const timed = members.flatMap((m) => {
       const share = elapsedShare(m.window, now);
       return share === null ? [] : [{ used: m.window.usedPercent, elapsed: share }];
@@ -544,14 +530,6 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
   return pools.sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind]);
 }
 
-/** Heading for one provider's limits: its own name, else its driver's. */
-export function providerLimitsLabel(
-  provider: ServerProvider,
-  driverLabel: (driver: ServerProvider["driver"]) => string | undefined,
-): string {
-  return provider.displayName?.trim() || driverLabel(provider.driver) || String(provider.driver);
-}
-
 /** The one-line status under a provider heading when there are no bars to draw. */
 export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
   if (limits.unavailable?.reason === "unsupported") {
@@ -567,7 +545,7 @@ export function remainingPercent(window: ServerProviderUsageWindow): number {
   return Math.round(100 - Math.max(0, Math.min(100, window.usedPercent)));
 }
 
-export function resetMillis(window: ServerProviderUsageWindow): number | null {
+function resetMillis(window: ServerProviderUsageWindow): number | null {
   if (window.resetsAt === undefined) return null;
   const at = Date.parse(window.resetsAt);
   return Number.isFinite(at) ? at : null;
@@ -635,18 +613,9 @@ export function limitSeverity(usedPercent: number): LimitSeverity {
 }
 
 /**
- * The two windows a dial draws as concentric rings, plus every window the card
- * lists as a bar underneath.
- *
- *   - `current` is the short window that decides whether a turn can start now:
- *     the session window when the account reports one, else the first.
- *   - `overall` is the long window that decides how much of the subscription
- *     is left this cycle: the first weekly, else the first monthly, else the
- *     next window after `current`.
- *
- * `rest` is every window except `current`, so the long window keeps its exact
- * percent and reset in the list even though the outer ring already shows its
- * shape. A single-window account gets a lone inner ring and no outer one.
+ * `current` is the short window that gates starting a turn (session, else first); `overall` is the
+ * long one (weekly, else monthly, else next). `rest` is every window but `current`, so the list
+ * keeps the long window's exact numbers. One-window accounts get only the inner ring.
  */
 export function splitDialWindows(windows: readonly ServerProviderUsageWindow[]): {
   readonly current: ServerProviderUsageWindow | null;
@@ -665,12 +634,8 @@ export function splitDialWindows(windows: readonly ServerProviderUsageWindow[]):
 }
 
 /**
- * The dial's measurements, in CSS pixels, shared so the web (SVG in the DOM)
- * and mobile (react-native-svg) dials cannot drift apart. The SVG viewBox is
- * `size` too, so one unit is one pixel and nothing has to be scaled by hand.
- *
- * The outer ring's far edge (`radius + width / 2`) stays inside `size / 2`,
- * which is what keeps the stroke from being clipped by the viewBox.
+ * Shared by the web and mobile dials so they cannot drift. The viewBox is `size`, one unit per CSS
+ * pixel; the outer stroke edge (`radius + width / 2`) stays inside `size / 2` to avoid clipping.
  */
 export const DIAL = {
   size: 176,
@@ -679,15 +644,8 @@ export const DIAL = {
 } as const;
 
 /**
- * The largest square that fits inside the inner ring, which is what the
- * reading in the middle of the dial is allowed to occupy.
- *
- * A circle's usable width is a chord, not its diameter: a line of text sitting
- * away from the centre has far less room than one across the middle, so sizing
- * the text against the diameter is how it ends up crossing the stroke. The
- * inscribed square is the one box every line can occupy at any height, so
- * constraining the whole block to it makes the overlap impossible rather than
- * unlikely.
+ * The square inscribed in the inner ring. Off-centre lines have only a chord's width, so sizing text
+ * to the diameter crosses the stroke; the inscribed square fits every line at any height.
  */
 export function dialSafeBoxSize(dial: typeof DIAL = DIAL): number {
   return Math.floor((dial.inner.radius - dial.inner.width / 2) * Math.SQRT2);
@@ -711,11 +669,6 @@ export function dialRing(usedPercent: number, radius: number) {
   };
 }
 
-/** What a source kind is called in a heading, shared by web and mobile. */
-export const USAGE_LIMIT_SOURCE_KIND_LABEL: Record<UsageLimitSourceSnapshot["kind"], string> = {
-  cliproxy: "CLIProxyAPI",
-  aiusage: "usage dashboard",
-};
 /** Limit commands are served by T3 from the same snapshots as Usage → Limits. */
 export const USAGE_LIMITS_COMMAND = {
   name: "usage-limits",
@@ -910,107 +863,4 @@ export function collectProviderUsageLimits(
     }
   }
   return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
-}
-
-export interface LimitsGroup {
-  readonly environmentId: EnvironmentId;
-  /** Null while only one environment is connected; there is nothing to tell apart. */
-  readonly environmentLabel: string | null;
-  readonly providers: readonly ServerProvider[];
-}
-
-/**
- * One group per connected environment with a provider reporting limits.
- * Provider snapshots come from the config stream every client already holds,
- * so opening the view costs no extra request.
- */
-export function collectLimitsGroups(
-  presentations: ReadonlyMap<
-    EnvironmentId,
-    {
-      readonly entry: { readonly target: { readonly label: string } };
-      readonly serverConfig: {
-        readonly providers?: readonly ServerProvider[] | undefined;
-      } | null;
-    }
-  >,
-): readonly LimitsGroup[] {
-  const groups: LimitsGroup[] = [];
-  for (const [environmentId, presentation] of presentations) {
-    const providers = providersWithLimits(presentation.serverConfig?.providers ?? []);
-    if (providers.length === 0) continue;
-    groups.push({ environmentId, environmentLabel: presentation.entry.target.label, providers });
-  }
-  return groups.length > 1 ? groups : groups.map((group) => ({ ...group, environmentLabel: null }));
-}
-
-/**
- * Every usage-limit source across connected environments, keyed so two
- * environments pointing at the same hub still get their own rows. The label
- * carries the environment only when more than one environment has sources.
- * A native provider with usable limits takes precedence over the same account
- * in a source, even when it belongs to another connected environment.
- */
-export function collectLimitSources(
-  presentations: ReadonlyMap<
-    EnvironmentId,
-    {
-      readonly entry: { readonly target: { readonly label: string } };
-      readonly serverConfig: {
-        readonly providers?: readonly ServerProvider[] | undefined;
-        readonly usageLimitSources?: UsageLimitSourceSnapshots | undefined;
-      } | null;
-    }
-  >,
-): ReadonlyArray<
-  UsageLimitSourceSnapshot & {
-    readonly key: string;
-    readonly environmentId: EnvironmentId;
-    readonly hiddenAccountCount: number;
-  }
-> {
-  const nativeAccounts = new Set<string>();
-  for (const presentation of presentations.values()) {
-    for (const provider of providersWithLimits(presentation.serverConfig?.providers ?? [])) {
-      const key = accountKey(provider.driver, provider.auth.email);
-      if (
-        key !== null &&
-        provider.usageLimits?.windows.length &&
-        !provider.usageLimits.unavailable
-      ) {
-        nativeAccounts.add(key);
-      }
-    }
-  }
-  const perEnvironment: Array<{
-    readonly environmentId: EnvironmentId;
-    readonly environmentLabel: string;
-    readonly sources: UsageLimitSourceSnapshots;
-  }> = [];
-  for (const [environmentId, presentation] of presentations) {
-    const sources = presentation.serverConfig?.usageLimitSources ?? [];
-    if (sources.length === 0) continue;
-    perEnvironment.push({
-      environmentId,
-      environmentLabel: presentation.entry.target.label,
-      sources,
-    });
-  }
-  const labelEnvironment = perEnvironment.length > 1;
-  return perEnvironment.flatMap(({ environmentId, environmentLabel, sources }) =>
-    sources.map((source) => {
-      const accounts = source.accounts.filter((account) => {
-        const key = accountKey(account.driver, account.email);
-        return key === null || !nativeAccounts.has(key);
-      });
-      return {
-        ...source,
-        accounts,
-        hiddenAccountCount: source.accounts.length - accounts.length,
-        environmentId,
-        key: `${environmentId}:${source.id}`,
-        label: labelEnvironment ? `${environmentLabel} · ${source.label}` : source.label,
-      };
-    }),
-  );
 }

@@ -213,7 +213,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue",
-          onPress: () => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" }),
+          onPress: () => navigation.navigate("SettingsAuth"),
         },
       ],
     );
@@ -298,9 +298,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
     savePreferences({ liveActivitiesEnabled: true });
     refreshManagedRelayEnvironments();
     setLiveActivityStatus("enabled");
-    // The environment link can succeed while this device's own registration
-    // (the push-to-start token the relay needs) has not — don't claim Live
-    // Activities are live until the device is actually registered.
+    // Environment linking can precede device registration; only registered devices can receive Live Activities.
     if (getAgentAwarenessRegistrationStatus() === "registered") {
       Dialog.alert(
         Platform.OS === "android" ? "Ongoing activity enabled" : "Live Activities enabled",
@@ -419,9 +417,6 @@ function ConfiguredSettingsNotificationsRouteScreen() {
                 notificationStatus === "unsupported"
               }
               subtitle={agentAwarenessSubtitle}
-              // Only reads as on when this device is actually registered with the
-              // relay; otherwise notifications cannot be delivered regardless of
-              // the local iOS permission.
               value={
                 agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
               }
@@ -444,8 +439,6 @@ function ConfiguredSettingsNotificationsRouteScreen() {
                   : "Live Activity Updates"
               }
               subtitle={agentAwarenessSubtitle}
-              // Same gate: a saved preference is meaningless until the device
-              // registration the relay needs to push updates has succeeded.
               value={
                 agentAwarenessPushAvailable &&
                 (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&

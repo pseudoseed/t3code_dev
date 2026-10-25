@@ -1,5 +1,5 @@
 import type { SourceControlProviderKind } from "@t3tools/contracts";
-import { pullRequestHostOf } from "@t3tools/contracts";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
 /**
@@ -16,14 +16,9 @@ export interface IssueLink {
 }
 
 /**
- * The repository and number behind an issue URL, or null for anything else.
- *
- * GitHub and Forgejo both write `/{owner}/{repo}/issues/{n}`, so one shape covers both. That
- * path is distinctive enough to trust on any hostname, which it has to be: a Forgejo instance is
- * named whatever its admin chose, and there is no hostname to check it against.
- *
- * Null means the system browser. A doubtful match is worse than none, since it would take the
- * reader out of their browser into a panel that cannot find the issue.
+ * GitHub and Forgejo share `/{owner}/{repo}/issues/{n}`, distinctive enough to trust on any host,
+ * since Forgejo hostnames are arbitrary. Null keeps the system browser: a doubtful match would
+ * open a panel that cannot find the issue.
  */
 export function parseIssueUrl(targetUrl: string): IssueLink | null {
   let url: URL;
@@ -61,7 +56,7 @@ export function findProjectForIssue(
     return (
       repository !== null &&
       repository.toLowerCase() === link.repository &&
-      pullRequestHostOf(identity, kind) === link.host
+      sourceControlClients.changeRequestHost(identity, kind) === link.host
     );
   });
 }

@@ -105,7 +105,6 @@ import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
 import {
   ComposerDictationCancelAction,
-  ComposerDictationFeedback,
   ComposerDictationDraftContent,
   ComposerDictationPrimaryAction,
   ComposerDictationStartAction,
@@ -243,7 +242,7 @@ export interface ThreadComposerProps {
   readonly threadSyncPhase?: "loading" | "syncing" | null;
   readonly selectedThread: EnvironmentThreadShell;
   readonly reportedModelSelection?: ModelSelection | null;
-  readonly contextWindow: ContextWindowSnapshot | null;
+  readonly contextWindow?: ContextWindowSnapshot | null;
   readonly hasCompactableConversation: boolean;
   readonly serverConfig: T3ServerConfig | null;
   readonly queueCount: number;
@@ -280,22 +279,15 @@ export interface ThreadComposerProps {
   readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
   readonly canSwitchProvider: boolean;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
-  /** Thread's subagent model override; null means subagents inherit its model. */
-  readonly subagentModelSelection: ModelSelection | null;
-  /** Null clears the override. Absent on surfaces without a server thread. */
-  readonly onUpdateSubagentModelSelection: ((model: string | null) => void) | null;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode?: (interactionMode: ProviderInteractionMode) => void;
   readonly onHeightChange?: (height: number) => void;
   readonly onEditorFocusChange?: (focused: boolean) => void;
 }
 
-// Android gets NO layout transition: the composer rides the keyboard via KeyboardStickyView
-// (frame-synced to the IME), and a time-based morph running alongside that translate reads as
-// jitter.
+// Android KeyboardStickyView tracks the IME; concurrent timed layout morphs cause jitter.
 export const COMPOSER_TRANSITION_DURATION_MS = 220;
-// Side panes already animate the dock's width. Nested horizontal layout
-// transitions would leave the surface trailing its toolbar's new position.
+// Side panes animate dock width; nested horizontal transitions would make the surface trail the toolbar.
 const composerHeightTransition: LayoutAnimationFunction = (values) => {
   "worklet";
   const timing = {
@@ -410,8 +402,7 @@ export function ComposerSurface(props: {
   }));
   const layoutTransition = shouldAnimate ? COMPOSER_LAYOUT_TRANSITION : undefined;
 
-  // Each native frame follows the same transition. Animating only the outer
-  // clip leaves the glass and content at their final height on the first frame.
+  // Animate every native frame or glass and content jump to final height inside the clip.
   return (
     <Animated.View
       className={
@@ -604,8 +595,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     voiceInput.state,
     voiceInput.elapsedSeconds,
   );
-  const isVoiceInputPresented = voicePresentation.showsDictation;
-  // An open draft stays visible; only a collapsed composer becomes a voice strip.
+  const isVoiceInputPresented = voicePresentation.statusLabel !== null;
   const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const { setComposerEditing } = useAdaptiveWorkspaceLayout();
   const hasSidebarTabBar = useSidebarWorkspaceTabs() === "picker";
@@ -692,7 +682,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       if (openUsageLimits()) onChangeDraftMessage("");
       return;
     }
-    voiceInput.learnFromSubmission();
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
@@ -712,13 +701,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     const sent = await settlePromise(() => onSendMessage(followUp, stillSendable));
     inFlightThreadIdsRef.current.delete(threadKey);
     if (AsyncResult.isFailure(sent)) {
-      // The composer state already surfaces send errors; only the lock needed releasing.
       console.error("[composer] send failed", squashAtomCommandFailure(sent));
       return;
     }
     if (sent.value === null) return;
-    // Armed after the send so its preference read and native Activity start don't contend
-    // with the queued-message feedback on the tap frame.
+    // Arm after send so preference reads and native Activity startup do not delay tap-frame feedback.
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: props.environmentId,
       threadTitle: props.selectedThread.title,
@@ -770,8 +757,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       );
       props.onUpdateModelSelection({ ...currentModelSelection, options });
     },
-    subagentModel: props.subagentModelSelection,
-    onSelectSubagentModel: props.onUpdateSubagentModelSelection,
     runtimeMode: currentRuntimeMode,
     onUpdateRuntimeMode: props.onUpdateRuntimeMode,
   } satisfies ExistingThreadSettingsRouteSession;
@@ -807,8 +792,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
   useEffect(
     () =>
-      // UIKit's completion callback for the sheet dismissal, surfaced by the
-      // native-stack patch. This is when the queued keyboard restore runs.
+      // The native-stack patch exposes UIKit dismissal completion; restore the keyboard then.
       (navigation as unknown as NavigationWithFinishTransitioning).addListener(
         "finishTransitioning",
         settingsSheetPresentation.onStackTransitionsFinished,
@@ -889,9 +873,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           Platform.OS === "android" ? themeColorWithAlpha(composerPanel, 1) : undefined,
       }}
     >
-      {/* The backdrop gradient lives on a plain View: Reanimated's Animated.View
-          silently drops experimental_backgroundImage on Android, which left this
-          strip fully transparent and the feed text legible through the composer. */}
+      {/* Use a plain View: Reanimated Animated.View drops experimental_backgroundImage on Android. */}
       <View
         className={
           Platform.OS === "android"
@@ -948,13 +930,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           />
         ) : null}
 
-        <ComposerDictationFeedback
-          presentation={voicePresentation}
-          recoverableTranscript={voiceInput.recoverableTranscript}
-          onInsertRecovery={voiceInput.insertRecoverableTranscript}
-          onDiscardRecovery={voiceInput.discardRecoverableTranscript}
-          onDismiss={voiceInput.cancel}
-        />
         <ComposerSurface
           animateLayout={false}
           style={{
@@ -1034,7 +1009,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   size={hasSidebarTabBar ? "large" : "regular"}
                   state={voiceInput.state}
                   isAvailable={voiceInput.isAvailable}
-                  hasPendingRecovery={voiceInput.recoverableTranscript !== null}
                   disabled={isSubmissionLocked}
                   onStart={voiceInput.start}
                   onCancel={voiceInput.cancel}
@@ -1237,6 +1211,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     elapsedSeconds={voiceInput.elapsedSeconds}
                     phase={voiceInput.state.phase}
                     presentation={voicePresentation}
+                    onDismissError={voiceInput.cancel}
                   />
                 ) : (
                   <View className="min-w-0 flex-1 flex-row items-center justify-between">
@@ -1265,7 +1240,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     state={voiceInput.state}
                     presentation={voicePresentation}
                     isAvailable={voiceInput.isAvailable}
-                    hasPendingRecovery={voiceInput.recoverableTranscript !== null}
                     disabled={isSubmissionLocked}
                     onStart={voiceInput.start}
                     onConfirm={voiceInput.stop}

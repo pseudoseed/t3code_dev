@@ -27,6 +27,8 @@ export interface NativeTerminalSurfaceProps extends ViewProps {
   readonly readOnly?: boolean;
   readonly focusRequest?: number;
   readonly captureRequest?: number;
+  /** iOS only: "screen" includes scrollback. Android always captures the viewport. */
+  readonly captureScope?: "viewport" | "screen";
   readonly onCapture?: (event: NativeSyntheticEvent<{ readonly text: string }>) => void;
   readonly themeConfig?: string;
   readonly backgroundColor?: string;

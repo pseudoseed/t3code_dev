@@ -8,13 +8,15 @@ import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/
 import { useEnvironments } from "../../state/environments";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { SettingsSwitchRow } from "../settings/components/SettingsSwitchRow";
-import { directPushStatusAtom } from "./DirectPushCoordinator";
+import { directPushDeliveryAtom, directPushStatusAtom } from "./DirectPushCoordinator";
+import { describeDirectPushDelivery } from "./directRegistration";
 import { supportsAgentAwarenessPush } from "./capabilities";
 
 export function DirectPushSettings() {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const save = useAtomSet(updateMobilePreferencesAtom);
   const statuses = useAtomValue(directPushStatusAtom);
+  const deliveries = useAtomValue(directPushDeliveryAtom);
   const { environments } = useEnvironments();
   const [busy, setBusy] = useState(false);
   if (Platform.OS !== "ios" || !supportsAgentAwarenessPush()) return null;
@@ -63,12 +65,22 @@ export function DirectPushSettings() {
       />
       {enabled ? (
         <View className="gap-2 px-4 pb-4">
-          {environments.map((environment) => (
-            <Text key={environment.environmentId} className="text-sm text-foreground-muted">
-              {environment.label}:{" "}
-              {statuses.get(environment.environmentId) ?? "Connect to register this device"}
-            </Text>
-          ))}
+          {environments.map((environment) => {
+            const delivery = deliveries.get(environment.environmentId);
+            return (
+              <View key={environment.environmentId} className="gap-0.5">
+                <Text className="text-sm text-foreground-muted">
+                  {environment.label}:{" "}
+                  {statuses.get(environment.environmentId) ?? "Connect to register this device"}
+                </Text>
+                {delivery ? (
+                  <Text className="text-sm text-foreground-muted">
+                    {describeDirectPushDelivery(delivery)}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : null}
     </SettingsSection>

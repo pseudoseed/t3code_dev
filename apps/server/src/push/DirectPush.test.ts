@@ -392,3 +392,28 @@ it.effect("heartbeats the widget while an agent is active and stays quiet when i
     expect(h.requests).toEqual([]);
   }).pipe(Effect.provide(h.layer));
 });
+
+it.effect("reports Apple's last delivery result for the device in status", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const push = yield* DirectPush;
+    expect((yield* push.status(sessionId)).lastDelivery).toBeUndefined();
+    h.response({ status: 403, reason: "BadEnvironmentKeyInToken" });
+    yield* push.register(sessionId, registration);
+    expect((yield* push.status(sessionId)).lastDelivery).toEqual({
+      at: "1970-01-01T00:00:00.000Z",
+      kind: "liveactivity",
+      status: 403,
+      reason: "BadEnvironmentKeyInToken",
+    });
+    h.response({ status: 200 });
+    h.change({ input: true });
+    yield* push.publishThread(threadId);
+    expect((yield* push.status(sessionId)).lastDelivery).toMatchObject({
+      status: 200,
+      reason: null,
+    });
+    yield* push.unregister(sessionId);
+    expect((yield* push.status(sessionId)).lastDelivery).toBeUndefined();
+  }).pipe(Effect.provide(h.layer));
+});

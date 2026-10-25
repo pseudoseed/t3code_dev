@@ -2,12 +2,14 @@ import * as Dialog from "../../components/ui/Dialog";
 import {
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
+  ComposerContextId,
   DEFAULT_TERMINAL_ID,
   EnvironmentId,
   ThreadId,
   sessionGrantsScope,
 } from "@t3tools/contracts";
 import { type KnownTerminalSession } from "@t3tools/client-runtime/state/terminal";
+import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppBar } from "../../components/ui/AppBar";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
@@ -17,6 +19,7 @@ import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/ui/AppText";
 import { TerminalContextSheet } from "./TerminalContextSheet";
+import { buildTerminalTailContextRecord } from "./terminalTailContext";
 import { hasNativeTerminalSurface } from "./nativeTerminalModule";
 import * as Clipboard from "expo-clipboard";
 import * as Schema from "effect/Schema";
@@ -44,6 +47,7 @@ import { terminalEnvironment } from "../../state/terminal";
 import { environmentSession, readEnvironmentScope } from "../../state/session";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { insertComposerDraftContext } from "../../state/use-composer-drafts";
 import { uuidv4 } from "../../lib/uuid";
 import { useServerConfigs } from "../../state/entities";
 import { useConnectionsReady } from "../../state/workspace";
@@ -292,14 +296,15 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
   const requestedTerminalId = firstRouteParam(params.terminalId);
   const terminalId = requestedTerminalId ?? DEFAULT_TERMINAL_ID;
-  // The native view treats any new positive value as a capture, including the first value a
-  // freshly created view receives after a reconnect or remount. Only pass a value while a
-  // capture is pending, and keep the sequence increasing so the next request always differs.
+  // Any new positive value triggers capture, even on remount. Pass one only while pending and keep increasing it.
   const captureSequenceRef = useRef(0);
   const [captureRequest, setCaptureRequest] = useState(0);
+  // "attach" reads scrollback too and attaches the tail directly; "choose" opens the line picker.
+  const [captureIntent, setCaptureIntent] = useState<"attach" | "choose">("choose");
   const [capturedOutput, setCapturedOutput] = useState<string | null>(null);
-  const requestCapture = () => {
+  const requestCapture = (intent: "attach" | "choose") => {
     captureSequenceRef.current += 1;
+    setCaptureIntent(intent);
     setCaptureRequest(captureSequenceRef.current);
   };
   const {
@@ -1126,6 +1131,30 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     return <LoadingScreen message="Opening terminal…" />;
   }
 
+  const attachTerminalTail = (text: string) => {
+    if (!selectedThread) return;
+    const record = buildTerminalTailContextRecord({
+      text,
+      contextId: ComposerContextId.make(uuidv4()),
+      terminalId,
+      terminalLabel: resolveTerminalSessionLabel(terminalId, terminal.summary),
+    });
+    if (record === null) {
+      Dialog.alert("No terminal output", "There is no output to attach.");
+      return;
+    }
+    if (
+      !insertComposerDraftContext(`${selectedThread.environmentId}:${selectedThread.id}`, {
+        text: formatComposerContextReference(record),
+        context: { version: 1, records: [record] },
+      })
+    ) {
+      Dialog.alert("Too many context items", "Remove some context from the draft and try again.");
+      return;
+    }
+    if (navigation.canGoBack()) navigation.goBack();
+  };
+
   return (
     <>
       {capturedOutput !== null && selectedThread ? (
@@ -1138,7 +1167,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
           onClose={() => setCapturedOutput(null)}
           onAttach={() => {
             setCapturedOutput(null);
-            handleCloseTerminal();
+            if (navigation.canGoBack()) navigation.goBack();
           }}
         />
       ) : null}
@@ -1169,8 +1198,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               Platform.OS === "android"
                 ? themeVariables["--color-card-alt"]
                 : terminalTheme.background,
-            // The v5 column extends behind UIKit chrome. Its measured top
-            // reservation is zero when UIKit has already inset the body or moved the bar.
+            // Measured top reservation is zero when UIKit already inset the body or moved the bar.
             paddingTop:
               Platform.OS === "ios" ? (nativeColumnMetrics?.safeArea.top ?? insets.top) : 0,
             paddingBottom:
@@ -1252,9 +1280,11 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                   isRunning={isRunning}
                   keyboardFocusRequest={keyboardFocusRequest}
                   captureRequest={captureRequest}
+                  captureScope={captureIntent === "attach" ? "screen" : "viewport"}
                   onCapture={(text) => {
                     setCaptureRequest(0);
-                    if (text.trim()) setCapturedOutput(text);
+                    if (captureIntent === "attach") attachTerminalTail(text);
+                    else if (text.trim()) setCapturedOutput(text);
                     else
                       Dialog.alert("No terminal output", "There is no visible output to attach.");
                   }}
@@ -1269,7 +1299,18 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               {Platform.OS === "android" && !keyboardState.isVisible ? (
                 <View className="min-h-14 flex-row items-center gap-2 bg-card-alt px-2">
                   {selectedThread && hasNativeTerminalSurface() ? (
-                    <Button label="Attach output" tone="text" onPress={requestCapture} />
+                    <>
+                      <Button
+                        label="Attach terminal"
+                        tone="text"
+                        onPress={() => requestCapture("attach")}
+                      />
+                      <Button
+                        label="Choose lines"
+                        tone="text"
+                        onPress={() => requestCapture("choose")}
+                      />
+                    </>
                   ) : null}
                   <View className="flex-1" />
                   <IconButton
@@ -1280,16 +1321,28 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                   />
                 </View>
               ) : Platform.OS !== "android" && selectedThread && hasNativeTerminalSurface() ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    KeyboardController.dismiss();
-                    requestCapture();
-                  }}
-                  className="px-4 py-2"
-                >
-                  <Text style={{ color: terminalTheme.foreground }}>Attach visible output</Text>
-                </Pressable>
+                <View className="flex-row">
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      KeyboardController.dismiss();
+                      requestCapture("attach");
+                    }}
+                    className="px-4 py-2"
+                  >
+                    <Text style={{ color: terminalTheme.foreground }}>Attach terminal</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      KeyboardController.dismiss();
+                      requestCapture("choose");
+                    }}
+                    className="px-4 py-2"
+                  >
+                    <Text style={{ color: terminalTheme.foreground }}>Choose lines</Text>
+                  </Pressable>
+                </View>
               ) : null}
               {isAccessoryVisible ? (
                 <KeyboardStickyView

@@ -43,6 +43,7 @@ interface TerminalSurfaceProps extends ViewProps {
   readonly autoFocus?: boolean;
   readonly keyboardFocusRequest?: number;
   readonly captureRequest?: number;
+  readonly captureScope?: "viewport" | "screen";
   readonly onCapture?: (text: string) => void;
   readonly theme?: TerminalTheme;
   readonly onInput: (data: string) => void;
@@ -247,6 +248,7 @@ const ReadyTerminalSurface = memo(function ReadyTerminalSurface(props: ReadyTerm
           onInput={handleNativeInput}
           onResize={handleNativeResize}
           captureRequest={props.captureRequest}
+          captureScope={props.captureScope}
           onCapture={(event) => props.onCapture?.(event.nativeEvent.text)}
         />
       </View>

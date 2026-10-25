@@ -58,6 +58,14 @@ public class T3TerminalModule: Module {
       Prop("captureRequest") { (view: T3TerminalView, request: Double) in
         view.captureRequest = request
       }
+
+      Prop("captureScope") { (view: T3TerminalView, scope: String?) in
+        view.captureScope = scope ?? "viewport"
+      }
+
+      OnViewDidUpdateProps { (view: T3TerminalView) in
+        view.capturePendingRequest()
+      }
       Events("onInput", "onResize", "onCapture")
     }
   }

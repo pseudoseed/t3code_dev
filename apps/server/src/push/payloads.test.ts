@@ -41,6 +41,33 @@ describe("direct activity summaries", () => {
     expect(summary.activities[1]?.detail).toBe("Credential expired");
   });
 
+  it("sends Live Activity props in the AgentActivity layout's shape", () => {
+    const summary = aggregateActivity(
+      [{ ...state, projectId: "project", turnId: "turn", summary: "Deployed", detail: "Note" }],
+      now,
+    );
+    const payload = liveActivityPayload(summary, 100, false, "DirectAgentActivity:environment");
+    expect(JSON.parse(payload.aps["content-state"].props)).toEqual({
+      title: summary.title,
+      subtitle: summary.subtitle,
+      activeCount: 1,
+      updatedAt: now,
+      activities: [
+        {
+          environmentId: "environment",
+          threadId: "thread",
+          projectTitle: "Project",
+          threadTitle: "Deploy staging",
+          modelTitle: "gpt-5.4",
+          phase: "running",
+          status: "Agent is working",
+          updatedAt: "2026-09-06T18:00:00.000Z",
+          deepLink: "/threads/environment/thread",
+        },
+      ],
+    });
+  });
+
   it("keeps the final result when ending an activity and bounds multi-byte payloads", () => {
     const summary = aggregateActivity([{ ...state, phase: "completed" }], now);
     expect(summary.activeCount).toBe(0);

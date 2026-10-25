@@ -66,7 +66,7 @@ vi.mock("../../state/atom-registry", () => ({ appAtomRegistry: {} }));
 vi.mock("../../persistence/imperative", () => ({
   loadOrCreateAgentAwarenessDeviceId: async () => "phone",
 }));
-vi.mock("../../widgets/pseudocode/OverviewActivity", () => ({ AgentActivity: "layout" }));
+vi.mock("../../widgets/AgentActivity", () => ({ AgentActivity: "layout" }));
 vi.mock("./registrationPayload", () => ({ resolveApsEnvironment: () => "production" }));
 vi.mock("expo-constants", () => ({
   default: { expoConfig: { ios: { bundleIdentifier: "test.app" }, extra: {} } },
@@ -85,7 +85,6 @@ vi.mock("expo-notifications", () => ({
   getDevicePushTokenAsync: async () => ({ data: "aabb" }),
 }));
 vi.mock("react-native", () => ({ AppState: { currentState: "active" } }));
-vi.mock("expo-linking", () => ({ createURL: () => "t3code-dev:///" }));
 vi.mock("expo-widgets", () => ({
   createLiveActivity: (name: string) => ({
     getInstances: () => mocks.instances.get(name) ?? [],
@@ -202,4 +201,27 @@ it("ignores repeated native push-token events", async () => {
   expect(rememberDirectPushToken({ type: "ios", data: "aabb" })).toBe(true);
   expect(rememberDirectPushToken({ type: "ios", data: "aabb" })).toBe(false);
   expect(rememberDirectPushToken({ type: "ios", data: "bbcc" })).toBe(true);
+});
+
+it("describes Apple's answer to the last push", async () => {
+  using _now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-24T12:03:00Z"));
+  const { describeDirectPushDelivery } = await import("./directRegistration");
+  const at = "2026-10-24T12:00:00Z";
+  expect(describeDirectPushDelivery({ at, kind: "alert", status: 200, reason: null })).toBe(
+    "Last push: delivered 3m ago",
+  );
+  expect(
+    describeDirectPushDelivery({
+      at,
+      kind: "liveactivity",
+      status: 403,
+      reason: "BadEnvironmentKeyInToken",
+    }),
+  ).toBe("Last push: rejected by Apple (BadEnvironmentKeyInToken)");
+  expect(describeDirectPushDelivery({ at, kind: "background", status: 410, reason: null })).toBe(
+    "Last push: rejected by Apple (HTTP 410)",
+  );
+  expect(
+    describeDirectPushDelivery({ at, kind: "alert", status: null, reason: "socket hang up" }),
+  ).toBe("Last push: no answer from Apple (socket hang up)");
 });

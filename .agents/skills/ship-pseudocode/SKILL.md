@@ -20,9 +20,9 @@ One command each. Both run from anywhere in the repo.
 .agents/skills/ship-pseudocode/scripts/ship-ios.sh          # TestFlight upload
 ```
 
-The scripts handle the parts that are easy to get wrong: they pick Node 24, put `/usr/bin` ahead of
-Homebrew, export the branding variables the desktop build needs, bump the iOS build number, build
-the voice artifacts that are not in git, pass the signing team to every target, and verify the
+The scripts handle the parts that are easy to get wrong: they pick Node 26, put `/usr/bin` ahead of
+Homebrew, export the branding variables the desktop build needs, bump the iOS build number, pass
+the signing team to every target, and verify the
 result before claiming success.
 
 `ship-mac.sh` ends with `spctl` reporting `source=Notarized Developer ID`, then publishes the DMG to
@@ -121,7 +121,7 @@ been done.
 
 | Symptom                                       | Cause                                                                                                                                                              |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ERR_UNKNOWN_FILE_EXTENSION ".ts"`            | Node 20 on PATH. The ship scripts pick Node 24; a hand-run command must too.                                                                                       |
+| `ERR_UNKNOWN_FILE_EXTENSION ".ts"`            | Node 20 on PATH. The ship scripts pick Node 26; a hand-run command must too.                                                                                       |
 | `command not found: vp`                       | `node_modules/.bin` missing from PATH.                                                                                                                             |
 | App bundle named `T3 Code.app`                | `T3CODE_APP_NAME` not exported for the desktop build.                                                                                                              |
 | `skipped macOS notarization`                  | No notarytool keychain profile named `pseudocode`. `ROTATION.md` step 6.                                                                                           |
@@ -131,7 +131,6 @@ been done.
 | App Store Connect rejects the upload          | Build number already used. `ship-ios.sh` raises it; a hand-run archive does not.                                                                                   |
 | `requires a development team` on an extension | Expo writes `appleTeamId` onto the app target only. `ship-ios.sh` passes `DEVELOPMENT_TEAM` to every target; a hand-run archive must too.                          |
 | duplicate `.xcframework-ios.signature`        | A binary target inside a pod's SwiftPM dependency. Its signature is collected twice and both copy into one Signatures folder. Pin below the release that added it. |
-| missing `llama.xcframework` or bundled model  | The voice artifacts are gitignored. `ship-ios.sh` builds them; a hand-run archive must run the two scripts in `apps/mobile/modules/t3-voice/scripts/`.             |
 | macOS refuses to open the DMG elsewhere       | Signed but not notarized.                                                                                                                                          |
 | `Failed to create release, "workflow" scope`  | `gh` resolved to the `upstream` remote, where this account has read only. The script passes `--repo` derived from `origin`.                                        |
 | Release tag and DMG filename disagree         | The version bump missed `apps/server/package.json`.                                                                                                                |

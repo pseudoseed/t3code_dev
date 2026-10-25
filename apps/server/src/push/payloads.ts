@@ -61,9 +61,25 @@ export function liveActivityPayload(
   nowSeconds: number,
   end = false,
   name = "DirectAgentActivity",
-  appScheme = "t3code",
 ) {
-  const compact = { ...state, appScheme, activities: [...state.activities] };
+  // Only the fields apps/mobile AgentActivity reads; the widget-only extras would spend APNs bytes.
+  const compact = {
+    title: state.title,
+    subtitle: state.subtitle,
+    activeCount: state.activeCount,
+    updatedAt: state.updatedAt,
+    activities: state.activities.map((row) => ({
+      environmentId: row.environmentId,
+      threadId: row.threadId,
+      projectTitle: row.projectTitle,
+      threadTitle: row.threadTitle,
+      modelTitle: row.modelTitle,
+      phase: row.phase,
+      status: row.status,
+      updatedAt: row.updatedAt,
+      deepLink: row.deepLink,
+    })),
+  };
   const make = () => ({
     aps: {
       timestamp: nowSeconds,

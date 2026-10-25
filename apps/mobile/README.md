@@ -90,88 +90,11 @@ T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
 vp run ios:release
 ```
 
-### Building on your own paid team
-
-A paid Apple Developer Program membership signs every capability, so leave
-`T3CODE_IOS_PERSONAL_TEAM` unset and supply the two identifiers instead. Signing lasts as long as
-the certificate rather than 7 days, and push, associated domains, widgets, and the share extension
-all stay in the build.
-
-```bash
-T3CODE_IOS_BUNDLE_ID=com.example.t3code \
-T3CODE_IOS_TEAM_ID=YOURTEAMID \
-vp run ios:release --device <hardware-udid>
-```
-
-Your team id is on developer.apple.com under Account, Membership details. The first build on a new
-bundle identifier still needs the one-time xcodebuild step below to create the profile.
-
-### Installing a Personal Team build on your own iPad
-
-`expo run:ios` targets a simulator by default. Pass `--device` with the device's hardware UDID from
-`xcrun xctrace list devices` (not the CoreDevice identifier `devicectl` prints). The iPad must be
-unlocked, trusted, and in Developer Mode (**Settings → Privacy & Security → Developer Mode**).
-
-The first build on a new bundle identifier needs a provisioning profile that does not exist yet.
-`expo run:ios` cannot pass `-allowProvisioningUpdates`, so create the profile once with xcodebuild
-after prebuilding:
-
-```bash
-T3CODE_IOS_PERSONAL_TEAM=1 \
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
-APP_VARIANT=production EXPO_NO_GIT_STATUS=1 \
-vp exec expo prebuild --clean --platform ios
-
-xcodebuild -workspace ios/T3Code.xcworkspace -scheme T3Code \
-  -configuration Release -destination "id=<hardware-udid>" \
-  -allowProvisioningUpdates build
-```
-
-Set `T3CODE_IOS_PERSONAL_TEAM_ID` to your team id (`security find-identity -v -p codesigning`
-prints it) when Xcode holds more than one team. With a single team, leave it unset and automatic
-signing picks it.
-
-Later builds reuse that profile, so the short command works:
-
-```bash
-T3CODE_IOS_PERSONAL_TEAM=1 \
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
-vp run ios:release --device <hardware-udid>
-```
-
-The first install of a given certificate will not launch until you trust it on the device:
-**Settings → General → VPN & Device Management → Developer App → trust your name**. Until you do,
-iOS reports "invalid code signature, inadequate entitlements or its profile has not been explicitly
-trusted by the user".
-
-Personal Team constraints that decide how often you repeat that command:
-
-- Provisioning profiles last 7 days. After that the app refuses to launch until you rebuild and
-  reinstall; nothing on the device is lost, and the app's data survives the reinstall. Renewing the
-  profile needs the `-allowProvisioningUpdates` build above again.
-- Apple allows 10 App IDs per 7 days and 3 apps installed per device at a time on a free account.
-  Keep one bundle identifier rather than minting a new one per build.
-- The stripped entitlements mean no push notifications, no Home Screen widget, no system share
-  target, no native Sign in with Apple, and no Associated Domains (so no universal links and no
-  shared web credentials). Everything else, including pairing to a T3 Code server over the local
-  network or a tailnet, works normally.
-
-A paid Apple Developer Program membership removes all of the above: profiles last a year, the
-entitlements sign, and TestFlight can distribute the build instead of a cable.
-
 Build and run the local iOS preview app:
 
 ```bash
 vp run ios:preview
 ```
-
-Force the review diff highlighter engine:
-
-```bash
-EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=javascript vp run ios:dev
-```
-
-`javascript` is the default and recommended setting for the review diff screen. Set `EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=native` only when you explicitly want to test the native Shiki engine.
 
 Inspect the resolved Expo config for a variant:
 
@@ -187,68 +110,6 @@ node ../../scripts/mobile-native-static-check.ts
 ```
 
 The native lint task runs SwiftLint for Swift plus ktlint and detekt for Kotlin. Missing native tools are reported as warnings and skipped locally. CI installs the default toolset from `apps/mobile/Brewfile` before running the native checks.
-
-## TestFlight from this machine
-
-An alternative to EAS for a team that owns its own App Store Connect record: archive locally and
-upload with an App Store Connect API key. Nothing here needs an Expo account.
-
-One-time setup:
-
-1. Register the bundle identifier as an App ID on developer.apple.com, or let a signed device build
-   create it.
-2. Create the app in App Store Connect with that bundle identifier.
-3. Create an API key under Users and Access, Integrations, App Store Connect API with the App
-   Manager role. Keep the issuer id, the key id, and the downloaded `.p8`, which is offered once.
-   `xcrun altool` and `notarytool` read it from `~/.appstoreconnect/private_keys`.
-
-Every upload needs a build number no earlier upload used. `ios.buildNumber` in `app.config.ts`
-carries it.
-
-The app name becomes the native project name, so a fork that sets
-`T3CODE_APP_NAME` builds `ios/<name>.xcworkspace` with a matching scheme rather than `T3Code`.
-Keep `/usr/bin` ahead of Homebrew on `PATH` for the export: Xcode's copy step passes Apple-only
-flags that Homebrew's rsync rejects.
-
-```bash
-T3CODE_IOS_BUNDLE_ID=com.example.t3code \
-T3CODE_IOS_TEAM_ID=YOURTEAMID \
-T3CODE_IOS_BUILD_NUMBER=2 \
-APP_VARIANT=production EXPO_NO_GIT_STATUS=1 \
-vp exec expo prebuild --clean --platform ios
-
-cat > ExportOptions.plist <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>method</key><string>app-store-connect</string>
-    <key>teamID</key><string>YOURTEAMID</string>
-    <key>uploadSymbols</key><true/>
-  </dict>
-</plist>
-PLIST
-
-xcodebuild -workspace ios/T3Code.xcworkspace -scheme T3Code \
-  -configuration Release -destination "generic/platform=iOS" \
-  -archivePath build/T3Code.xcarchive \
-  -allowProvisioningUpdates archive
-
-xcodebuild -exportArchive -archivePath build/T3Code.xcarchive \
-  -exportOptionsPlist ExportOptions.plist -exportPath build/export \
-  -allowProvisioningUpdates
-
-xcrun altool --upload-app -f build/export/T3Code.ipa -t ios \
-  --apiKey YOURKEYID --apiIssuer YOURISSUERID
-```
-
-Export needs an API key with **Admin** access. App Manager is enough to upload but not to create
-the distribution certificate, and `xcodebuild` reports that as `Cloud signing permission error`.
-Pass the key with `-authenticationKeyPath`, `-authenticationKeyID`, and `-authenticationKeyIssuerID`
-on both the export and the upload.
-
-Processing in App Store Connect takes a few minutes, after which the build appears in TestFlight and
-installs on any device signed in with an invited tester's Apple Account.
 
 ## EAS Builds
 
