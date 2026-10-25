@@ -1,3 +1,4 @@
+import { DirectPushSettings } from "../agent-awareness/DirectPushSettings";
 import * as Dialog from "../../components/ui/Dialog";
 import { AuthRelayWriteScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "../../state/session";
@@ -63,8 +64,9 @@ export function SettingsNotificationsRouteScreen() {
           contentInsetAdjustmentBehavior="automatic"
           contentContainerClassName="px-5 pt-4"
         >
+          <DirectPushSettings />
           <Text className="text-base text-foreground-muted">
-            Notifications require Cloud Connect in this app build.
+            Cloud relay notifications are unavailable in this app build.
           </Text>
         </ScrollView>
       </SettingsScreen>
@@ -91,6 +93,8 @@ function ConfiguredSettingsNotificationsRouteScreen() {
   const [liveActivityStatus, setLiveActivityStatus] = useState<LiveActivityStatus>("checking");
   const liveActivityWriteInFlight = useRef(false);
   const deviceRegistered = useDeviceRegistered();
+  const directPushEnabled =
+    AsyncResult.isSuccess(preferencesResult) && preferencesResult.value.directPushEnabled === true;
   const liveActivitiesPreferenceEnabled = AsyncResult.isSuccess(preferencesResult)
     ? preferencesResult.value.liveActivitiesEnabled !== false
     : true;
@@ -400,68 +404,71 @@ function ConfiguredSettingsNotificationsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
-        <SettingsSection title="Agent activity">
-          <SettingsSwitchRow
-            icon="bell.badge"
-            label="Device Notifications"
-            disabled={
-              !agentAwarenessPlatform.supported ||
-              !agentAwarenessPushAvailable ||
-              notificationStatus === "checking" ||
-              notificationStatus === "unsupported"
-            }
-            subtitle={agentAwarenessSubtitle}
-            value={
-              agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
-            }
-            onValueChange={handleDeviceNotificationsChange}
-          />
-          <SettingsSwitchRow
-            disabled={
-              !agentAwarenessPlatform.supported ||
-              !agentAwarenessPushAvailable ||
-              !isLoaded ||
-              liveActivityStatus === "checking" ||
-              liveActivityStatus === "linking"
-            }
-            icon="bolt.circle"
-            label={
-              Platform.OS === "android"
-                ? supportsAndroidLiveUpdateSettings()
-                  ? "Agent Live Updates"
-                  : "Ongoing Agent Activity"
-                : "Live Activity Updates"
-            }
-            subtitle={agentAwarenessSubtitle}
-            value={
-              agentAwarenessPushAvailable &&
-              (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
-              deviceRegistered
-            }
-            onValueChange={(enabled) => void handleLiveActivitiesChange(enabled)}
-          />
-          {liveActivityStatus === "signed-out" && canClearLiveActivitiesPreference ? (
-            <SettingsRow
-              icon="bolt.circle"
-              label="Turn off Live Activity preference"
-              onPress={() => void handleLiveActivitiesChange(false)}
+        <DirectPushSettings />
+        {!directPushEnabled || Platform.OS === "android" ? (
+          <SettingsSection title="Agent activity">
+            <SettingsSwitchRow
+              icon="bell.badge"
+              label="Device Notifications"
+              disabled={
+                !agentAwarenessPlatform.supported ||
+                !agentAwarenessPushAvailable ||
+                notificationStatus === "checking" ||
+                notificationStatus === "unsupported"
+              }
+              subtitle={agentAwarenessSubtitle}
+              value={
+                agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
+              }
+              onValueChange={handleDeviceNotificationsChange}
             />
-          ) : null}
-          {supportsAndroidLiveUpdateSettings() ? (
-            <SettingsRow
+            <SettingsSwitchRow
+              disabled={
+                !agentAwarenessPlatform.supported ||
+                !agentAwarenessPushAvailable ||
+                !isLoaded ||
+                liveActivityStatus === "checking" ||
+                liveActivityStatus === "linking"
+              }
               icon="bolt.circle"
-              label="Live Update Settings"
-              onPress={() => {
-                void openAndroidLiveUpdateSettings().catch(() => {
-                  Dialog.alert(
-                    "Couldn't open Settings",
-                    "Open Android Settings, select PseudoCode, then enable Live Updates in Notifications.",
-                  );
-                });
-              }}
+              label={
+                Platform.OS === "android"
+                  ? supportsAndroidLiveUpdateSettings()
+                    ? "Agent Live Updates"
+                    : "Ongoing Agent Activity"
+                  : "Live Activity Updates"
+              }
+              subtitle={agentAwarenessSubtitle}
+              value={
+                agentAwarenessPushAvailable &&
+                (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
+                deviceRegistered
+              }
+              onValueChange={(enabled) => void handleLiveActivitiesChange(enabled)}
             />
-          ) : null}
-        </SettingsSection>
+            {liveActivityStatus === "signed-out" && canClearLiveActivitiesPreference ? (
+              <SettingsRow
+                icon="bolt.circle"
+                label="Turn off Live Activity preference"
+                onPress={() => void handleLiveActivitiesChange(false)}
+              />
+            ) : null}
+            {supportsAndroidLiveUpdateSettings() ? (
+              <SettingsRow
+                icon="bolt.circle"
+                label="Live Update Settings"
+                onPress={() => {
+                  void openAndroidLiveUpdateSettings().catch(() => {
+                    Dialog.alert(
+                      "Couldn't open Settings",
+                      "Open Android Settings, select PseudoCode, then enable Live Updates in Notifications.",
+                    );
+                  });
+                }}
+              />
+            ) : null}
+          </SettingsSection>
+        ) : null}
       </ScrollView>
     </SettingsScreen>
   );

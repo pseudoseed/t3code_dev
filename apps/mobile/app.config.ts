@@ -370,6 +370,8 @@ const config: ExpoConfig = {
         icon: variant.assets.androidNotificationIcon,
         color: variant.assets.androidNotificationColor,
         mode: APP_VARIANT === "development" ? "development" : "production",
+        // Direct push sends silent widget refreshes; a Personal Team cannot sign push at all.
+        enableBackgroundRemoteNotifications: !isIosPersonalTeamBuild,
       },
     ],
     // Gate Clerk here: its plugin also writes native sign-in config the entitlement stripper leaves behind.

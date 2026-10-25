@@ -79,6 +79,9 @@ const isWorkspaceSelections = Schema.is(WorkspaceSelections);
 const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
 
 export interface Preferences {
+  /** Use APNs credentials configured on paired environments instead of Cloud Connect. */
+  readonly directPushEnabled?: boolean;
+  readonly directLiveActivitiesEnabled?: boolean;
   readonly navigationTabOrder?: readonly string[];
   readonly hiddenNavigationTabs?: readonly string[];
   readonly pullRequestHideTestFiles?: boolean;
@@ -161,6 +164,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     pullRequestHideTestFiles?: boolean;
     pullRequestMergeMethod?: PullRequestMergeMethod;
     liveActivitiesEnabled?: boolean;
+    directPushEnabled?: boolean;
+    directLiveActivitiesEnabled?: boolean;
     themeId?: MobileThemeId;
     lightThemeId?: MobileThemeId;
     darkThemeId?: MobileThemeId;
@@ -216,6 +221,12 @@ function sanitizePreferences(parsed: Preferences): Preferences {
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
+  }
+  if (typeof parsed.directPushEnabled === "boolean") {
+    preferences.directPushEnabled = parsed.directPushEnabled;
+  }
+  if (typeof parsed.directLiveActivitiesEnabled === "boolean") {
+    preferences.directLiveActivitiesEnabled = parsed.directLiveActivitiesEnabled;
   }
   if (
     typeof parsed.themeId === "string" &&

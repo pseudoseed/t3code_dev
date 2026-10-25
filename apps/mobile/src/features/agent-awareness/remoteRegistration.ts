@@ -471,7 +471,7 @@ export function armAgentAwarenessLiveActivityForLocalWork(input: {
   void loadPreferences()
     .catch(() => null)
     .then((preferences) => {
-      if (preferences?.liveActivitiesEnabled === false) {
+      if (preferences?.liveActivitiesEnabled === false || preferences?.directPushEnabled === true) {
         return;
       }
       armAgentAwarenessLiveActivityForLocalWorkNow(input);
@@ -801,7 +801,7 @@ function dismissEndedLocalLiveActivities(): void {
   }
 }
 
-function endLocalLiveActivities(context: string): void {
+export function endLocalLiveActivities(context: string): void {
   if (!canRegisterRemoteLiveActivities()) {
     return;
   }
@@ -1067,7 +1067,7 @@ export const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
           cause,
         }),
     }).pipe(Effect.orElseSucceed(() => null));
-    if (preferences?.liveActivitiesEnabled !== false) {
+    if (preferences?.liveActivitiesEnabled !== false && preferences?.directPushEnabled !== true) {
       const snapshot = yield* readAgentActivitySnapshot();
       // The snapshot request yields; an arm-on-send may have created the
       // card in the meantime. Re-check so two cards are never started.

@@ -24,7 +24,10 @@ export function makeRelayDeviceRegistrationRequest(
     | { readonly platform: "android"; readonly androidApiLevel: number }
   ),
 ): RelayDeviceRegistrationRequest {
-  const pushAvailable = supportsAgentAwarenessPush();
+  // iOS direct push delivers from the user's own servers, so the relay must not deliver too.
+  const pushAvailable =
+    supportsAgentAwarenessPush() &&
+    (input.platform === "android" || input.preferences.directPushEnabled !== true);
   const liveActivitiesEnabled = pushAvailable && input.preferences.liveActivitiesEnabled !== false;
   return {
     deviceId: input.deviceId,
