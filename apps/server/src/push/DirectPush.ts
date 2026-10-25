@@ -238,11 +238,6 @@ export const make = Effect.gen(function* () {
           Math.floor(now.epochMilliseconds / 1000),
           end,
           `DirectAgentActivity:${environmentId}`,
-          registration.bundleId.endsWith(".dev")
-            ? "t3code-dev"
-            : registration.bundleId.endsWith(".preview")
-              ? "t3code-preview"
-              : "t3code",
         ),
       );
       if (end)
