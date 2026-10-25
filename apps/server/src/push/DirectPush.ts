@@ -2,6 +2,7 @@ import { ActivitySummaries } from "../pseudocode/ActivitySummaries.ts";
 import {
   AuthOrchestrationReadScope,
   AuthSessionId,
+  type DirectPushDelivery,
   DirectPushRegistration,
   type DirectPushStatus,
   type ThreadId,
@@ -82,6 +83,19 @@ export const make = Effect.gen(function* () {
   const states = new Map<ThreadId, AgentAwarenessState>();
   const seenRequests = new Map<ThreadId, Set<string>>();
   const lastWidgetPush = new Map<AuthSessionId, number>();
+  // In memory: a restart clears it, and the next push records a fresh result.
+  const lastDelivery = new Map<AuthSessionId, DirectPushDelivery>();
+  const rememberDelivery = (
+    sessionId: AuthSessionId,
+    kind: DirectPushDelivery["kind"],
+    status: number | null,
+    reason: string | null,
+  ) =>
+    DateTime.now.pipe(
+      Effect.map((at) => {
+        lastDelivery.set(sessionId, { at: DateTime.formatIso(at), kind, status, reason });
+      }),
+    );
   let hydrated = false;
   const stored = yield* secrets.get(STORAGE_KEY);
   let records: readonly DeviceRecord[] = Option.isSome(stored)
@@ -146,6 +160,7 @@ export const make = Effect.gen(function* () {
       !session.value.scopes.includes(AuthOrchestrationReadScope)
     ) {
       yield* persist(records.filter((item) => item !== record));
+      lastDelivery.delete(record.sessionId);
       return;
     }
     const push = Effect.fn("DirectPush.send")(function* (
@@ -159,7 +174,10 @@ export const make = Effect.gen(function* () {
         environment: registration.apsEnvironment,
         payload,
         ...(kind === "background" ? { collapseId: "agent-widget" } : {}),
-      });
+      }).pipe(
+        Effect.tapError((error) => rememberDelivery(record.sessionId, kind, null, error.message)),
+      );
+      yield* rememberDelivery(record.sessionId, kind, response.status, response.reason ?? null);
       if (
         response.status === 410 ||
         response.reason === "BadDeviceToken" ||
@@ -238,6 +256,7 @@ export const make = Effect.gen(function* () {
     }
   });
   const statusUnsafe = Effect.fn("DirectPush.status")(function* (sessionId: AuthSessionId) {
+    const delivery = lastDelivery.get(sessionId);
     return {
       configured: transport.bundleId !== null,
       bundleId: transport.bundleId,
@@ -246,6 +265,7 @@ export const make = Effect.gen(function* () {
           record.sessionId === sessionId && record.registration.bundleId === transport.bundleId,
       ),
       activity: yield* aggregate,
+      ...(delivery ? { lastDelivery: delivery } : {}),
     };
   });
   const status = (sessionId: AuthSessionId) => mutex.withPermit(statusUnsafe(sessionId));
@@ -282,6 +302,7 @@ export const make = Effect.gen(function* () {
         const record = records.find((item) => item.sessionId === sessionId);
         if (record) yield* deliver(record, null, true).pipe(Effect.catch(() => Effect.void));
         yield* persist(records.filter((item) => item.sessionId !== sessionId));
+        lastDelivery.delete(sessionId);
       }),
     );
   const publishThread = (threadId: ThreadId) =>
