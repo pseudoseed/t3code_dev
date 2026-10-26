@@ -43,6 +43,7 @@ import {
 import { usePullRequestDiffHighlightFiles } from "./usePullRequestDiffHighlightFiles";
 import { isPullRequestTestFile } from "./pullRequestFileFilters";
 import { useFocusEffect, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { pullRequestReviewKey } from "./pullRequestReviewDrafts";
 import { type PullRequestDetail, type PullRequestListEntry } from "@t3tools/contracts";
@@ -88,7 +89,7 @@ import {
   type NativeReviewDiffViewProps,
 } from "../diffs/nativeReviewDiffSurface";
 import {
-  buildNativeReviewDiffData,
+  getCachedNativeReviewDiffData,
   NATIVE_REVIEW_DIFF_CONTENT_WIDTH,
 } from "../review/nativeReviewDiffAdapter";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -99,6 +100,7 @@ import { PullRequestActionToolbar, PullRequestCardGroup } from "./PullRequestCon
 import {
   pullRequestTarget as requestTarget,
   usePullRequestDiff,
+  usePullRequestDiffEntry,
   type PullRequestDiffParams,
   type PullRequestParams,
 } from "./usePullRequestDiff";
@@ -385,9 +387,10 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
     if (!guidesEnabled && section === "guide") {
       requestedSection.current = "overview";
       currentScrollOffset.current = scrollOffsets.current.overview ?? -insets.top;
+      // oxlint-disable-next-line react/set-state-in-effect -- When guides turn off, the tab and its saved scroll offset must switch to overview together.
       setSection("overview");
     }
-  }, [guidesEnabled, section, insets.top]);
+  }, [guidesEnabled, section, insets.top, currentScrollOffset, requestedSection, scrollOffsets]);
   const tabContent = activityContent;
   const filesY = useRef(0);
   const descriptionY = useRef(0);
@@ -847,16 +850,35 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   );
 }
 
-export function PullRequestFileRouteScreen({
-  route,
-}: StaticScreenProps<
+type PullRequestFileRouteProps = StaticScreenProps<
   PullRequestDiffParams & {
     readonly path: string;
     readonly fileSelectionId?: string;
     readonly replacingDraftId?: string;
     readonly focus?: GuideDiffFocus;
   }
->) {
+>;
+
+export function PullRequestFileRouteScreen(props: PullRequestFileRouteProps) {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<ReactNavigation.RootParamList, "PullRequestFile">>();
+  const ready = usePullRequestDiffEntry(navigation);
+  if (ready) return <PullRequestFileRouteContent {...props} />;
+  const title = props.route.params.commit ? "Commit changes" : "Changes";
+  return (
+    <View className="flex-1 bg-screen">
+      <NativeStackScreenOptions options={{ title, headerTitle: title }} />
+      {Platform.OS === "android" ? (
+        <AndroidScreenHeader title={title} onBack={() => navigation.goBack()} />
+      ) : null}
+      <View className="flex-1 items-center justify-center">
+        <AppActivityIndicator accessibilityLabel="Loading changes" />
+      </View>
+    </View>
+  );
+}
+
+function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
   const { layout } = useAdaptiveWorkspaceLayout();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -894,7 +916,7 @@ export function PullRequestFileRouteScreen({
     !result.isPending &&
     !result.error;
   const activity = useEnvironmentQuery(composerPullRequests.activity(requestTarget(route.params)));
-  const baseData = useMemo(() => buildNativeReviewDiffData(parsed), [parsed]);
+  const baseData = useMemo(() => getCachedNativeReviewDiffData({ parsedDiff: parsed }), [parsed]);
   const highlightFiles = usePullRequestDiffHighlightFiles(route.params, parsed, baseData.files);
   const data = useMemo(
     () =>

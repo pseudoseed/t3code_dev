@@ -132,14 +132,12 @@ export const make = Effect.gen(function* () {
   });
   const send = (request: ApnsRequest) =>
     transport.send(request).pipe(
-      Effect.flatMap((response) =>
-        response.status === 429 || response.status >= 500
-          ? Effect.fail(
-              new ApnsTransportError({
-                message: `APNs temporarily unavailable (${response.status}).`,
-              }),
-            )
-          : Effect.succeed(response),
+      Effect.filterOrFail(
+        (response) => response.status !== 429 && response.status < 500,
+        (response) =>
+          new ApnsTransportError({
+            message: `APNs temporarily unavailable (${response.status}).`,
+          }),
       ),
       Effect.retry({ schedule: Schedule.exponential("1 second"), times: 2 }),
     );
@@ -295,7 +293,7 @@ export const make = Effect.gen(function* () {
     mutex.withPermit(
       Effect.gen(function* () {
         const record = records.find((item) => item.sessionId === sessionId);
-        if (record) yield* deliver(record, null, true).pipe(Effect.catch(() => Effect.void));
+        if (record) yield* deliver(record, null, true).pipe(Effect.ignore);
         yield* persist(records.filter((item) => item.sessionId !== sessionId));
         lastDelivery.delete(sessionId);
       }),

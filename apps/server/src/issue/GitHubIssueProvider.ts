@@ -109,7 +109,7 @@ export const make = Effect.gen(function* () {
   const read = <A, I>(input: GitHubRest.GitHubRestInput, schema: Schema.Codec<A, I>) =>
     request(input).pipe(
       Effect.flatMap((response) =>
-        Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(response.body).pipe(
+        Schema.decodeEffect(Schema.fromJsonString(schema))(response.body).pipe(
           Effect.mapError(
             (cause) =>
               new IssueProviderError({
@@ -139,8 +139,8 @@ export const make = Effect.gen(function* () {
       read({ host: input.host ?? "github.com", operation: "getViewer", path: "user" }, Actor).pipe(
         Effect.map((viewer) => viewer.login),
       ),
-    listIssues: (input) =>
-      Effect.gen(function* () {
+    listIssues: Effect.fn("GitHubIssueProvider.listIssues")(
+      function* (input: Parameters<IssueProviderApi["listIssues"]>[0]) {
         const limit = Math.min(Math.max(input.limit, 1), 200);
         const query = [
           `repo:${input.repository}`,
@@ -188,69 +188,73 @@ export const make = Effect.gen(function* () {
           items: items.slice(0, limit),
           truncated: incomplete || Math.min(items.length, limit) < total,
         };
-      }).pipe(
-        Effect.catchIf(
-          (error) => error.reason === "failed",
-          (error) =>
-            readRepository(input).pipe(
-              Effect.orElseSucceed(() => ({ has_issues: true })),
-              Effect.flatMap((repository) =>
-                repository.has_issues === false
-                  ? Effect.succeed({
-                      items: [],
-                      truncated: false,
-                      disabledReason: "Issues are turned off for this repository on GitHub.",
-                    })
-                  : Effect.fail(error),
+      },
+      (effect, input) =>
+        effect.pipe(
+          Effect.catchIf(
+            (error) => error.reason === "failed",
+            (error) =>
+              readRepository(input).pipe(
+                Effect.orElseSucceed(() => ({ has_issues: true })),
+                Effect.flatMap((repository) =>
+                  repository.has_issues === false
+                    ? Effect.succeed({
+                        items: [],
+                        truncated: false,
+                        disabledReason: "Issues are turned off for this repository on GitHub.",
+                      })
+                    : Effect.fail(error),
+                ),
               ),
-            ),
+          ),
         ),
-      ),
-    getIssue: (input) =>
-      Effect.gen(function* () {
-        const path = `${repositoryPath(input.repository)}/issues/${input.number}`;
-        const [raw, repository] = yield* Effect.all(
-          [
-            read({ host: input.host, operation: "getIssue", path }, Issue),
-            readRepository(input).pipe(Effect.orElseSucceed(() => ({}))),
-          ],
-          { concurrency: 2 },
+    ),
+    getIssue: Effect.fn("GitHubIssueProvider.getIssue")(function* (
+      input: Parameters<IssueProviderApi["getIssue"]>[0],
+    ) {
+      const path = `${repositoryPath(input.repository)}/issues/${input.number}`;
+      const [raw, repository] = yield* Effect.all(
+        [
+          read({ host: input.host, operation: "getIssue", path }, Issue),
+          readRepository(input).pipe(Effect.orElseSucceed(() => ({}))),
+        ],
+        { concurrency: 2 },
+      );
+      const comments: IssueComment[] = [];
+      for (let page = 1; ; page++) {
+        const rows = yield* read(
+          {
+            host: input.host,
+            operation: "getIssueComments",
+            path: `${path}/comments?per_page=100&page=${page}`,
+          },
+          Schema.Array(Comment),
         );
-        const comments: IssueComment[] = [];
-        for (let page = 1; ; page++) {
-          const rows = yield* read(
-            {
-              host: input.host,
-              operation: "getIssueComments",
-              path: `${path}/comments?per_page=100&page=${page}`,
-            },
-            Schema.Array(Comment),
-          );
-          comments.push(
-            ...rows.map((row) => ({
-              id: `issue-comment:${row.id}`,
-              author: actor(row.user),
-              body: row.body,
-              createdAt: iso(row.created_at),
-              url: row.html_url,
-            })),
-          );
-          if (rows.length < 100) break;
-        }
-        const permissions = "permissions" in repository ? repository.permissions : undefined;
-        return {
-          ...issue(raw),
-          body: raw.body ?? "",
-          closedAt: raw.closed_at ? iso(raw.closed_at) : null,
-          comments,
-          commentsTruncated: false,
-          viewerCanWrite:
-            permissions === undefined ||
-            permissions.push === true ||
-            permissions.admin === true ||
-            permissions.maintain === true,
-        };
-      }),
+        comments.push(
+          ...rows.map((row) => ({
+            id: `issue-comment:${row.id}`,
+            author: actor(row.user),
+            body: row.body,
+            createdAt: iso(row.created_at),
+            url: row.html_url,
+          })),
+        );
+        if (rows.length < 100) break;
+      }
+      const permissions = "permissions" in repository ? repository.permissions : undefined;
+      return {
+        ...issue(raw),
+        body: raw.body ?? "",
+        closedAt: raw.closed_at ? iso(raw.closed_at) : null,
+        comments,
+        commentsTruncated: false,
+        viewerCanWrite:
+          permissions === undefined ||
+          permissions.push === true ||
+          permissions.admin === true ||
+          permissions.maintain === true,
+      };
+    }),
     comment: (input) =>
       request({
         host: input.host,

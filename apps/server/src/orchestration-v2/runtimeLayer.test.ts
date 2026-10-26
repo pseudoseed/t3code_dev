@@ -37,7 +37,6 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -117,7 +116,7 @@ const layerGitWorkflowTest = Layer.mock(GitWorkflow.GitWorkflowService)({
   createWorktree: () => Effect.succeed({} as never),
 });
 const layerProjectServiceTest = Layer.mock(ProjectService.ProjectService)({
-  getById: () => Effect.succeed(Option.none()),
+  getById: () => Effect.succeedNone,
 });
 
 const driver = ProviderDriverKind.make("codex");
@@ -991,13 +990,11 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
           },
         ],
       });
-      const sessionSpy = vi
-        .spyOn(sessions, "get")
-        .mockReturnValue(
-          Effect.succeed(
-            Option.some({ providerSession } as ProviderAdapter.ProviderAdapterV2SessionRuntime),
-          ),
-        );
+      const sessionSpy = vi.spyOn(sessions, "get").mockReturnValue(
+        Effect.succeedSome({
+          providerSession,
+        } as ProviderAdapter.ProviderAdapterV2SessionRuntime),
+      );
       yield* Effect.addFinalizer(() => Effect.sync(() => sessionSpy.mockRestore()));
 
       const steerCommandId = CommandId.make("runtime-delivery-intent-auto");
@@ -2214,7 +2211,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           commandId: CommandId.make(`branch-pr-link-${index}`),
           threadId,
           host: "GitHub.com",
-          repository: "Pingdotgg/T3code",
+          repository: "PseudoSeed/T3code_Dev",
           number,
           url: `https://github.com/pseudoseed/t3code_dev/pull/${number}`,
           source: "manual",
@@ -2288,7 +2285,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         branch: null,
         worktreePath: null,
       });
-      const key = { host: "GitHub.com", repository: "Pingdotgg/T3code" };
+      const key = { host: "GitHub.com", repository: "PseudoSeed/T3code_Dev" };
       for (const number of [1, 2]) {
         yield* orchestrator.dispatch({
           type: "thread.pull-request.link",
@@ -5893,7 +5890,7 @@ it.layer(Layer.fresh(layerSharedApplicationDataPlaneTest))("compact PR events", 
         });
       }
       const latest = yield* orchestrator.getThreadShell(threadId);
-      yield* maintenance.compactEventStore;
+      yield* maintenance.compactEventStore();
       const linkEvents = yield* sql<{ command_id: string }>`
         SELECT command_id FROM orchestration_events
         WHERE stream_id = ${threadId} AND event_type = 'thread.pull-request-link-updated'
@@ -5933,7 +5930,7 @@ it.layer(Layer.fresh(layerSharedApplicationDataPlaneTest))("compact PR events", 
           visitedAt,
         });
       }
-      yield* maintenance.compactEventStore;
+      yield* maintenance.compactEventStore();
       assert.deepEqual(
         (yield* threadEvents()).map((row) => row.event_type),
         ["thread.metadata-updated", "thread.visited"],
@@ -5944,7 +5941,7 @@ it.layer(Layer.fresh(layerSharedApplicationDataPlaneTest))("compact PR events", 
         threadId,
         title: "Renamed after visit",
       });
-      yield* maintenance.compactEventStore;
+      yield* maintenance.compactEventStore();
       assert.deepEqual(
         (yield* threadEvents()).map((row) => row.event_type),
         ["thread.metadata-updated"],

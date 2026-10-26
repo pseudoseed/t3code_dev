@@ -141,29 +141,6 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
   return `Claude ${subscriptionLabel} Subscription`;
 }
 
-/**
- * First-party auth only; other `apiProvider`s have no account fields by design. Claude Code 2.1.260
- * omits `tokenSource` when signed in and reports the string `"none"` when signed out, so it is
- * evidence only when it names a real source.
- */
-function hasClaudeAccountEvidence(capabilities: {
-  readonly email: string | undefined;
-  readonly subscriptionType: string | undefined;
-  readonly tokenSource: string | undefined;
-  readonly apiProvider: string | undefined;
-}): boolean {
-  const apiProvider = capabilities.apiProvider?.trim().toLowerCase();
-  if (apiProvider !== undefined && apiProvider !== "" && apiProvider !== "firstparty") {
-    return true;
-  }
-  const tokenSource = capabilities.tokenSource?.trim().toLowerCase();
-  return Boolean(
-    capabilities.email?.trim() ||
-    capabilities.subscriptionType?.trim() ||
-    (tokenSource !== undefined && tokenSource !== "" && tokenSource !== "none"),
-  );
-}
-
 function claudeAuthMetadata(input: {
   readonly subscriptionType: string | undefined;
   readonly authMethod: string | undefined;
@@ -454,10 +431,14 @@ export const probeClaudeWorkspaceSnapshot = Effect.fn("probeClaudeWorkspaceSnaps
 ): Effect.fn.Return<ProviderWorkspaceSnapshot, never, FileSystem.FileSystem | Path.Path> {
   if (!claudeSettings.enabled) return machineSnapshot;
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, environment);
-  const probeResult = yield* probeClaudeCapabilities(claudeSettings, environment, cwd, false).pipe(
-    Effect.result,
-  );
-  const capabilities = Result.isSuccess(probeResult) ? probeResult.success : undefined;
+  const fileSystem = yield* FileSystem.FileSystem;
+  // A deleted worktree can never answer the probe. Pending would make clients rescan it forever.
+  const cwdExists = yield* fileSystem.exists(cwd).pipe(Effect.orElseSucceed(() => true));
+  const probeResult = cwdExists
+    ? yield* probeClaudeCapabilities(claudeSettings, environment, cwd, false).pipe(Effect.result)
+    : undefined;
+  const capabilities =
+    probeResult && Result.isSuccess(probeResult) ? probeResult.success : undefined;
   return {
     ...machineSnapshot,
     skills,
@@ -465,7 +446,7 @@ export const probeClaudeWorkspaceSnapshot = Effect.fn("probeClaudeWorkspaceSnaps
       COMPACT_SLASH_COMMAND,
       ...(capabilities?.slashCommands ?? []),
     ]),
-    slashCommandsPending: !capabilities,
+    slashCommandsPending: cwdExists && !capabilities,
   };
 });
 
@@ -654,25 +635,6 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined);
   const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
 
-  // A successful probe only proves the runtime started; first-party auth reports an account once
-  // credentials exist. Bedrock and Vertex use external cloud credentials, so they are exempt.
-  if (!hasClaudeAccountEvidence(capabilities)) {
-    return buildServerProvider({
-      presentation: CLAUDE_PRESENTATION,
-      enabled: claudeSettings.enabled,
-      checkedAt,
-      models,
-      slashCommands: dedupedSlashCommands,
-      skills,
-      probe: {
-        installed: true,
-        version: parsedVersion,
-        status: "warning",
-        auth: { status: "unauthenticated" },
-        message: "Claude is not signed in for this provider. Sign in to use it.",
-      },
-    });
-  }
   // Include account metadata so unavailable limits can name the sign-in method.
   const usageInput = capabilities.usage
     ? {

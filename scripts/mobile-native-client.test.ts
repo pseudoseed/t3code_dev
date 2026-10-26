@@ -7,6 +7,7 @@ import * as Path from "effect/Path";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { Command } from "effect/cli";
+import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
 import { loadRepoEnv } from "./lib/public-config.ts";
@@ -98,8 +99,9 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
       const identities: Array<{ step: string; bundleId: string | undefined }> = [];
       let builtId: string | undefined;
       let installedId: string | undefined;
+      let installedBundle: string | undefined;
       const spawner = ChildProcessSpawner.make((command) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           assert.strictEqual(command._tag, "StandardCommand");
           if (command._tag !== "StandardCommand") return assert.fail("Unexpected pipeline");
           const args = command.args;
@@ -122,14 +124,31 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
               builtId = bundleId;
             }
           } else if (args.includes("list") && args.includes("devices")) {
-            output = JSON.stringify({ devices: { iOS: [{ udid: "simulator", state: "Booted" }] } });
+            output = JSON.stringify({
+              devices: { iOS: [{ udid: "simulator", name: "iPhone", state: "Booted" }] },
+            });
+          } else if (args.includes("xcodebuild")) {
+            assert.strictEqual(
+              args[args.indexOf("-workspace") + 1],
+              path.join(generatedIos, "Development.xcworkspace"),
+            );
+            assert.strictEqual(args[args.indexOf("-scheme") + 1], "Development");
+            const products = path.join(
+              args[args.indexOf("-derivedDataPath") + 1]!,
+              "Build/Products/Debug-iphonesimulator",
+            );
+            yield* fs.makeDirectory(products, { recursive: true });
+            yield* fs.copy(bundle, path.join(products, "Development.app"));
+          } else if (command.command === "ditto") {
+            yield* fs.copy(args[0]!, args[1]!);
           } else if (args.includes("install") && args.includes("simctl")) {
             installedId = builtId;
+            installedBundle = args[3];
           } else if (args.includes("listapps")) {
             output = installedId ? `"${installedId}"` : "";
           } else if (args.includes("get_app_container")) {
             assert.strictEqual(args[3], installedId);
-            output = bundle;
+            output = installedBundle!;
           } else {
             assert.include(["git", "bash", "pod", "xcrun"], command.command);
           }
@@ -151,7 +170,12 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
 
       yield* Command.runWith(main, { version: "0.0.0" })(["ensure", "ios", "simulator"]).pipe(
         Effect.provideService(HostProcess.Platform, "darwin"),
+        Effect.provideService(HostProcess.Architecture, "arm64"),
         Effect.provideService(HostProcess.Environment, environment),
+        Effect.provideService(
+          HttpClient.HttpClient,
+          HttpClient.make(() => Effect.die("Unexpected cache request")),
+        ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, {
           ...fs,
