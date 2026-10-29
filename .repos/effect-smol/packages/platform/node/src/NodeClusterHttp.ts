@@ -8,7 +8,6 @@
  * this module re-exports the Kubernetes HTTP client layer used by runner health
  * checks.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as HttpRunner from "effect/cluster/HttpRunner"
@@ -42,7 +41,6 @@ export {
   /**
    * Provides the Kubernetes HTTP client layer used by Kubernetes runner health checks.
    *
-   * @stability unstable
    * @category re-exports
    * @since 4.0.0
    */
@@ -54,7 +52,6 @@ export {
  * transport, RPC serialization, message storage, runner health checks, and
  * optional client-only mode.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -142,7 +139,6 @@ export const layer = <
  * Provides the HTTP server and Node HTTP services used by cluster runners,
  * listening on `ShardingConfig.runnerListenAddress` or `runnerAddress`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

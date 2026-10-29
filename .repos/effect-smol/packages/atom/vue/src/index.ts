@@ -1,7 +1,4 @@
 /**
- * Vue composables for reading and writing Effect atoms with an injected registry.
- *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Cause from "effect/Cause"
@@ -14,83 +11,62 @@ import * as AtomRegistry from "effect/reactivity/AtomRegistry"
 import { computed, type ComputedRef, inject, type InjectionKey, type Ref, shallowRef, watchEffect } from "vue"
 
 /**
- * Re-exports the atom registry API.
- *
  * @stability unstable
- * @category re-exports
  * @since 4.0.0
+ * @category re-exports
  */
 export * as AtomRegistry from "effect/reactivity/AtomRegistry"
 
 /**
- * Re-exports the asynchronous atom result API.
- *
  * @stability unstable
- * @category re-exports
  * @since 4.0.0
+ * @category re-exports
  */
 export * as AsyncResult from "effect/reactivity/AsyncResult"
 
 /**
- * Re-exports the atom API.
- *
  * @stability unstable
- * @category re-exports
  * @since 4.0.0
+ * @category re-exports
  */
 export * as Atom from "effect/reactivity/Atom"
 
 /**
- * Re-exports the atom reference API.
- *
  * @stability unstable
- * @category re-exports
  * @since 4.0.0
+ * @category re-exports
  */
 export * as AtomRef from "effect/reactivity/AtomRef"
 
 /**
- * Re-exports the HTTP API atom helpers.
- *
  * @stability unstable
- * @category re-exports
  * @since 4.0.0
+ * @category re-exports
  */
 export * as AtomHttpApi from "effect/reactivity/AtomHttpApi"
 
 /**
- * Re-exports the RPC atom helpers.
- *
  * @stability unstable
- * @category re-exports
  * @since 4.0.0
+ * @category re-exports
  */
 export * as AtomRpc from "effect/reactivity/AtomRpc"
 
 /**
- * Vue injection key for an atom registry.
- *
- * @stability unstable
- * @category symbols
  * @since 4.0.0
+ * @category symbols
  */
 export const registryKey = Symbol.for("@effect/atom-vue/registryKey") as InjectionKey<AtomRegistry.AtomRegistry>
 
 /**
- * Fallback atom registry used when no registry is provided.
- *
- * @stability unstable
- * @category constants
  * @since 4.0.0
+ * @category constants
  */
 export const defaultRegistry: AtomRegistry.AtomRegistry = AtomRegistry.make()
 
 /**
- * Returns the injected atom registry, falling back to the default registry.
- *
- * @stability unstable
- * @category accessors
  * @since 4.0.0
+ * @category accessors
  */
 export const injectRegistry = (): AtomRegistry.AtomRegistry => {
   return inject(registryKey, defaultRegistry)
@@ -109,11 +85,8 @@ const useAtomValueRef = <A extends Atom.Atom<any>>(atom: () => A) => {
 }
 
 /**
- * Returns a reactive atom value and a setter with the requested write mode.
- *
- * @stability unstable
- * @category composables
  * @since 4.0.0
+ * @category composables
  */
 export const useAtom = <R, W, Mode extends "value" | "promise" | "promiseExit" = never>(
   atom: () => Atom.Writable<R, W>,
@@ -135,11 +108,8 @@ export const useAtom = <R, W, Mode extends "value" | "promise" | "promiseExit" =
 }
 
 /**
- * Returns a read-only Vue ref that tracks an atom value.
- *
- * @stability unstable
- * @category composables
  * @since 4.0.0
+ * @category composables
  */
 export const useAtomValue = <A>(atom: () => Atom.Atom<A>): Readonly<Ref<A>> => useAtomValueRef(atom)[0]
 
@@ -192,11 +162,8 @@ function setAtom<R, W, Mode extends "value" | "promise" | "promiseExit" = never>
 }
 
 /**
- * Returns a setter for an atom, mounting it for the lifetime of the composable.
- *
- * @stability unstable
- * @category composables
  * @since 4.0.0
+ * @category composables
  */
 export const useAtomSet = <
   R,
@@ -234,11 +201,8 @@ export const useAtomSet = <
 }
 
 /**
- * Returns a read-only Vue ref that tracks an atom reference.
- *
- * @stability unstable
- * @category composables
  * @since 4.0.0
+ * @category composables
  */
 export const useAtomRef = <A>(atomRef: () => AtomRef.ReadonlyRef<A>): Readonly<Ref<A>> => {
   const atomRefRef = computed(atomRef)

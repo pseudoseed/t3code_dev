@@ -7,7 +7,6 @@
  * services and request options, and defines a lower-level `node:http` /
  * `node:https` client with scoped HTTP agent layers.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Context from "effect/Context"
@@ -52,7 +51,6 @@ export {
    * Use to access or override the fetch implementation used by the Node
    * fetch-based HTTP client.
    *
-   * @stability unstable
    * @category services
    * @since 4.0.0
    */
@@ -60,7 +58,6 @@ export {
   /**
    * Layer that provides the fetch-based HTTP client implementation.
    *
-   * @stability unstable
    * @category layers
    * @since 4.0.0
    */
@@ -72,7 +69,6 @@ export {
    *
    * Use to provide default fetch request options for Node HTTP requests.
    *
-   * @stability unstable
    * @category services
    * @since 4.0.0
    */
@@ -388,7 +384,6 @@ export const layerUndici: Layer.Layer<Client.HttpClient> = Layer.provide(layerUn
  * Service tag for the paired Node `http` and `https` agents used by the
  * node:http-backed HTTP client.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -401,7 +396,6 @@ export class HttpAgent extends Context.Service<HttpAgent, {
  * Acquires Node `http` and `https` agents with the supplied options and
  * destroys both agents when the enclosing scope is finalized.
  *
- * @stability unstable
  * @category resource management
  * @since 4.0.0
  */
@@ -422,7 +416,6 @@ export const makeAgent = (options?: Https.AgentOptions): Effect.Effect<HttpAgent
  * Provides the `HttpAgent` service using scoped Node `http` and `https`
  * agents configured with the supplied options.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -434,7 +427,6 @@ export const layerAgentOptions: (options?: Https.AgentOptions | undefined) => La
  * Provides the `HttpAgent` service using default scoped Node `http` and
  * `https` agents.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -445,7 +437,6 @@ export const layerAgent: Layer.Layer<HttpAgent> = layerAgentOptions()
  * current `HttpAgent`, streaming request bodies, and wrapping Node responses
  * as `HttpClientResponse` values.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -665,7 +656,6 @@ class NodeHttpResponse extends NodeHttpIncomingMessage<Error.HttpClientError> im
  * Provides a node:http-backed `HttpClient` using the current `HttpAgent`
  * service.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -679,7 +669,6 @@ export const layerNodeHttpNoAgent: Layer.Layer<
  * Provides a node:http-backed `HttpClient` together with default scoped Node
  * `http` and `https` agents.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

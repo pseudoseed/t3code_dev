@@ -7,7 +7,6 @@
  * mostly useful when defining generic helpers or type classes that should work
  * across several data types.
  *
- * @stability stable
  * @since 2.0.0
  */
 import type * as Types from "./Types.ts"
@@ -48,7 +47,6 @@ import type * as Types from "./Types.ts"
  * const value: HKT.Kind<NonNullable<LinkedTypeLambda>, never, never, never, string> = identity.of("ok")
  * ```
  *
- * @stability stable
  * @category symbols
  * @since 2.0.0
  */
@@ -91,7 +89,6 @@ export declare const URI: unique symbol
  * const witness: keyof Monad<HKT.TypeLambda> = "flatMap"
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -137,7 +134,6 @@ export interface TypeClass<F extends TypeLambda> {
  * const witness: HKT.Kind<ArrayTypeLambda, never, never, never, string> = ["ok"]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -203,7 +199,6 @@ export interface TypeLambda {
  * const witness: OptionString = Option.some("ok")
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */

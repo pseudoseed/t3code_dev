@@ -6,7 +6,6 @@
  * `layerWin32` provide fixed POSIX and Windows variants. All three layers also
  * include helpers for converting between file paths and file URLs.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Effect from "effect/Effect"
@@ -43,7 +42,6 @@ const fileUrlOps = (windows: boolean | undefined) => ({
  * Provides the `Path` service using Node's POSIX path implementation plus
  * file URL conversion helpers.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -57,7 +55,6 @@ export const layerPosix: Layer.Layer<Path> = Layer.succeed(Path)({
  * Provides the `Path` service using Node's Windows path implementation plus
  * file URL conversion helpers.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -71,7 +68,6 @@ export const layerWin32: Layer.Layer<Path> = Layer.succeed(Path)({
  * Provides the default `Path` service using the host platform's Node path
  * implementation plus file URL conversion helpers.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

@@ -6,7 +6,6 @@
  * closes. This module includes scoped runtime constructors plus helpers for
  * adding, clearing, running, counting, joining, and waiting for managed fibers.
  *
- * @stability stable
  * @since 2.0.0
  */
 import * as Cause from "./Cause.ts"
@@ -51,7 +50,6 @@ const TypeId = "~effect/FiberSet"
  * actual // => 0
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -86,7 +84,6 @@ export interface FiberSet<out A = unknown, out E = unknown>
  * actual // => [true, false]
  * ```
  *
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -151,7 +148,6 @@ const makeUnsafe = <A, E>(
  * actual // => 2
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -197,7 +193,6 @@ export const make = <A = unknown, E = unknown>(): Effect.Effect<FiberSet<A, E>, 
  * actual // => ["hello", "world"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -248,7 +243,6 @@ export const makeRuntime = <R = never, A = unknown, E = unknown>(): Effect.Effec
  * actual // => ["hello", "world"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 3.13.0
  */
@@ -306,7 +300,6 @@ const isInternalInterruption = Filter.toPredicate(Filter.compose(
  * actual // => 1
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -379,7 +372,6 @@ export const addUnsafe: {
  * actual // => 1
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -435,7 +427,6 @@ export const add: {
  * actual // => [2, 0]
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -482,7 +473,6 @@ const constInterruptedFiber = (function() {
  * actual // => ["hello", "world"]
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -564,7 +554,6 @@ const runImpl = <A, E, R, XE extends E, XA extends A>(
  * actual // => 0
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -635,7 +624,6 @@ export const runtime: <A, E>(
  *
  * @see {@link runtime} for a runner that returns the forked `Fiber`
  *
- * @stability stable
  * @category combinators
  * @since 3.13.0
  */
@@ -694,7 +682,6 @@ export const runtimePromise = <A, E>(self: FiberSet<A, E>): <R = never>() => Eff
  * actual // => [0, 2]
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -722,7 +709,6 @@ export const size = <A, E>(self: FiberSet<A, E>): Effect.Effect<number> =>
  * actual // => Exit.fail("error")
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -753,7 +739,6 @@ export const join = <A, E>(self: FiberSet<A, E>): Effect.Effect<void, E> =>
  * actual // => 0
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 3.13.0
  */

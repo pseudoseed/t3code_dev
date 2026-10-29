@@ -8,7 +8,6 @@
  * orders, tools for reversing and combining comparisons, tuple and struct
  * helpers, comparison predicates, clamping, and reducer support.
  *
- * @stability stable
  * @since 2.0.0
  */
 import { dual } from "./Function.ts"
@@ -48,7 +47,6 @@ import * as Reducer from "./Reducer.ts"
  *
  * @see {@link make} to create an order from a comparison function
  * @see {@link Ordering} for the result type of comparisons
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -68,7 +66,6 @@ export interface Order<in A> {
  * This is type-level only, has no runtime representation, and is used
  * internally by the Effect type system.
  *
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */
@@ -108,7 +105,6 @@ export interface OrderTypeLambda extends TypeLambda {
  *
  * @see {@link mapInput} to transform an order by mapping the input type
  * @see {@link combine} to combine multiple orders
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -142,7 +138,6 @@ export function make<A>(
  *
  * @see {@link mapInput} to compare objects by a string property
  * @see {@link Struct} to combine with other orders for struct comparison
- * @stability stable
  * @category instances
  * @since 4.0.0
  */
@@ -176,7 +171,6 @@ export const String: Order<string> = make((self, that) => self < that ? -1 : 1)
  *
  * @see {@link mapInput} to compare objects by a number property
  * @see {@link BigInt} for bigint comparisons
- * @stability stable
  * @category instances
  * @since 4.0.0
  */
@@ -209,7 +203,6 @@ export const Number: Order<number> = make((self, that) => {
  * ```
  *
  * @see {@link mapInput} to compare objects by a boolean property
- * @stability stable
  * @category instances
  * @since 4.0.0
  */
@@ -239,7 +232,6 @@ export const Boolean: Order<boolean> = make((self, that) => self < that ? -1 : 1
  *
  * @see {@link Number} for regular number comparisons
  * @see {@link mapInput} to compare objects by a bigint property
- * @stability stable
  * @category instances
  * @since 4.0.0
  */
@@ -271,7 +263,6 @@ export const BigInt: Order<bigint> = make((self, that) => self < that ? -1 : 1)
  * ```
  *
  * @see {@link combine} to combine orders for multi-criteria comparison
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -318,7 +309,6 @@ export function flip<A>(O: Order<A>): Order<A> {
  *
  * @see {@link combineAll} to combine multiple orders from a collection
  * @see {@link mapInput} to transform orders to work with different types
- * @stability stable
  * @category combining
  * @since 2.0.0
  */
@@ -359,7 +349,6 @@ export const combine: {
  * ```
  *
  * @see {@link combine} to combine with other orders
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -405,7 +394,6 @@ export function alwaysEqual<A>(): Order<A> {
  *
  * @see {@link combine} to combine two orders
  * @see {@link makeReducer} to create a reducer for combining orders
- * @stability stable
  * @category combining
  * @since 2.0.0
  */
@@ -452,7 +440,6 @@ export function combineAll<A>(collection: Iterable<Order<A>>): Order<A> {
  *
  * @see {@link combine} to combine mapped orders for multi-criteria comparison
  * @see {@link Struct} to create orders for structs with multiple fields
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -491,7 +478,6 @@ export const mapInput: {
  * ```
  *
  * @see {@link mapInput} to compare objects by a date property
- * @stability stable
  * @category instances
  * @since 2.0.0
  */
@@ -523,7 +509,6 @@ export const Date: Order<Date> = mapInput(Number, (date) => date.getTime())
  * ```
  *
  * @see {@link Array} to compare arrays with length consideration
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -589,7 +574,6 @@ export {
    * ```
    *
    * @see {@link Tuple} for type-safe tuple ordering
-   * @stability stable
    * @category combinators
    * @since 4.0.0
    */
@@ -630,7 +614,6 @@ export {
  *
  * @see {@link combine} to combine orders manually
  * @see {@link mapInput} to extract and compare by a single property
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -675,7 +658,6 @@ export function Struct<const R extends { readonly [x: string]: Order<any> }>(
  *
  * @see {@link isLessThanOrEqualTo} for non-strict less than or equal
  * @see {@link isGreaterThan} for strict greater than
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -710,7 +692,6 @@ export const isLessThan = <A>(O: Order<A>): {
  *
  * @see {@link isGreaterThanOrEqualTo} for non-strict greater than or equal
  * @see {@link isLessThan} for strict less than
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -745,7 +726,6 @@ export const isGreaterThan = <A>(O: Order<A>): {
  *
  * @see {@link isLessThan} for strict less than
  * @see {@link isGreaterThan} for strict greater than
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -781,7 +761,6 @@ export const isLessThanOrEqualTo = <A>(O: Order<A>): {
  *
  * @see {@link isGreaterThan} for strict greater than
  * @see {@link isLessThanOrEqualTo} for less than or equal
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -817,7 +796,6 @@ export const isGreaterThanOrEqualTo = <A>(O: Order<A>): {
  *
  * @see {@link max} for the maximum of two values
  * @see {@link clamp} to clamp a value between min and max
- * @stability stable
  * @category comparisons
  * @since 2.0.0
  */
@@ -853,7 +831,6 @@ export const min = <A>(O: Order<A>): {
  *
  * @see {@link min} for the minimum of two values
  * @see {@link clamp} to clamp a value between min and max
- * @stability stable
  * @category comparisons
  * @since 2.0.0
  */
@@ -892,7 +869,6 @@ export const max = <A>(O: Order<A>): {
  * @see {@link min} for the minimum of two values
  * @see {@link max} for the maximum of two values
  * @see {@link isBetween} to check if a value is within a range
- * @stability stable
  * @category comparisons
  * @since 2.0.0
  */
@@ -946,7 +922,6 @@ export const clamp = <A>(O: Order<A>): {
  * @see {@link clamp} to clamp a value to a range
  * @see {@link isLessThanOrEqualTo} for less than or equal check
  * @see {@link isGreaterThanOrEqualTo} for greater than or equal check
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -997,7 +972,6 @@ export const isBetween = <A>(O: Order<A>): {
  * @see {@link combine} to combine two orders
  * @see {@link combineAll} to combine multiple orders
  * @see {@link Reducer} for reducing orders as a collection operation
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */

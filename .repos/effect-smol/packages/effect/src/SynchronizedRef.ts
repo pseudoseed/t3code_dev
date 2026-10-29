@@ -8,7 +8,6 @@
  * from concurrent updates. This module includes constructors, reads, writes,
  * updates, partial updates, and effectful update helpers.
  *
- * @stability stable
  * @since 2.0.0
  */
 import * as Effect from "./Effect.ts"
@@ -33,7 +32,6 @@ const TypeId = "~effect/SynchronizedRef"
  *
  * @see {@link Ref.Ref} for a plain `Ref` when updates do not need effectful synchronization
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -62,7 +60,6 @@ const Proto = {
  * Use when you need synchronous `SynchronizedRef` construction outside an
  * Effect workflow.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -89,7 +86,6 @@ export const makeUnsafe = <A>(value: A): SynchronizedRef<A> => {
  * @see {@link makeUnsafe} for synchronous construction when the caller controls safe initialization
  * @see {@link Ref.make} for a plain `Ref` when updates do not need effectful synchronization
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -106,7 +102,6 @@ export const make = <A>(value: A): Effect.Effect<SynchronizedRef<A>> => Effect.s
  *
  * @see {@link get} for the Effect-wrapped read when composing inside Effect programs
  *
- * @stability stable
  * @category getters
  * @since 4.0.0
  */
@@ -122,7 +117,6 @@ export const getUnsafe = <A>(self: SynchronizedRef<A>): A => self.backing.ref.cu
  *
  * @see {@link getUnsafe} for synchronous reads when the caller controls safe access outside `Effect`
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -141,7 +135,6 @@ export const get = <A>(self: SynchronizedRef<A>): Effect.Effect<A> => Effect.syn
  * @see {@link setAndGet} for setting a value and returning the new value
  * @see {@link getAndUpdate} for deriving the new value from the current value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -167,7 +160,6 @@ export const getAndSet: {
  * @see {@link updateAndGet} for updating and returning the new value
  * @see {@link getAndUpdateEffect} for effectful updates that return the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -195,7 +187,6 @@ export const getAndUpdate: {
  * @see {@link modifyEffect} for effectful updates with a custom return value
  * @see {@link getAndUpdateSomeEffect} for conditional effectful updates that return the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -227,7 +218,6 @@ export const getAndUpdateEffect: {
  * @see {@link getAndUpdate} for always applying a pure update
  * @see {@link updateSome} for applying a pure conditional update without returning the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -253,7 +243,6 @@ export const getAndUpdateSome: {
  * @see {@link getAndUpdateSome} for the pure conditional variant
  * @see {@link updateSomeEffect} for effectful conditional updates without returning the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -288,7 +277,6 @@ export const getAndUpdateSomeEffect: {
  * @see {@link modifySome} for deriving a result and optionally updating the stored value
  * @see {@link updateAndGet} for returning the new stored value instead of a separate result
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -313,7 +301,6 @@ export const modify: {
  * @see {@link modify} for the pure variant
  * @see {@link updateEffect} for effectfully storing a new value without a separate result
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -344,7 +331,6 @@ export const modifyEffect: {
  * @see {@link modify} for always storing a new value
  * @see {@link updateSome} for optional updates without a separate return value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -377,7 +363,6 @@ export const modifySome: {
  * @see {@link modifySome} for the pure variant
  * @see {@link updateSomeEffect} for effectful optional updates without a separate return value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -419,7 +404,6 @@ export const modifySomeEffect: {
  * @see {@link setAndGet} for replacing the value when the new value should be returned
  * @see {@link update} for deriving the next value from the current value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -443,7 +427,6 @@ export const set: {
  * @see {@link set} for setting without returning a value
  * @see {@link getAndSet} for setting while returning the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -469,7 +452,6 @@ export const setAndGet: {
  * @see {@link updateAndGet} for returning the new stored value
  * @see {@link getAndUpdate} for returning the previous stored value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -497,7 +479,6 @@ export const update: {
  * @see {@link modifyEffect} for returning a separate result while storing a new value
  * @see {@link updateSomeEffect} for effectfully applying only some state transitions
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -527,7 +508,6 @@ export const updateEffect: {
  * @see {@link update} for updating without returning the new value
  * @see {@link getAndUpdate} for updating while returning the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -552,7 +532,6 @@ export const updateAndGet: {
  * @see {@link updateEffect} for effectful updates without returning the new value
  * @see {@link updateAndGet} for the pure variant
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -583,7 +562,6 @@ export const updateAndGetEffect: {
  * @see {@link update} for always applying a pure update
  * @see {@link updateSomeAndGet} for returning the resulting current value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -608,7 +586,6 @@ export const updateSome: {
  * @see {@link updateSome} for the pure conditional variant
  * @see {@link updateEffect} for effectful updates that always store a new value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -644,7 +621,6 @@ export const updateSomeEffect: {
  * @see {@link updateSome} for conditional updates without returning a value
  * @see {@link updateAndGet} for always applying a pure update and returning the new value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -670,7 +646,6 @@ export const updateSomeAndGet: {
  * @see {@link updateSomeEffect} for effectful conditional updates without returning a value
  * @see {@link updateAndGetEffect} for effectful updates that always store and return a new value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */

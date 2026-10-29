@@ -1,7 +1,6 @@
 /**
  * Deno helper for running a root Effect program.
  *
- * @stability unstable
  * @since 4.0.0
  */
 
@@ -11,7 +10,6 @@ import * as Runtime from "effect/Runtime"
 /**
  * Run an Effect as the entrypoint to a Deno application.
  *
- * @stability unstable
  * @category running
  * @since 4.0.0
  */

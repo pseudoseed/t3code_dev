@@ -5,7 +5,6 @@
  * the browser `WebSocket` constructor. `layerWebSocketConstructor` provides
  * only the browser-backed constructor service for lower-level socket code.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type * as Duration from "effect/Duration"
@@ -33,7 +32,6 @@ import * as Socket from "effect/socket/Socket"
  *
  * @see {@link layerWebSocketConstructor} for providing only the browser constructor service
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -49,7 +47,6 @@ export const layerWebSocket = (url: string, options?: {
 /**
  * Layer that provides a `WebSocketConstructor` service backed by `globalThis.WebSocket`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

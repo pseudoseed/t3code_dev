@@ -8,7 +8,6 @@
  * helpers for reusing carrier instances such as `Equivalence`, `Order`,
  * `Combiner`, and `Reducer`.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type * as Combiner from "./Combiner.ts"
@@ -55,7 +54,6 @@ const TypeId = "~effect/Newtype"
  * @see {@link makeIso} — create an iso to wrap and unwrap
  * @see {@link value} — unwrap a newtype value
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -75,7 +73,6 @@ export interface Newtype<in out Key extends string, out Carrier> {
  * Use to access generic constraints and type-level utilities for `Newtype`
  * values.
  *
- * @stability unstable
  * @since 4.0.0
  */
 export declare namespace Newtype {
@@ -147,7 +144,6 @@ export declare namespace Newtype {
  *
  * @see {@link makeIso} — two-way conversion (wrap and unwrap)
  *
- * @stability unstable
  * @category getters
  * @since 4.0.0
  */
@@ -182,7 +178,6 @@ export const value: <N extends Newtype.Any>(newtype: N) => Newtype.Carrier<N> = 
  *
  * @see {@link value} — unwrap only
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -220,7 +215,6 @@ export function makeIso<N extends Newtype.Any>(): Optic.Iso<N, Newtype.Carrier<N
  *
  * @see {@link makeOrder} — lift an `Order` for the carrier
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -255,7 +249,6 @@ export const makeEquivalence: <N extends Newtype.Any>(
  *
  * @see {@link makeEquivalence} — lift an `Equivalence` for the carrier
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -290,7 +283,6 @@ export const makeOrder: <N extends Newtype.Any>(order: Order.Order<Newtype.Carri
  *
  * @see {@link makeReducer} — lift a `Reducer` for the carrier
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -327,7 +319,6 @@ export const makeCombiner: <N extends Newtype.Any>(
  *
  * @see {@link makeCombiner} — lift a `Combiner` for the carrier
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

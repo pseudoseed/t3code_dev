@@ -4,7 +4,6 @@ import {
   Duration,
   Equivalence,
   HashMap,
-  HashSet,
   Option,
   Redacted,
   Result,
@@ -538,15 +537,6 @@ describe("toEquivalence", () => {
     assertFalse(equivalence(new Set([0, 1]), new Set([2, 2])))
   })
 
-  it.each([0, 1])("ReadonlySet rejects a proper subset of size %i in both orders", (size) => {
-    const equivalence = Schema.toEquivalence(Schema.ReadonlySet(Modulo2))
-    const subset = new Set([0, 1].slice(0, size))
-    const superset = new Set([0, 1])
-
-    assertFalse(equivalence(superset, subset))
-    assertFalse(equivalence(subset, superset))
-  })
-
   it("ReadonlyMap(Modulo2, Modulo3)", () => {
     const schema = Schema.ReadonlyMap(Modulo2, Modulo3)
     const equivalence = Schema.toEquivalence(schema)
@@ -563,25 +553,6 @@ describe("toEquivalence", () => {
     assertFalse(equivalence(new Map([[0, 1], [1, 2]]), new Map([[0, 1], [2, 2]])))
   })
 
-  it.each([0, 1])("ReadonlyMap rejects a proper subset of size %i in both orders", (size) => {
-    const equivalence = Schema.toEquivalence(Schema.ReadonlyMap(Modulo2, Modulo3))
-    const entries: Array<[number, number]> = [[0, 1], [1, 2]]
-    const subset = new Map(entries.slice(0, size))
-    const superset = new Map(entries)
-
-    assertFalse(equivalence(superset, subset))
-    assertFalse(equivalence(subset, superset))
-  })
-
-  it.each([0, 1])("HashSet rejects a proper subset of size %i in both orders", (size) => {
-    const equivalence = Schema.toEquivalence(Schema.HashSet(Modulo2))
-    const subset = HashSet.fromIterable([0, 1].slice(0, size))
-    const superset = HashSet.make(0, 1)
-
-    assertFalse(equivalence(superset, subset))
-    assertFalse(equivalence(subset, superset))
-  })
-
   it("HashMap(Modulo2, Modulo3)", () => {
     const schema = Schema.HashMap(Modulo2, Modulo3)
     const equivalence = Schema.toEquivalence(schema)
@@ -596,16 +567,6 @@ describe("toEquivalence", () => {
     assertFalse(equivalence(HashMap.make([0, 1]), HashMap.make([0, 2])))
     assertFalse(equivalence(HashMap.make([0, 1], [1, 2]), HashMap.make([0, 1], [1, 3])))
     assertFalse(equivalence(HashMap.make([0, 1], [1, 2]), HashMap.make([0, 1], [2, 2])))
-  })
-
-  it.each([0, 1])("HashMap rejects a proper subset of size %i in both orders", (size) => {
-    const equivalence = Schema.toEquivalence(Schema.HashMap(Modulo2, Modulo3))
-    const entries: Array<[number, number]> = [[0, 1], [1, 2]]
-    const subset = HashMap.fromIterable(entries.slice(0, size))
-    const superset = HashMap.fromIterable(entries)
-
-    assertFalse(equivalence(superset, subset))
-    assertFalse(equivalence(subset, superset))
   })
 
   it("Duration", () => {

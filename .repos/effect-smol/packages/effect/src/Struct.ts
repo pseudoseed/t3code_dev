@@ -8,7 +8,6 @@
  * list of keys. The module also includes type-level helpers for simplifying and
  * merging object shapes.
  *
- * @stability stable
  * @since 2.0.0
  */
 
@@ -47,7 +46,6 @@ import * as Reducer from "./Reducer.ts"
  *
  * @see {@link Mutable} – also flattens but removes `readonly`
  * @see {@link Assign} – merges two types with right-side precedence
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -80,7 +78,6 @@ export type Simplify<T> = { [K in keyof T]: T[K] } & {}
  * ```
  *
  * @see {@link Simplify} – flattens intersections without removing `readonly`
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -114,7 +111,6 @@ export type Mutable<T> = { -readonly [K in keyof T]: T[K] } & {}
  *
  * @see {@link assign} – the runtime equivalent
  * @see {@link Simplify} – flatten the resulting intersection
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -141,7 +137,6 @@ export type Assign<T, U> = Simplify<keyof T & keyof U extends never ? T & U : Om
  *
  * @see {@link keys} – list all string keys of a struct
  * @see {@link pick} – extract multiple properties into a new struct
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -175,7 +170,6 @@ export const get: {
  *
  * @see {@link get} – access a single key's value
  * @see {@link pick} – select a subset of keys into a new struct
- * @stability stable
  * @category getters
  * @since 3.6.0
  */
@@ -204,7 +198,6 @@ export const keys = <S extends object>(self: S): Array<(keyof S) & string> =>
  *
  * @see {@link omit} – the inverse (exclude keys instead)
  * @see {@link get} – extract a single value
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -241,7 +234,6 @@ export const pick: {
  * ```
  *
  * @see {@link pick} – the inverse (keep only specified keys)
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -281,7 +273,6 @@ export const omit: {
  *
  * @see {@link Assign} – the type-level equivalent
  * @see {@link evolve} – transform individual values instead of replacing them
- * @stability stable
  * @category combining
  * @since 4.0.0
  */
@@ -332,7 +323,6 @@ type Evolved<S, E> = Simplify<
  * @see {@link evolveKeys} – transform keys instead of values
  * @see {@link evolveEntries} – transform both keys and values
  * @see {@link map} – apply the same transformation to all values
- * @stability stable
  * @category transforming
  * @since 2.0.0
  */
@@ -382,7 +372,6 @@ type KeyEvolved<S, E> = Simplify<
  * @see {@link renameKeys} – rename keys with a static mapping
  * @see {@link evolve} – transform values instead of keys
  * @see {@link evolveEntries} – transform both keys and values
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -438,7 +427,6 @@ type EntryEvolved<S, E> = {
  *
  * @see {@link evolve} – transform values only
  * @see {@link evolveKeys} – transform keys only
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -478,7 +466,6 @@ export const evolveEntries: {
  *
  * @see {@link evolveKeys} – rename keys using functions
  * @see {@link evolveEntries} – rename keys and transform values
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -525,7 +512,6 @@ export const renameKeys: {
  * ```
  *
  * @see {@link makeOrder} – create an `Order` for structs
- * @stability stable
  * @category instances
  * @since 4.0.0
  */
@@ -560,7 +546,6 @@ export const makeEquivalence = Equivalence.Struct
  * ```
  *
  * @see {@link makeEquivalence} – create an `Equivalence` for structs
- * @stability stable
  * @category ordering
  * @since 4.0.0
  */
@@ -596,7 +581,6 @@ export const makeOrder = order.Struct
  * @see {@link Apply} – apply a Lambda to a concrete type
  * @see {@link lambda} – create a runtime lambda value
  * @see {@link map} – use a lambda to transform all struct values
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -635,7 +619,6 @@ export interface Lambda {
  * ```
  *
  * @see {@link Lambda} – the base interface
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -674,7 +657,6 @@ export type Apply<L extends Lambda, V> = (L & { readonly "~lambda.in": V })["~la
  *
  * @see {@link Lambda} – the type-level interface
  * @see {@link map} – apply a lambda to all struct values
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -712,7 +694,6 @@ export const lambda = <L extends (a: any) => any>(
  * @see {@link mapPick} – apply a lambda only to selected keys
  * @see {@link mapOmit} – apply a lambda to all keys except selected ones
  * @see {@link evolve} – apply different functions to different keys
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -759,7 +740,6 @@ export const map: {
  *
  * @see {@link map} – apply a lambda to all keys
  * @see {@link mapOmit} – apply a lambda to all keys except selected ones
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -814,7 +794,6 @@ export const mapPick: {
  *
  * @see {@link map} – apply a lambda to all keys
  * @see {@link mapPick} – apply a lambda only to selected keys
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -902,7 +881,6 @@ function buildStruct<
  * ```
  *
  * @see {@link makeReducer} – like `makeCombiner` but with an initial value
- * @stability stable
  * @category combining
  * @since 4.0.0
  */
@@ -960,7 +938,6 @@ export function makeCombiner<A>(
  * ```
  *
  * @see {@link makeCombiner} – like `makeReducer` but without an initial value
- * @stability stable
  * @category folding
  * @since 4.0.0
  */
@@ -995,7 +972,6 @@ export function makeReducer<A>(
  * Struct.Record(["a", "b"], "value") // => { a: "value", b: "value" }
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */

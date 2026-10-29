@@ -9,7 +9,6 @@
  * constructors for pure or effectful conversions, and common conversions used
  * by the Schema module.
  *
- * @stability stable
  * @since 4.0.0
  */
 
@@ -70,7 +69,6 @@ import * as SchemaIssue from "./SchemaIssue.ts"
  *
  * @see {@link Transformation} — value-level bidirectional transformation
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -90,7 +88,6 @@ export interface Middleware<in out T, in out E, RDE, RDT, RET, REE> extends Pipe
 /**
  * Constructs schema middleware from its decode and encode functions.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -175,7 +172,6 @@ const TypeId = "~effect/SchemaTransformation/Transformation"
  * @see {@link transformEffect} — construct from effectful functions
  * @see {@link Middleware} — effect-pipeline-level alternative
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -190,7 +186,6 @@ export interface Transformation<in out T, in out E, RD = never, RE = never> exte
 /**
  * Constructs a bidirectional schema transformation from its decode and encode getters.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -244,7 +239,6 @@ export const Transformation: new<T, E, RD = never, RE = never>(
  * Schema.decodeUnknownSync(schema)("  HELLO  ") // => "hello"
  * ```
  *
- * @stability stable
  * @category combining
  * @since 4.0.0
  */
@@ -290,7 +284,6 @@ export const composeTransformation: {
  * @see {@link Transformation}
  * @see {@link makeTransformation}
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -328,7 +321,6 @@ export function isTransformation(u: unknown): u is Transformation<any, any, unkn
  * @see {@link transformEffect} — constructor from effectful functions
  * @see {@link Transformation}
  *
- * @stability stable
  * @category constructors
  * @since 3.10.0
  */
@@ -382,7 +374,6 @@ export const makeTransformation = <T, E, RD = never, RE = never>(options: {
  * @see {@link transformOptional} — for transformations that handle missing keys
  * @see {@link makeTransformation} — for transformations from existing Getters
  *
- * @stability stable
  * @category transforming
  * @since 3.10.0
  */
@@ -432,7 +423,6 @@ export function transformEffect<T, E, RD = never, RE = never>(options: {
  * @see {@link transformOptional} — for transformations that handle missing keys
  * @see {@link passthrough} — when no conversion is needed
  *
- * @stability stable
  * @category transforming
  * @since 3.10.0
  */
@@ -486,7 +476,6 @@ export function transform<T, E>(options: {
  * @see {@link optionFromOptionalKey} — built-in for the common optional-key-to-Option pattern
  * @see {@link optionFromOptional} — built-in for optional (undefined) to Option
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -530,7 +519,6 @@ export function transformOptional<T, E>(options: {
  * @see {@link toUpperCase}
  * @see {@link snakeToCamel}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -570,7 +558,6 @@ export function trim(): Transformation<string, string> {
  * @see {@link trim}
  * @see {@link toLowerCase}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -609,7 +596,6 @@ export function snakeToCamel(): Transformation<string, string> {
  * @see {@link toUpperCase}
  * @see {@link trim}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -648,7 +634,6 @@ export function toLowerCase(): Transformation<string, string> {
  * @see {@link toLowerCase}
  * @see {@link trim}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -687,7 +672,6 @@ export function toUpperCase(): Transformation<string, string> {
  * @see {@link uncapitalize}
  * @see {@link toUpperCase}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -726,7 +710,6 @@ export function capitalize(): Transformation<string, string> {
  * @see {@link capitalize}
  * @see {@link toLowerCase}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -770,7 +753,6 @@ export function uncapitalize(): Transformation<string, string> {
  * @see {@link trim}
  * @see {@link snakeToCamel}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -820,7 +802,6 @@ const passthrough_ = new Transformation(
  * @see {@link passthroughSubtype}
  * @see {@link transform}
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -856,7 +837,6 @@ export function passthrough<T>(): Transformation<T, T> {
  * @see {@link passthrough}
  * @see {@link passthroughSubtype}
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -891,7 +871,6 @@ export function passthroughSupertype<T>(): Transformation<T, T> {
  * @see {@link passthrough}
  * @see {@link passthroughSupertype}
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -930,7 +909,6 @@ export function passthroughSubtype<T>(): Transformation<T, T> {
  * @see {@link bigintFromString}
  * @see {@link transform}
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */
@@ -968,7 +946,6 @@ export const numberFromString = new Transformation(
  * @see {@link numberFromString}
  * @see {@link transform}
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */
@@ -1005,7 +982,6 @@ export const bigintFromString = new Transformation(
  * @see {@link dateFromMillis}
  * @see {@link dateTimeUtcFromString}
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */
@@ -1047,7 +1023,6 @@ export const dateFromString: Transformation<globalThis.Date, string> = new Trans
  * @see {@link dateFromString}
  * @see {@link SchemaGetter.dateTimeUtcFromInput}
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */
@@ -1086,7 +1061,6 @@ export const dateFromMillis: Transformation<globalThis.Date, number> = new Trans
  * @see {@link durationFromNanos}
  * @see {@link durationFromMillis}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1137,7 +1111,6 @@ export const durationFromString: Transformation<Duration.Duration, string> = tra
  *
  * @see {@link durationFromMillis}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1184,7 +1157,6 @@ export const durationFromNanos: Transformation<Duration.Duration, bigint> = tran
  *
  * @see {@link durationFromNanos}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1196,7 +1168,6 @@ export const durationFromMillis: Transformation<Duration.Duration, number> = tra
 /**
  * Decodes a string into a `ByteSize` and encodes it as an exact string.
  *
- * @stability unstable
  * @category transforming
  * @since 4.0.0
  */
@@ -1219,7 +1190,6 @@ export const byteSizeFromString: Transformation<ByteSize.ByteSize, string> = tra
 /**
  * Decodes a non-negative bigint byte count into a `ByteSize`.
  *
- * @stability unstable
  * @category transforming
  * @since 4.0.0
  */
@@ -1242,7 +1212,6 @@ export const byteSizeFromBigInt: Transformation<ByteSize.ByteSize, bigint> = tra
 /**
  * Decodes a non-negative safe-integer byte count into a `ByteSize`.
  *
- * @stability unstable
  * @category transforming
  * @since 4.0.0
  */
@@ -1384,7 +1353,6 @@ export const defectFromJson = (options?: ErrorOptions) =>
  *
  * @see {@link optionFromNullishOr}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1427,7 +1395,6 @@ export function optionFromNullOr<T>(): Transformation<Option.Option<T>, T | null
  * @see {@link optionFromOptionalKey}
  * @see {@link optionFromOptional}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1472,7 +1439,6 @@ export function optionFromUndefinedOr<T>(): Transformation<Option.Option<T>, T |
  * @see {@link optionFromNullOr}
  * @see {@link optionFromUndefinedOr}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1523,7 +1489,6 @@ export function optionFromNullishOr<T>(
  * @see {@link optionFromUndefinedOr}
  * @see {@link transformOptional}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1570,7 +1535,6 @@ export function optionFromOptionalKey<T>(): Transformation<Option.Option<T>, T> 
  * @see {@link optionFromUndefinedOr}
  * @see {@link transformOptional}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1609,7 +1573,6 @@ export function optionFromOptional<T>(): Transformation<Option.Option<T>, T | un
  * @see {@link numberFromString}
  * @see {@link transformEffect}
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1642,7 +1605,6 @@ export const urlFromString: Transformation<URL, string> = transformEffect<URL, s
  * the string is not a valid `BigDecimal` representation. Encoding returns
  * `BigDecimal.format(bd)`.
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -1693,7 +1655,6 @@ export const bigDecimalFromString: Transformation<BigDecimal.BigDecimal, string>
  * @see {@link fromJsonString}
  * @see `Schema.Uint8ArrayFromBase64` - a ready-made schema wrapping this transformation.
  *
- * @stability stable
  * @category encoding
  * @since 4.0.0
  */
@@ -1730,7 +1691,6 @@ export const uint8ArrayFromBase64String: Transformation<Uint8Array<ArrayBufferLi
  * @see {@link uint8ArrayFromBase64String}
  * @see `Schema.StringFromBase64` - a ready-made schema wrapping this transformation.
  *
- * @stability stable
  * @category encoding
  * @since 4.0.0
  */
@@ -1766,7 +1726,6 @@ export const stringFromBase64String: Transformation<string, string> = new Transf
  * @see {@link stringFromBase64String}
  * @see `Schema.StringFromBase64Url` - a ready-made schema wrapping this transformation.
  *
- * @stability stable
  * @category encoding
  * @since 4.0.0
  */
@@ -1802,7 +1761,6 @@ export const stringFromBase64UrlString: Transformation<string, string> = new Tra
  * @see {@link stringFromBase64String}
  * @see `Schema.StringFromHex` - a ready-made schema wrapping this transformation.
  *
- * @stability stable
  * @category encoding
  * @since 4.0.0
  */
@@ -1840,7 +1798,6 @@ export const stringFromHexString: Transformation<string, string> = new Transform
  * @see {@link stringFromBase64String}
  * @see `Schema.StringFromUriComponent` - a ready-made schema wrapping this transformation.
  *
- * @stability stable
  * @category encoding
  * @since 4.0.0
  */
@@ -1880,7 +1837,6 @@ export const stringFromUriComponent: Transformation<string, string> = new Transf
  * @see {@link uint8ArrayFromBase64String}
  * @see {@link fromFormData}
  *
- * @stability stable
  * @category decoding
  * @since 4.0.0
  */
@@ -1926,7 +1882,6 @@ export function fromJsonString(options?: {
  * @see {@link fromURLSearchParams}
  * @see {@link fromJsonString}
  *
- * @stability stable
  * @category decoding
  * @since 4.0.0
  */
@@ -1964,7 +1919,6 @@ export const fromFormData = new Transformation<unknown, FormData>(
  * @see {@link fromFormData}
  * @see {@link fromJsonString}
  *
- * @stability stable
  * @category decoding
  * @since 4.0.0
  */
@@ -1990,7 +1944,6 @@ export const fromURLSearchParams = new Transformation<unknown, URLSearchParams>(
  * @see {@link timeZoneFromString} for IANA or offset string encodings
  * @see {@link timeZoneNamedFromString} for IANA named-zone strings
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -2018,7 +1971,6 @@ export const timeZoneOffsetFromNumber: Transformation<DateTime.TimeZone.Offset, 
  *
  * @see {@link timeZoneFromString} for time-zone strings that may be either IANA identifiers or offset strings
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -2060,7 +2012,6 @@ export const timeZoneNamedFromString: Transformation<DateTime.TimeZone.Named, st
  * @see {@link timeZoneNamedFromString} for IANA named-zone strings only
  * @see {@link timeZoneOffsetFromNumber} for fixed-offset zones encoded as numbers
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -2102,7 +2053,6 @@ export const timeZoneFromString: Transformation<DateTime.TimeZone, string> = tra
  * @see {@link dateFromString} for decoding into JavaScript `Date`
  * @see {@link dateTimeZonedFromString} for ISO strings that should preserve zoned date-time information
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */
@@ -2143,7 +2093,6 @@ export const dateTimeUtcFromString: Transformation<DateTime.Utc, string> = trans
  *
  * @see {@link dateTimeUtcFromString} for date-time strings that should decode to `DateTime.Utc` and encode as UTC ISO strings
  *
- * @stability stable
  * @category transforming
  * @since 4.0.0
  */

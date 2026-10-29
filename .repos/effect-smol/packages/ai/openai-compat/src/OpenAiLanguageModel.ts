@@ -1353,7 +1353,7 @@ const annotateRequest = (
   request: CreateResponseRequestJson
 ): void => {
   addGenAIAnnotations(span, {
-    provider: { name: "openai" },
+    system: "openai",
     operation: { name: "chat" },
     request: {
       model: request.model as string,
@@ -1363,6 +1363,7 @@ const annotateRequest = (
     },
     openai: {
       request: {
+        responseFormat: request.response_format?.type,
         serviceTier: request.service_tier as string | undefined
       }
     }

@@ -7,7 +7,6 @@
  * logger references, console routing helpers, built-in formatters, batching,
  * file logging, and layers for installing loggers.
  *
- * @stability stable
  * @since 2.0.0
  */
 import * as Array from "./Array.ts"
@@ -59,7 +58,6 @@ const TypeId = "~effect/Logger"
  * messages // => ["[Info] Hello World"]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -97,7 +95,6 @@ export interface Logger<in Message, out Output> extends Pipeable {
  * outputs // => [{ message: ["Processing request"], level: "Info", hasCause: false }]
  * ```
  *
- * @stability stable
  * @category options
  * @since 2.0.0
  */
@@ -124,7 +121,6 @@ export interface Options<out Message> {
  * Logger.isLogger({ log: () => {} }) // => false
  * ```
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -160,7 +156,6 @@ export const isLogger = (u: unknown): u is Logger<unknown, unknown> => Predicate
  * messages // => [["Hello from custom logger"]]
  * ```
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -184,7 +179,6 @@ export const CurrentLoggers: Context.Reference<ReadonlySet<Logger<unknown, any>>
  * @see {@link consolePretty} for the TTY-mode pretty console logger affected by this reference
  * @see {@link withConsoleError} for routing a specific formatter logger to `console.error`
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -220,7 +214,6 @@ export const LogToStderr: Context.Reference<boolean> = effect.LogToStderr
  * outputs // => [{ message: "HELLO" }]
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -266,7 +259,6 @@ export const map = dual<
  * await Effect.runPromise(program) // => ["Info: Hello World"]
  * ```
  *
- * @stability stable
  * @category logging
  * @since 2.0.0
  */
@@ -307,7 +299,6 @@ export const withConsoleLog = <Message, Output>(
  * await Effect.runPromise(program) // => ["ERROR: Database connection failed"]
  * ```
  *
- * @stability stable
  * @category logging
  * @since 2.0.0
  */
@@ -362,7 +353,6 @@ export const withConsoleError = <Message, Output>(
  * messages // => expected
  * ```
  *
- * @stability stable
  * @category logging
  * @since 3.8.0
  */
@@ -475,7 +465,6 @@ const format = (
  * outputs // => ["Info: Hello World"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -494,7 +483,6 @@ export const make: <Message, Output>(
  * Logger.isLogger(Logger.defaultLogger) // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -530,7 +518,6 @@ export const defaultLogger: Logger<unknown, void> = effect.defaultLogger
  * await Effect.runPromise(program) // => ["level=INFO message=\"Application started\""]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -566,7 +553,6 @@ export const formatSimple = effect.loggerMake(format(escapeDoubleQuotes))
  * await Effect.runPromise(program) // => ["level=INFO message=\"User login\""]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -602,7 +588,6 @@ export const formatLogFmt = effect.loggerMake(format(JSON.stringify, 0))
  * await Effect.runPromise(program) // => [{ message: "User action", level: "INFO" }]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -673,7 +658,6 @@ export const formatStructured: Logger<unknown, {
  * await Effect.runPromise(program) // => ["{\"message\":\"Server started\",\"level\":\"INFO\"}"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -712,7 +696,6 @@ export const formatJson = map(formatStructured, Formatter.formatJson)
  * flushed // => [["Event 1", "Event 2"]]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -737,16 +720,16 @@ export const batched = dual<
     readonly flush: (messages: Array<NoInfer<Output>>) => Effect.Effect<void>
   }
 ): Effect.Effect<Logger<Message, void>, never, Scope.Scope> =>
-  effect.suspend(() => {
+  effect.flatMap(effect.scope, (scope) => {
     let buffer: Array<Output> = []
-    const flush = effect.uninterruptible(effect.suspend(() => {
+    const flush = effect.suspend(() => {
       if (buffer.length === 0) {
         return effect.void
       }
       const arr = buffer
       buffer = []
       return options.flush(arr)
-    }))
+    })
 
     return effect.uninterruptibleMask((restore) =>
       restore(
@@ -756,12 +739,8 @@ export const batched = dual<
         )
       ).pipe(
         effect.forkDetach,
-        effect.flatMap((fiber) =>
-          effect.addFinalizer(() =>
-            // Wait for any in-flight flush before draining the remaining buffer.
-            effect.andThen(effect.fiberInterrupt(fiber), flush)
-          )
-        ),
+        effect.flatMap((fiber) => effect.scopeAddFinalizerExit(scope, () => effect.fiberInterrupt(fiber))),
+        effect.andThen(effect.addFinalizer(() => flush)),
         effect.as(
           effect.loggerMake((options) => {
             buffer.push(self.log(options))
@@ -816,7 +795,6 @@ export const batched = dual<
  *
  * @see {@link consolePrettyBrowser} for browser-specific implementation
  * @see {@link consolePrettyTty} for the TTY-mode implementation
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -854,7 +832,6 @@ export const consolePretty: (
  * ```
  *
  * @see {@link consolePretty} for the platform-independent implementation
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -907,7 +884,6 @@ export const consolePrettyBrowser: (
  * ```
  *
  * @see {@link consolePretty} for the platform-independent implementation
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -935,7 +911,6 @@ export const consolePrettyTty: (
  * Logger.isLogger(Logger.consoleLogFmt) // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -961,7 +936,6 @@ export const consoleLogFmt: Logger<unknown, void> = withConsoleLog(formatLogFmt)
  * Logger.isLogger(Logger.consoleStructured) // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -985,7 +959,6 @@ export const consoleStructured: Logger<unknown, void> = withConsoleLog(formatStr
  * Logger.isLogger(Logger.consoleJson) // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1016,7 +989,6 @@ export const consoleJson: Logger<unknown, void> = withConsoleLog(formatJson)
  * Effect.runSync(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1049,7 +1021,6 @@ export const tracerLogger: Logger<unknown, void> = effect.tracerLogger
  * messages // => [["Application started"]]
  * ```
  *
- * @stability stable
  * @category layers
  * @since 4.0.0
  */
@@ -1138,7 +1109,6 @@ export const layer = <
  * writes // => ["Application started"]
  * ```
  *
- * @stability unstable
  * @category logging
  * @since 4.0.0
  */

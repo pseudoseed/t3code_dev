@@ -4,7 +4,6 @@
  * and must be narrowed before it can be used as a symbol key, identifier, or
  * discriminant.
  *
- * @stability stable
  * @since 2.0.0
  */
 
@@ -26,7 +25,6 @@ import * as predicate from "./Predicate.ts"
  * Symbol.isSymbol("a") // => false
  * ```
  *
- * @stability stable
  * @category guards
  * @since 2.0.0
  */

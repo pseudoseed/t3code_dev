@@ -7,7 +7,6 @@
  * `keepAlive` options have no effect on Unix connections. A `CloseEvent` always
  * closes gracefully because Deno has no equivalent of Node's reset-on-close.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Arr from "effect/Array"
@@ -25,7 +24,6 @@ import * as Socket from "effect/socket/Socket"
 /**
  * Options for opening a TCP or Unix connection.
  *
- * @stability unstable
  * @category options
  * @since 4.0.0
  */
@@ -37,7 +35,6 @@ export type ConnectOptions = (Deno.ConnectOptions | Deno.UnixConnectOptions) & {
 /**
  * Options for opening a TCP or Unix connection.
  *
- * @stability unstable
  * @category options
  * @since 4.0.0
  */
@@ -48,7 +45,6 @@ export type TcpOptions = ConnectOptions & {
 /**
  * Service tag for the underlying Deno connection.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -70,7 +66,6 @@ export class Conn extends Context.Service<Conn, Deno.Conn>()(
  * `rejectUnauthorized` to `false` disables hostname verification only;
  * certificate-chain validation still applies.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -273,7 +268,6 @@ export const fromConn = <RO>(
  * `Deno.connect` promise. The scope finalizer closes a connection that arrives
  * after the timeout.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -335,7 +329,6 @@ export const makeTcp = (options: TcpOptions): Effect.Effect<Socket.Socket> => {
 /**
  * Creates a channel over a native Deno TCP or Unix connection.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -352,7 +345,6 @@ export const makeTcpChannel = <IE = never>(
 /**
  * Provides a socket by opening a native Deno TCP or Unix connection.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -364,7 +356,6 @@ export const layerTcp: (options: ConnectOptions) => Layer.Layer<
 /**
  * Creates a socket layer connected to a URL with Deno's global WebSocket.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -380,7 +371,6 @@ export const layerWebSocket = (url: string, options?: {
 /**
  * Provides the WebSocket constructor backed by `globalThis.WebSocket`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

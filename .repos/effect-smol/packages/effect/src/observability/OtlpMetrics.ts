@@ -39,8 +39,6 @@ import { OtlpSerialization } from "./OtlpSerialization.ts"
  *
  * `"delta"` reports changes since the last export. Each interval is independent with no dependency on previous measurements.
  *
- * Summaries are always cumulative, regardless of this setting.
- *
  * **Example** (Configuring aggregation temporality)
  *
  * ```ts import.meta.vitest
@@ -116,6 +114,7 @@ export const make: (options: {
   let previousCounterState = new Map<string, number | bigint>()
   let previousHistogramState = new Map<string, PreviousHistogramState>()
   let previousFrequencyState = new Map<string, Map<string, number>>()
+  let previousSummaryState = new Map<string, PreviousSummaryState>()
   let snapshotSequence = 0
   let committedSnapshotSequence = -1
 
@@ -127,6 +126,7 @@ export const make: (options: {
     const nextCounterState = new Map(previousCounterState)
     const nextHistogramState = new Map(previousHistogramState)
     const nextFrequencyState = new Map(previousFrequencyState)
+    const nextSummaryState = new Map(previousSummaryState)
     const metricData: Array<IMetric> = []
     const metricDataByName = new Map<string, IMetric>()
     const addMetricData = (data: IMetric) => {
@@ -144,7 +144,7 @@ export const make: (options: {
 
     for (let i = 0, len = snapshot.length; i < len; i++) {
       const state = snapshot[i]
-      const unit = toUcumUnit(state.attributes?.unit ?? state.attributes?.time_unit)
+      const unit = state.attributes?.unit ?? state.attributes?.time_unit ?? "1"
       const attributes = state.attributes ? OtlpResource.entriesToAttributes(Object.entries(state.attributes)) : []
       const metricKey = makeMetricKey(state.id, state.attributes)
 
@@ -181,7 +181,7 @@ export const make: (options: {
             timeUnixNano: nowTime
           }
           if (typeof reportValue === "bigint") {
-            dataPoint.asInt = bigintToInt64(reportValue)
+            dataPoint.asInt = Number(reportValue)
           } else {
             dataPoint.asDouble = reportValue
           }
@@ -209,7 +209,7 @@ export const make: (options: {
             timeUnixNano: nowTime
           }
           if (typeof state.state.value === "bigint") {
-            dataPoint.asInt = bigintToInt64(state.state.value)
+            dataPoint.asInt = Number(state.state.value)
           } else {
             dataPoint.asDouble = state.state.value
           }
@@ -344,25 +344,91 @@ export const make: (options: {
           break
         }
         case "Summary": {
-          // Count and sum are lifetime totals, so summaries are always cumulative
-          const dataPoint: ISummaryDataPoint = {
-            attributes,
-            startTimeUnixNano: startTime,
+          // Quantiles are always computed fresh from the sliding window
+          // They don't have temporality in the traditional sense
+          const dataPoints: Array<INumberDataPoint> = [{
+            attributes: [...attributes, { key: "quantile", value: { stringValue: "min" } }],
+            startTimeUnixNano: intervalStartTime,
             timeUnixNano: nowTime,
-            count: state.state.count,
-            sum: state.state.sum,
-            quantileValues: state.state.quantiles.flatMap(([quantile, value]) =>
-              value === undefined ? [] : [{ quantile, value }]
-            )
+            asDouble: state.state.min
+          }]
+          for (const [quantile, value] of state.state.quantiles) {
+            dataPoints.push({
+              attributes: [...attributes, { key: "quantile", value: { stringValue: quantile.toString() } }],
+              startTimeUnixNano: intervalStartTime,
+              timeUnixNano: nowTime,
+              asDouble: value ?? 0
+            })
           }
-          if (metricDataByName.has(state.id)) {
-            metricDataByName.get(state.id)!.summary!.dataPoints.push(dataPoint)
+          dataPoints.push({
+            attributes: [...attributes, { key: "quantile", value: { stringValue: "max" } }],
+            startTimeUnixNano: intervalStartTime,
+            timeUnixNano: nowTime,
+            asDouble: state.state.max
+          })
+
+          let reportCount = state.state.count
+          let reportSum = state.state.sum
+
+          if (isDelta) {
+            const previousState = previousSummaryState.get(metricKey)
+            if (previousState !== undefined) {
+              reportCount = state.state.count - previousState.count
+              reportSum = state.state.sum - previousState.sum
+            }
+            nextSummaryState.set(metricKey, {
+              count: state.state.count,
+              sum: state.state.sum
+            })
+          }
+
+          const countDataPoint: INumberDataPoint = {
+            attributes,
+            startTimeUnixNano: intervalStartTime,
+            timeUnixNano: nowTime,
+            asInt: reportCount
+          }
+          const sumDataPoint: INumberDataPoint = {
+            attributes,
+            startTimeUnixNano: intervalStartTime,
+            timeUnixNano: nowTime,
+            asDouble: reportSum
+          }
+
+          if (metricDataByName.has(`${state.id}_quantiles`)) {
+            metricDataByName.get(`${state.id}_quantiles`)!.sum!.dataPoints.push(...dataPoints)
+            metricDataByName.get(`${state.id}_count`)!.sum!.dataPoints.push(countDataPoint)
+            metricDataByName.get(`${state.id}_sum`)!.sum!.dataPoints.push(sumDataPoint)
           } else {
             addMetricData({
-              name: state.id,
+              name: `${state.id}_quantiles`,
               description: state.description!,
               unit,
-              summary: { dataPoints: [dataPoint] }
+              sum: {
+                aggregationTemporality: aggregationTemporalityEnum,
+                isMonotonic: false,
+                dataPoints
+              }
+            })
+            addMetricData({
+              name: `${state.id}_count`,
+              description: state.description!,
+              unit: "1",
+              sum: {
+                aggregationTemporality: aggregationTemporalityEnum,
+                isMonotonic: true,
+                dataPoints: [countDataPoint]
+              }
+            })
+            addMetricData({
+              name: `${state.id}_sum`,
+              description: state.description!,
+              unit: "1",
+              sum: {
+                aggregationTemporality: aggregationTemporalityEnum,
+                isMonotonic: true,
+                dataPoints: [sumDataPoint]
+              }
             })
           }
           break
@@ -385,6 +451,7 @@ export const make: (options: {
         previousCounterState = nextCounterState
         previousHistogramState = nextHistogramState
         previousFrequencyState = nextFrequencyState
+        previousSummaryState = nextSummaryState
         previousExportTimeNanos = nowNanos
         committedSnapshotSequence = currentSnapshotSequence
       })
@@ -500,20 +567,6 @@ const makeMetricKey = (id: string, attributes: Metric.Metric.AttributeSet | unde
   return `${id}:${JSON.stringify(sortedEntries)}`
 }
 
-const ucumUnits = new Map([
-  ["nanoseconds", "ns"],
-  ["microseconds", "us"],
-  ["milliseconds", "ms"],
-  ["seconds", "s"],
-  ["bytes", "By"]
-])
-
-const toUcumUnit = (unit: string | undefined): string => unit === undefined ? "1" : ucumUnits.get(unit) ?? unit
-
-/** OTLP/JSON accepts int64 as a decimal string, which keeps values beyond 2^53 exact */
-const bigintToInt64 = (value: bigint): number | string =>
-  Number.isSafeInteger(Number(value)) ? Number(value) : value.toString()
-
 /** Previous state for histogram delta computation */
 interface PreviousHistogramState {
   readonly count: number
@@ -521,6 +574,12 @@ interface PreviousHistogramState {
   readonly bucketCounts: Array<number>
   readonly min: number
   readonly max: number
+}
+
+/** Previous state for summary delta computation */
+interface PreviousSummaryState {
+  readonly count: number
+  readonly sum: number
 }
 
 /** Properties of an InstrumentationScope. */
@@ -616,7 +675,7 @@ interface INumberDataPoint {
   /** NumberDataPoint asDouble */
   asDouble?: number | null
   /** NumberDataPoint asInt */
-  asInt?: number | string
+  asInt?: number
   /** NumberDataPoint exemplars */
   exemplars?: Array<IExemplar>
   /** NumberDataPoint flags */
@@ -681,9 +740,9 @@ interface ISummaryDataPoint {
   /** SummaryDataPoint attributes */
   attributes?: Array<KeyValue>
   /** SummaryDataPoint startTimeUnixNano */
-  startTimeUnixNano?: Fixed64
+  startTimeUnixNano?: number
   /** SummaryDataPoint timeUnixNano */
-  timeUnixNano?: Fixed64
+  timeUnixNano?: string
   /** SummaryDataPoint count */
   count?: number
   /** SummaryDataPoint sum */

@@ -7,7 +7,6 @@
  * `process.stdout` and `process.stderr`. Standard input remains open, and
  * standard output and error output are not ended unless requested.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Effect from "effect/Effect"
@@ -22,7 +21,6 @@ import { fromReadable } from "./NodeStream.ts"
  * and `process.stderr`; stdin remains open and stdout/stderr are not ended by
  * default.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

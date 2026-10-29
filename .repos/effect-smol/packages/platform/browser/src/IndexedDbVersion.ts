@@ -15,7 +15,6 @@
  * that should be queryable in each target version, avoid duplicate table names, and remember that key-path or
  * auto-increment changes usually require creating a new object store and copying data during the upgrade transaction.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type { NonEmptyReadonlyArray } from "effect/Array"
@@ -28,7 +27,6 @@ const TypeId = "~@effect/platform-browser/IndexedDbVersion"
 /**
  * Typed IndexedDB version definition containing the tables available in that schema version.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -43,7 +41,6 @@ export interface IndexedDbVersion<
 /**
  * Type-erased shape of an `IndexedDbVersion`.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -54,7 +51,6 @@ export interface Any {
 /**
  * Type-erased `IndexedDbVersion` retaining version properties with broad table types.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -63,7 +59,6 @@ export type AnyWithProps = IndexedDbVersion<IndexedDbTable.AnyWithProps>
 /**
  * Extracts the table union from an `IndexedDbVersion`.
  *
- * @stability unstable
  * @category utility types
  * @since 4.0.0
  */
@@ -72,7 +67,6 @@ export type Tables<Db extends Any> = Db extends IndexedDbVersion<infer _Tables> 
 /**
  * Selects a table by name from an `IndexedDbVersion`.
  *
- * @stability unstable
  * @category utility types
  * @since 4.0.0
  */
@@ -84,7 +78,6 @@ export type TableWithName<
 /**
  * Extracts the schema for a named table within an `IndexedDbVersion`.
  *
- * @stability unstable
  * @category utility types
  * @since 4.0.0
  */
@@ -132,7 +125,6 @@ const makeProto = <Tables extends IndexedDbTable.AnyWithProps>(options: {
  *
  * @see {@link IndexedDbTable.make} for creating table definitions consumed by this constructor
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

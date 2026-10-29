@@ -4,7 +4,6 @@
  * model, and embedding code read this scoped transform when they execute
  * provider calls.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Context from "effect/Context"
@@ -22,7 +21,6 @@ import type { HttpClient } from "effect/http/HttpClient"
  *
  * @see {@link withClientTransform} for scoping an HTTP client transformation
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -44,7 +42,6 @@ export class OpenAiConfig extends Context.Service<
 /**
  * Types used by the `OpenAiConfig` context service.
  *
- * @stability unstable
  * @since 4.0.0
  */
 export declare namespace OpenAiConfig {
@@ -80,7 +77,6 @@ export declare namespace OpenAiConfig {
  * If a transform is already present in the scoped config, this helper replaces
  * it. Compose transforms manually when both should apply.
  *
- * @stability unstable
  * @category configuration
  * @since 4.0.0
  */

@@ -10,7 +10,6 @@
  * direct or config-backed layers, and default parameter type mappings.
  * Streaming queries are not implemented by this driver.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Config from "effect/Config"
@@ -147,7 +146,6 @@ const classifyError = (
 /**
  * Runtime type identifier used to mark `MssqlClient` values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -156,7 +154,6 @@ export const TypeId: unique symbol = Symbol.for("@effect/sql-mssql/MssqlClient")
 /**
  * Type-level identifier used to mark `MssqlClient` values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -165,7 +162,6 @@ export type TypeId = typeof TypeId
 /**
  * Microsoft SQL Server client service, extending `SqlClient` with typed parameter fragments and stored procedure calls.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -202,7 +198,6 @@ export interface MssqlClient extends Client.SqlClient {
  * Use to access or provide a Microsoft SQL Server client through the Effect
  * context.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -211,7 +206,6 @@ export const MssqlClient = Context.Service<MssqlClient>("@effect/sql-mssql/Mssql
 /**
  * Configuration for a Microsoft SQL Server client, including connection, authentication, pool, parameter type, span attribute, and query/result name transform options.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -277,7 +271,6 @@ let clientIdCounter = 0
 /**
  * Creates a scoped Microsoft SQL Server client backed by a connection pool, with transaction and stored procedure support. Streaming queries are not implemented.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -673,7 +666,6 @@ export const make = (
 /**
  * Creates a layer from a `Config`-wrapped SQL Server client configuration, providing both `MssqlClient` and `SqlClient`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -696,7 +688,6 @@ export const layerConfig: (
 /**
  * Creates a layer from a concrete SQL Server client configuration, providing both `MssqlClient` and `SqlClient`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -713,7 +704,6 @@ export const layer = (
 /**
  * Creates the SQL Server statement compiler, using `@1`-style placeholders, bracket-escaped identifiers, and SQL Server `OUTPUT INSERTED` returning clauses.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

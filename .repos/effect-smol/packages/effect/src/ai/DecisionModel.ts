@@ -67,23 +67,6 @@ export class DecisionUsage extends Schema.Class<DecisionUsage>(
  */
 export interface DecideOptions<Input extends Schema.Constraint> {
   readonly input: Input["Type"]
-  /**
-   * Images to include with the input.
-   */
-  readonly images?: ReadonlyArray<Image> | undefined
-}
-
-/**
- * An image sent to the provider with the encoded input.
- * `data` is a base64 string, a byte array, or a URL.
- *
- * @stability unstable
- * @category models
- * @since 4.0.1
- */
-export interface Image {
-  readonly mediaType: string
-  readonly data: string | Uint8Array | URL
 }
 
 /**
@@ -104,7 +87,6 @@ export interface DecideResponse<Decisions extends Record<string, Decision.Any>> 
  * Provider input options for a decision request.
  * `state` is encoded with `Schema.toCodecJson`, not stringified.
  * All `decisions` must be answered in one call.
- * `images` is omitted when no images are supplied.
  *
  * @stability unstable
  * @category options
@@ -113,7 +95,6 @@ export interface DecideResponse<Decisions extends Record<string, Decision.Any>> 
 export interface ProviderOptions {
   readonly state: Schema.Json
   readonly decisions: Record<string, Decision.Any>
-  readonly images?: ReadonlyArray<Image> | undefined
 }
 
 /**
@@ -344,9 +325,6 @@ const validateAnswers = <Decisions extends Record<string, Decision.Any>>(
  *
  * **Details**
  *
- * Set `supportsImages: true` to accept images. Otherwise, nonempty image input
- * fails with `AiError.InvalidUserInputError`.
- *
  * Providers that round each probability to `probabilityPrecision` decimal
  * places may return distributions whose sum drifts from 1 by up to half a unit
  * of the last place per label. Setting `probabilityPrecision` accepts that
@@ -363,7 +341,6 @@ const validateAnswers = <Decisions extends Record<string, Decision.Any>>(
 export const make = (params: {
   readonly decide: (options: ProviderOptions) => Effect.Effect<ProviderResponse, AiError.AiError>
   readonly probabilityPrecision?: number | undefined
-  readonly supportsImages?: boolean | undefined
 }): Effect.Effect<DecisionModel> =>
   Effect.sync(() => {
     const roundingError = params.probabilityPrecision === undefined ? 0 : 0.5 * 10 ** -params.probabilityPrecision
@@ -381,25 +358,7 @@ export const make = (params: {
               reason: new AiError.InvalidUserInputError({ description: error.message })
             })
           ),
-          Effect.flatMap((state) => {
-            const images = options.images?.length ? options.images : undefined
-            if (images !== undefined && params.supportsImages !== true) {
-              return Effect.fail(
-                AiError.make({
-                  module: "DecisionModel",
-                  method: "decide",
-                  reason: new AiError.InvalidUserInputError({
-                    description: "This decision model does not accept images"
-                  })
-                })
-              )
-            }
-            return params.decide({
-              state,
-              decisions: definition.decisions,
-              ...(images === undefined ? undefined : { images })
-            })
-          }),
+          Effect.flatMap((state) => params.decide({ state, decisions: definition.decisions })),
           Effect.flatMap((response) =>
             Effect.map(
               validateAnswers(definition.decisions, response.answers, roundingError),

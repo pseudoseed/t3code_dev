@@ -7,7 +7,6 @@
  * keys, invalid types, invalid values, failed filters, failed transformations,
  * and alternatives that did not match. This module also formats issues.
  *
- * @stability stable
  * @since 4.0.0
  */
 import * as Arr from "./Array.ts"
@@ -46,7 +45,6 @@ const TypeId = "~effect/SchemaIssue/Issue"
  *
  * @see {@link Issue}
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -80,7 +78,6 @@ export function isIssue(u: unknown): u is Issue {
  *
  * @see {@link Issue} for the complete issue model
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -104,7 +101,6 @@ export function hasInput(issue: Issue): issue is Issue & { readonly input: unkno
  * @see {@link Issue} — the full union including composite nodes
  * @see {@link LeafHook} — formatter hook that operates on `Leaf` values
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -140,7 +136,6 @@ export type Leaf =
  * @see {@link Leaf} — the terminal subset
  * @see {@link isIssue} — type guard
  * @see {@link hasInput} — checks whether an issue reports an input
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -213,7 +208,6 @@ class IssueNodeImpl implements IssueNode {
  * @see {@link Leaf} — terminal issue types that commonly appear as the inner `issue`
  * @see {@link CheckHook} — formatter hook for `Filter` issues
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -232,7 +226,6 @@ export interface Filter extends IssueNode {
 /**
  * Constructs a schema issue for a failed refinement check.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -306,7 +299,6 @@ export const Filter: new(
  * @see {@link Filter} — failure from a refinement check (not a transformation)
  * @see {@link Composite} — multiple issues from a single schema node
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -325,7 +317,6 @@ export interface Encoding extends IssueNode {
 /**
  * Constructs a schema issue for a failed transformation.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -387,7 +378,6 @@ export const Encoding: new(
  *
  * @see {@link Composite} — groups multiple issues under one schema node
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -406,7 +396,6 @@ export interface Pointer extends IssueNode {
 /**
  * Constructs a schema issue that points to a nested location.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -451,7 +440,6 @@ export const Pointer: new(path: ReadonlyArray<PropertyKey>, issue: Issue) => Poi
  * @see {@link Pointer} — wraps this issue with the missing key's path
  * @see {@link UnexpectedKey} — the opposite case (extra key present)
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -466,7 +454,6 @@ export interface MissingKey extends IssueNode {
 /**
  * Constructs a schema issue for a missing key or tuple index.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -509,7 +496,6 @@ export const MissingKey: new(annotations: Schema.Annotations.Key<unknown> | unde
  * @see {@link MissingKey} — the opposite case (required key absent)
  * @see {@link Pointer} — wraps this issue with the unexpected key's path
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -524,7 +510,6 @@ export interface UnexpectedKey extends IssueNode {
 /**
  * Constructs a schema issue for an unexpected key or tuple index.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -574,7 +559,6 @@ export const UnexpectedKey: new(
  * @see {@link AnyOf} — used for union no-match errors (similar but different semantics)
  * @see {@link Pointer} — adds path context to individual issues
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -593,7 +577,6 @@ export interface Composite extends IssueNode {
 /**
  * Constructs a schema issue that groups multiple child issues.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -665,7 +648,6 @@ export const Composite: new(
  *
  * @see {@link InvalidValue} — the input has the right type but fails a value constraint
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -680,7 +662,6 @@ export interface InvalidType extends IssueNode {
 /**
  * Constructs a schema issue for an input with an invalid runtime type.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -746,7 +727,6 @@ export const InvalidType: new(
  * @see {@link InvalidType} — the input has the wrong type entirely
  * @see {@link Filter} — composite wrapper when a schema filter produces this issue
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -761,7 +741,6 @@ export interface InvalidValue extends IssueNode {
 /**
  * Constructs a schema issue for a value that violates a constraint.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -840,7 +819,6 @@ export function makeCompositeAtKey(
  *
  * @see {@link InvalidValue} — for value-constraint failures (not operation failures)
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -855,7 +833,6 @@ export interface Forbidden extends IssueNode {
 /**
  * Constructs a schema issue for a forbidden parsing operation.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -912,7 +889,6 @@ export const Forbidden: new(
  * @see {@link OneOf} — the opposite: *too many* members matched
  * @see {@link Composite} — groups multiple issues under a non-union schema
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -931,7 +907,6 @@ export interface AnyOf extends IssueNode {
 /**
  * Constructs a schema issue for a value that matches no union member.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -996,7 +971,6 @@ export const AnyOf: new(
  *
  * @see {@link AnyOf} — the opposite: *no* members matched
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -1015,7 +989,6 @@ export interface OneOf extends IssueNode {
 /**
  * Constructs a schema issue for a value that matches multiple union members.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1118,7 +1091,6 @@ export function normalizeFilterOutput(
  * @see {@link makeFormatterDefault} — creates a `Formatter<string>`
  * @see {@link makeFormatterStandardSchemaV1} — creates a `Formatter<StandardSchemaV1.FailureResult>`
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -1135,7 +1107,6 @@ export interface Formatter<out Format> extends FormatterI<Issue, Format> {}
  * @see {@link defaultLeafHook} — the built-in implementation
  * @see {@link Leaf} — the union of terminal issue types
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -1178,7 +1149,6 @@ export type LeafHook = (issue: Leaf) => string
  * @see {@link LeafHook}
  * @see {@link makeFormatterStandardSchemaV1}
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -1227,7 +1197,6 @@ export const defaultLeafHook: LeafHook = (issue): string => {
  * @see {@link defaultCheckHook} — the built-in implementation
  * @see {@link Filter} — the issue type this hook formats
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -1251,7 +1220,6 @@ export type CheckHook = (issue: Filter) => string | undefined
  * @see {@link CheckHook}
  * @see {@link makeFormatterStandardSchemaV1}
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -1296,7 +1264,6 @@ export const defaultCheckHook: CheckHook = (issue): string | undefined => findMe
  * @see {@link LeafHook}
  * @see {@link CheckHook}
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -1420,7 +1387,6 @@ function formatCheck<T>(check: SchemaAST.Check<T>): string {
  * @see {@link makeFormatterStandardSchemaV1} — produces Standard Schema V1 format instead
  * @see {@link Formatter}
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */

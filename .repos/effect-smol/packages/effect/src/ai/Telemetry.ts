@@ -27,35 +27,50 @@ import type * as Response from "./Response.ts"
  *
  * These attributes follow the OpenTelemetry generative AI semantic
  * conventions:
- * https://github.com/open-telemetry/semantic-conventions-genai
+ * https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/
  *
  * @stability unstable
  * @category models
  * @since 4.0.0
  */
 export type GenAITelemetryAttributes = Struct.Simplify<
-  & AttributesWithPrefix<ProviderAttributes, "gen_ai.provider">
+  & AttributesWithPrefix<BaseAttributes, "gen_ai">
   & AttributesWithPrefix<OperationAttributes, "gen_ai.operation">
-  & AttributesWithPrefix<OutputAttributes, "gen_ai.output">
+  & AttributesWithPrefix<TokenAttributes, "gen_ai.token">
   & AttributesWithPrefix<UsageAttributes, "gen_ai.usage">
   & AttributesWithPrefix<RequestAttributes, "gen_ai.request">
   & AttributesWithPrefix<ResponseAttributes, "gen_ai.response">
 >
 
 /**
- * Telemetry attributes which are part of the GenAI specification and are
- * namespaced by `gen_ai.provider`.
+ * All telemetry attributes which are part of the GenAI specification.
  *
  * @stability unstable
  * @category models
- * @since 4.0.2
+ * @since 4.0.0
  */
-export interface ProviderAttributes {
+export type AllAttributes =
+  & BaseAttributes
+  & OperationAttributes
+  & TokenAttributes
+  & UsageAttributes
+  & RequestAttributes
+  & ResponseAttributes
+
+/**
+ * Telemetry attributes which are part of the GenAI specification and are
+ * namespaced by `gen_ai`.
+ *
+ * @stability unstable
+ * @category models
+ * @since 4.0.0
+ */
+export interface BaseAttributes {
   /**
-   * The Generative AI provider as identified by the client or server
-   * instrumentation, written as `gen_ai.provider.name`.
+   * The Generative AI product as identified by the client or server
+   * instrumentation.
    */
-  readonly name?: (string & {}) | WellKnownProviderName | null | undefined
+  readonly system?: (string & {}) | WellKnownSystem | null | undefined
 }
 
 /**
@@ -72,17 +87,14 @@ export interface OperationAttributes {
 
 /**
  * Telemetry attributes which are part of the GenAI specification and are
- * namespaced by `gen_ai.output`.
+ * namespaced by `gen_ai.token`.
  *
  * @stability unstable
  * @category models
- * @since 4.0.2
+ * @since 4.0.0
  */
-export interface OutputAttributes {
-  /**
-   * The output modality requested by the client.
-   */
-  readonly type?: (string & {}) | WellKnownOutputType | null | undefined
+export interface TokenAttributes {
+  readonly type?: string | null | undefined
 }
 
 /**
@@ -116,15 +128,15 @@ export interface RequestAttributes {
    */
   readonly temperature?: number | null | undefined
   /**
-   * The top_k sampling setting for the GenAI request.
+   * The temperature setting for the GenAI request.
    */
   readonly topK?: number | null | undefined
   /**
-   * The top_p sampling setting for the GenAI request.
+   * The top_k sampling setting for the GenAI request.
    */
   readonly topP?: number | null | undefined
   /**
-   * The maximum number of tokens the model may generate.
+   * The top_p sampling setting for the GenAI request.
    */
   readonly maxTokens?: number | null | undefined
   /**
@@ -191,18 +203,7 @@ export interface ResponseAttributes {
 export type WellKnownOperationName = "chat" | "embeddings" | "text_completion"
 
 /**
- * The `gen_ai.output.type` attribute has the following list of well-known
- * values.
- *
- * @stability unstable
- * @category models
- * @since 4.0.2
- */
-export type WellKnownOutputType = "text" | "json" | "image" | "speech"
-
-/**
- * The `gen_ai.provider.name` attribute has the following list of well-known
- * values.
+ * The `gen_ai.system` attribute has the following list of well-known values.
  *
  * **Details**
  *
@@ -211,25 +212,23 @@ export type WellKnownOutputType = "text" | "json" | "image" | "speech"
  *
  * @stability unstable
  * @category models
- * @since 4.0.2
+ * @since 4.0.0
  */
-export type WellKnownProviderName =
+export type WellKnownSystem =
   | "anthropic"
   | "aws.bedrock"
-  | "azure.ai.inference"
-  | "azure.ai.openai"
+  | "az.ai.inference"
+  | "az.ai.openai"
   | "cohere"
   | "deepseek"
-  | "gcp.gemini"
-  | "gcp.gen_ai"
-  | "gcp.vertex_ai"
+  | "gemini"
   | "groq"
   | "ibm.watsonx.ai"
   | "mistral_ai"
-  | "moonshot_ai"
   | "openai"
   | "perplexity"
-  | "x_ai"
+  | "vertex_ai"
+  | "xai"
 
 /**
  * Utility type for prefixing attribute names with a namespace.
@@ -376,11 +375,11 @@ export const addSpanAttributes = (
   }
 }
 
-const addSpanProviderAttributes = addSpanAttributes("gen_ai.provider", String.camelToSnake)<ProviderAttributes>
+const addSpanBaseAttributes = addSpanAttributes("gen_ai", String.camelToSnake)<BaseAttributes>
 const addSpanOperationAttributes = addSpanAttributes("gen_ai.operation", String.camelToSnake)<OperationAttributes>
-const addSpanOutputAttributes = addSpanAttributes("gen_ai.output", String.camelToSnake)<OutputAttributes>
 const addSpanRequestAttributes = addSpanAttributes("gen_ai.request", String.camelToSnake)<RequestAttributes>
 const addSpanResponseAttributes = addSpanAttributes("gen_ai.response", String.camelToSnake)<ResponseAttributes>
+const addSpanTokenAttributes = addSpanAttributes("gen_ai.token", String.camelToSnake)<TokenAttributes>
 const addSpanUsageAttributes = addSpanAttributes("gen_ai.usage", String.camelToSnake)<UsageAttributes>
 
 /**
@@ -388,7 +387,8 @@ const addSpanUsageAttributes = addSpanAttributes("gen_ai.usage", String.camelToS
  *
  * **Details**
  *
- * Groups attributes by their `gen_ai.*` namespace.
+ * Combines base attributes with optional grouped attributes for comprehensive
+ * telemetry coverage of AI operations.
  *
  * **Example** (Configuring GenAI telemetry attributes)
  *
@@ -396,7 +396,7 @@ const addSpanUsageAttributes = addSpanAttributes("gen_ai.usage", String.camelToS
  * import type { Telemetry } from "effect/ai"
  *
  * const telemetryOptions: Telemetry.GenAITelemetryAttributeOptions = {
- *   provider: { name: "openai" },
+ *   system: "openai",
  *   operation: {
  *     name: "chat"
  *   },
@@ -416,26 +416,18 @@ const addSpanUsageAttributes = addSpanAttributes("gen_ai.usage", String.camelToS
  *   }
  * }
  *
- * const result = [telemetryOptions.provider?.name, telemetryOptions.usage?.inputTokens] // => ["openai", 50]
+ * const result = [telemetryOptions.system, telemetryOptions.usage?.inputTokens] // => ["openai", 50]
  * ```
  *
  * @stability unstable
  * @category options
  * @since 4.0.0
  */
-export type GenAITelemetryAttributeOptions = {
-  /**
-   * Provider attributes (e.g., provider name).
-   */
-  readonly provider?: ProviderAttributes | undefined
+export type GenAITelemetryAttributeOptions = BaseAttributes & {
   /**
    * Operation-specific attributes (e.g., operation name).
    */
   readonly operation?: OperationAttributes | undefined
-  /**
-   * Output attributes (e.g., requested output type).
-   */
-  readonly output?: OutputAttributes | undefined
   /**
    * Request-specific attributes (e.g., model parameters).
    */
@@ -444,6 +436,10 @@ export type GenAITelemetryAttributeOptions = {
    * Response-specific attributes (e.g., response metadata).
    */
   readonly response?: ResponseAttributes | undefined
+  /**
+   * Token-specific attributes.
+   */
+  readonly token?: TokenAttributes | undefined
   /**
    * Usage statistics attributes (e.g., token counts).
    */
@@ -455,7 +451,7 @@ export type GenAITelemetryAttributeOptions = {
  *
  * **When to use**
  *
- * Use when you need to write GenAI request, response, or usage
+ * Use when you need to write GenAI request, response, token, or usage
  * attributes onto an existing OpenTelemetry span.
  *
  * **Details**
@@ -477,7 +473,7 @@ export type GenAITelemetryAttributeOptions = {
  *   const span = yield* Effect.currentSpan
  *
  *   Telemetry.addGenAIAnnotations(span, {
- *     provider: { name: "openai" },
+ *     system: "openai",
  *     request: { model: "gpt-4", temperature: 0.7 },
  *     usage: { inputTokens: 100, outputTokens: 50 }
  *   })
@@ -495,11 +491,11 @@ export const addGenAIAnnotations: {
   (options: GenAITelemetryAttributeOptions): (span: Span) => void
   (span: Span, options: GenAITelemetryAttributeOptions): void
 } = dual(2, (span: Span, options: GenAITelemetryAttributeOptions) => {
-  if (Predicate.isNotNullish(options.provider)) addSpanProviderAttributes(span, options.provider)
+  addSpanBaseAttributes(span, { system: options.system })
   if (Predicate.isNotNullish(options.operation)) addSpanOperationAttributes(span, options.operation)
-  if (Predicate.isNotNullish(options.output)) addSpanOutputAttributes(span, options.output)
   if (Predicate.isNotNullish(options.request)) addSpanRequestAttributes(span, options.request)
   if (Predicate.isNotNullish(options.response)) addSpanResponseAttributes(span, options.response)
+  if (Predicate.isNotNullish(options.token)) addSpanTokenAttributes(span, options.token)
   if (Predicate.isNotNullish(options.usage)) addSpanUsageAttributes(span, options.usage)
 })
 

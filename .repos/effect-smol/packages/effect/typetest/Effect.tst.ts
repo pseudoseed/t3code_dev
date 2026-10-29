@@ -6,11 +6,11 @@ import {
   Data,
   Duration,
   Effect,
-  ExecutionPlan,
+  type ExecutionPlan,
   Exit,
   Fiber,
   HashMap,
-  Layer,
+  type Layer,
   Metric,
   type Option,
   pipe,
@@ -1438,44 +1438,6 @@ describe("Effect.withExecutionPlan", () => {
   it("without options the requirements are unchanged", () => {
     const result = Effect.withExecutionPlan(self, plan)
     expect(result).type.toBe<Effect.Effect<number, string, "other-dep" | "plan-dep">>()
-  })
-
-  it("tracks predicate errors and requirements with an unconditional fallback", () => {
-    class Dep extends Context.Service<Dep, number>()("Dep") {}
-    const predicatePlan = ExecutionPlan.make({
-      provide: Layer.empty,
-      while: () => Effect.flatMap(Dep, () => Effect.fail("predicate-failed" as const))
-    }, { provide: Layer.empty })
-    const result = Effect.withExecutionPlan(Effect.fail("operation-failed" as const), predicatePlan)
-    expect(result).type.toBe<Effect.Effect<never, "operation-failed" | "predicate-failed", Dep>>()
-  })
-
-  it("tracks layer requirements with a context fallback", () => {
-    class Dep extends Context.Service<Dep, number>()("Dep") {}
-    const layerPlan = ExecutionPlan.make({
-      provide: Layer.effect(Dep, Effect.flatMap(Dep, () => Effect.fail("layer-failed" as const)))
-    }, { provide: Context.empty() })
-    const result = Effect.withExecutionPlan(Effect.fail("operation-failed" as const), layerPlan)
-    expect(result).type.toBe<Effect.Effect<never, "operation-failed" | "layer-failed", Dep>>()
-  })
-
-  it("tracks schedule errors and requirements with an unscheduled fallback", () => {
-    class PolicyService extends Context.Service<PolicyService, number>()("PolicyService") {}
-    const schedulePlan = ExecutionPlan.make({
-      provide: Layer.empty,
-      schedule: Schedule.map(
-        Schedule.forever,
-        () => Effect.flatMap(PolicyService, () => Effect.fail("policy-failed" as const))
-      )
-    }, { provide: Layer.empty })
-    const result = Effect.withExecutionPlan(Effect.fail("operation-failed" as const), schedulePlan)
-    expect(result).type.toBe<Effect.Effect<never, "operation-failed" | "policy-failed", PolicyService>>()
-    const capturedResult = Effect.flatMap(schedulePlan.captureRequirements, (captured) => {
-      const result = Effect.withExecutionPlan(Effect.fail("operation-failed" as const), captured)
-      expect(result).type.toBe<Effect.Effect<never, "operation-failed" | "policy-failed">>()
-      return result
-    })
-    expect(capturedResult).type.toBe<Effect.Effect<never, "operation-failed" | "policy-failed", PolicyService>>()
   })
 })
 

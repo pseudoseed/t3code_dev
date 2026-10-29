@@ -7,7 +7,6 @@
  * SQLite failures as `SqlError`s, and provides transaction support with
  * savepoints. Streaming queries are not implemented by this driver.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Libsql from "@libsql/client"
@@ -35,7 +34,6 @@ const classifyError = (cause: unknown, message: string, operation: string) =>
 /**
  * Runtime type identifier used to mark `LibsqlClient` values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -44,7 +42,6 @@ export const TypeId: TypeId = "~@effect/sql-libsql/LibsqlClient"
 /**
  * Type-level identifier used to mark `LibsqlClient` values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -53,7 +50,6 @@ export type TypeId = "~@effect/sql-libsql/LibsqlClient"
 /**
  * libSQL-backed SQL client service, extending `SqlClient` with its runtime type marker and client configuration.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -69,7 +65,6 @@ export interface LibsqlClient extends Client.SqlClient {
  *
  * Use to access or provide a libSQL client through the Effect context.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -80,7 +75,6 @@ let clientIdCounter = 0
 /**
  * Configuration for a libSQL client, either by supplying connection options or an existing live libSQL client.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -89,7 +83,6 @@ export type LibsqlClientConfig = LibsqlClientConfig.Full | LibsqlClientConfig.Li
 /**
  * Namespace containing the configuration variants for `LibsqlClient`.
  *
- * @stability unstable
  * @since 4.0.0
  */
 export declare namespace LibsqlClientConfig {
@@ -184,7 +177,6 @@ interface LibsqlConnection extends Connection {
 /**
  * Creates a scoped libSQL SQL client with transaction support. When given connection options it creates and closes the SDK client; when given `liveClient`, the caller retains ownership.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -363,7 +355,6 @@ export const make = (
 /**
  * Creates a layer from a `Config`-wrapped libSQL client configuration, providing both `LibsqlClient` and `SqlClient`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -386,7 +377,6 @@ export const layerConfig: (
 /**
  * Creates a layer from a concrete libSQL client configuration, providing both `LibsqlClient` and `SqlClient`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

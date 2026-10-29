@@ -9,7 +9,6 @@
  * for the server alone, the Bun HTTP support services, the combined server,
  * configurable server options, and a test server with an HTTP client.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type { Server as BunServer, ServerWebSocket } from "bun"
@@ -61,7 +60,6 @@ import * as BunStream from "./BunStream.ts"
 /**
  * Bun serve options accepted by the HTTP server, extended with typed route definitions.
  *
- * @stability unstable
  * @category options
  * @since 4.0.0
  */
@@ -87,7 +85,6 @@ export type ServeOptions<R extends string> =
  * that is compressed when per-message deflate is negotiated. It defaults to
  * 1024, matching the default threshold of Node's `ws` server.
  *
- * @stability unstable
  * @category options
  * @since 4.0.0
  */
@@ -109,7 +106,6 @@ export type WebSocketOptions =
 /**
  * Creates a scoped Bun `HttpServer` from `Bun.serve` options, stopping the server on scope finalization with optional graceful shutdown settings.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -193,9 +189,7 @@ export const make = Effect.fnUntraced(
 
         const httpEffect = HttpEffect.toHandled(httpApp, (request, response) =>
           Effect.sync(() => {
-            const bunRequest = request as BunServerRequest
-            bunRequest.resolve(makeResponse(request, response, services, scope))
-            if (upgradedSources.has(bunRequest.source)) return upgradedResponse
+            ;(request as BunServerRequest).resolve(makeResponse(request, response, services, scope))
           }), middleware)
 
         function handler(request: Request, server: BunServer<WebSocketContext>) {
@@ -232,12 +226,6 @@ export const make = Effect.fnUntraced(
 )
 
 const MIN_COMPRESSIBLE_SIZE = 1024
-
-// Reported to middleware in place of the handler's discarded response.
-const upgradedResponse = ServerResponse.empty({ status: 101 })
-
-// Keyed by source so request copies from `modify` share the upgrade state.
-const upgradedSources = new WeakSet<Request>()
 
 const makeResponse = (
   request: ServerRequest.HttpServerRequest,
@@ -306,7 +294,6 @@ const makeResponse = (
 /**
  * Layer that provides only `HttpServer` by constructing a scoped Bun server from the supplied serve options.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -321,7 +308,6 @@ export const layerServer: <R extends string>(
 /**
  * Layer that provides Bun HTTP support services: `HttpPlatform`, weak ETag generation, and `BunServices`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -338,7 +324,6 @@ export const layerHttpServices: Layer.Layer<
 /**
  * Layer that provides a Bun `HttpServer` together with the Bun HTTP platform, ETag generator, and Bun services.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -359,7 +344,6 @@ export const layer = <R extends string>(
 /**
  * Layer that starts a Bun HTTP server on an ephemeral port for tests.
  *
- * @stability unstable
  * @category testing
  * @since 4.0.0
  */
@@ -375,7 +359,6 @@ export const layerTest: Layer.Layer<
 /**
  * Creates the Bun HTTP server and support-services layer from configurable serve options.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -630,7 +613,6 @@ class BunServerRequest extends Inspectable.Class implements ServerRequest.HttpSe
         ))
         return
       }
-      upgradedSources.add(this.source)
       const compressionThreshold = this.compressionThreshold
       resume(Effect.map(Deferred.await(deferred), (ws) => {
         const write = (chunk: Uint8Array | string | Socket.CloseEvent) =>

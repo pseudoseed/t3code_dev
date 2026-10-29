@@ -8,7 +8,6 @@
  * Kubernetes-aware Undici dispatcher and HTTP client layers for runner health
  * checks.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import { layerClientProtocol, layerSocketServer } from "@effect/platform-node-shared/NodeClusterSocket"
@@ -38,7 +37,6 @@ export {
    * Provides the cluster `RpcClientProtocol` using the shared socket client
    * implementation.
    *
-   * @stability unstable
    * @category re-exports
    * @since 4.0.0
    */
@@ -47,7 +45,6 @@ export {
    * Provides the socket server used by Node cluster runners through the shared
    * socket server implementation.
    *
-   * @stability unstable
    * @category re-exports
    * @since 4.0.0
    */
@@ -59,7 +56,6 @@ export {
  * serialization, message storage, runner health checks, and optional
  * client-only mode.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -177,7 +173,6 @@ export const layerDispatcherK8s: Layer.Layer<NodeHttpClient.Dispatcher> = Layer.
  * Provides a `K8sHttpClient` backed by the Undici HTTP client and the
  * Kubernetes-aware dispatcher.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

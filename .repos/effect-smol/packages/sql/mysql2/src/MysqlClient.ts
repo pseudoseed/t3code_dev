@@ -8,7 +8,6 @@
  * mysql2 query streams. It also provides direct and config-backed layers plus a
  * MySQL statement compiler.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Config from "effect/Config"
@@ -138,7 +137,6 @@ const classifyError = (
 /**
  * Runtime type identifier used to mark `MysqlClient` values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -147,7 +145,6 @@ export const TypeId: TypeId = "~@effect/sql-mysql2/MysqlClient"
 /**
  * Type-level identifier used to mark `MysqlClient` values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -156,7 +153,6 @@ export type TypeId = "~@effect/sql-mysql2/MysqlClient"
 /**
  * mysql2-backed SQL client service, extending `SqlClient` with its runtime type marker and client configuration.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -172,7 +168,6 @@ export interface MysqlClient extends Client.SqlClient {
  *
  * Use to access or provide a mysql2 client through the Effect context.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -181,7 +176,6 @@ export const MysqlClient = Context.Service<MysqlClient>("@effect/sql-mysql2/Mysq
 /**
  * Configuration for a mysql2 client, including connection URI or connection fields, pool options, span attributes, and query/result name transforms.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -222,7 +216,6 @@ export interface MysqlClientConfig {
 /**
  * Creates a scoped MySQL client backed by a managed mysql2 pool, verifying connectivity and supporting streaming queries through mysql2 query streams.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -432,7 +425,6 @@ export const make = (
 /**
  * Creates a layer from a `Config`-wrapped MySQL client configuration, providing both `MysqlClient` and `SqlClient`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -453,7 +445,6 @@ export const layerConfig = (
 /**
  * Creates a layer from a concrete MySQL client configuration, providing both `MysqlClient` and `SqlClient`.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -470,7 +461,6 @@ export const layer = (
 /**
  * Creates the MySQL statement compiler, using `?` placeholders and backtick-escaped identifiers.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

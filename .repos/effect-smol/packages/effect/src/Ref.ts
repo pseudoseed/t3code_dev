@@ -8,7 +8,6 @@
  * update variants that leave the value unchanged when an `Option.none` result
  * is returned.
  *
- * @stability stable
  * @since 2.0.0
  */
 import * as Effect from "./Effect.ts"
@@ -54,7 +53,6 @@ const TypeId = "~effect/Ref"
  * @see {@link get} for reading the current value
  * @see {@link set} for replacing the current value
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -69,7 +67,6 @@ export interface Ref<in out A> extends Ref.Variance<A>, Pipeable {
  *
  * Use when referring to type members nested under the `Ref` namespace.
  *
- * @stability stable
  * @since 2.0.0
  */
 export declare namespace Ref {
@@ -139,7 +136,6 @@ const RefProto = {
  * Ref.getUnsafe(counter) // => 0
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -171,7 +167,6 @@ export const makeUnsafe = <A>(value: A): Ref<A> => {
  *
  * @see {@link makeUnsafe} for synchronous construction outside Effect code
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -199,7 +194,6 @@ export const make = <A>(value: A): Effect.Effect<Ref<A>> => Effect.sync(() => ma
  *
  * @see {@link set} for replacing the current value
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -236,7 +230,6 @@ export const get = <A>(self: Ref<A>) => Effect.sync(() => self.ref.current)
  * @see {@link getAndSet} for setting while returning the previous value
  * @see {@link setAndGet} for setting while returning the new value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -271,7 +264,6 @@ export const set = dual<
  * @see {@link set} for setting without returning the previous value
  * @see {@link getAndUpdate} for deriving the new value from the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -311,7 +303,6 @@ export const getAndSet = dual<
  * @see {@link update} for updating without returning the previous value
  * @see {@link updateAndGet} for returning the new value instead
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -365,7 +356,6 @@ export const getAndUpdate = dual<
  * @see {@link getAndUpdate} for always applying an update
  * @see {@link updateSome} for conditional updates without returning the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -412,7 +402,6 @@ export const getAndUpdateSome = dual<
  * await Effect.runPromise(program2) // => 20
  * ```
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -466,7 +455,6 @@ export const setAndGet = dual<
  * @see {@link updateAndGet} for returning the new stored value
  * @see {@link modifySome} for optionally updating while returning a separate result
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -527,7 +515,6 @@ export const modify = dual<
  * @see {@link modify} for always storing a new value
  * @see {@link updateSome} for optional updates without a separate return value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -580,7 +567,6 @@ export const modifySome: {
  * @see {@link updateAndGet} for returning the new value
  * @see {@link getAndUpdate} for returning the previous value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -618,7 +604,6 @@ export const update = dual<
  * @see {@link update} for updating without returning the new value
  * @see {@link getAndUpdate} for returning the previous value instead
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -667,7 +652,6 @@ export const updateAndGet = dual<
  * @see {@link update} for always applying an update
  * @see {@link updateSomeAndGet} for returning the resulting current value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -721,7 +705,6 @@ export const updateSome = dual<
  * @see {@link updateSome} for conditional updates without returning a value
  * @see {@link updateAndGet} for always updating and returning the new value
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -758,7 +741,6 @@ export const updateSomeAndGet = dual<
  * Ref.getUnsafe(counter) // => 42
  * ```
  *
- * @stability stable
  * @category getters
  * @since 4.0.0
  */

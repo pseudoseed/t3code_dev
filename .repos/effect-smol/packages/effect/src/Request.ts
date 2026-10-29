@@ -7,7 +7,6 @@
  * `RequestResolver`, which performs backend-specific loading and completes each
  * pending request entry with a success, failure, cause, exit, or effect.
  *
- * @stability stable
  * @since 2.0.0
  */
 import type * as Cause from "./Cause.ts"
@@ -46,7 +45,6 @@ const TypeId = "~effect/Request"
  *
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -67,7 +65,6 @@ export interface Request<out A, out E = never, out R = never> extends Variance<A
  * @see {@link Services} for extracting a request's service requirements
  * @see {@link Result} for the exit type produced by completing a request
  *
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -81,7 +78,6 @@ export type Any = Request<any, any, any>
  * This marker preserves the success, error, and service requirement types for
  * Effect's type-level machinery. Users normally get it by extending `Request`.
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -120,7 +116,6 @@ export interface Variance<out A, out E, out R> {
  * request.id // => 123
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -145,7 +140,6 @@ export interface Constructor<R extends Request<any, any, any>, T extends keyof R
  *
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */
@@ -169,7 +163,6 @@ export type Error<T extends Request<any, any, any>> = [T] extends [Request<infer
  *
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */
@@ -179,7 +172,6 @@ export type Success<T extends Request<any, any, any>> = [T] extends [Request<inf
 /**
  * A utility type to extract the requirements type from a `Request`.
  *
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -204,7 +196,6 @@ export type Services<T extends Request<any, any, any>> = [T] extends [Request<in
  *
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */
@@ -230,7 +221,6 @@ const requestVariance = Equal.byReferenceUnsafe({
  * `Request.TaggedClass`. Most users should use those constructors instead of
  * interacting with the prototype directly.
  *
- * @stability stable
  * @category prototypes
  * @since 4.0.0
  */
@@ -263,7 +253,6 @@ export const RequestPrototype: Request<any, any, any> = {
  * Request.isRequest("not a request") // => false
  * ```
  *
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -298,7 +287,6 @@ export const isRequest = (u: unknown): u is Request<unknown, unknown, unknown> =
  * request.includeSettings // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -343,7 +331,6 @@ export const of = <R extends Request<any, any, any>>(): Constructor<R> => (args)
  * Array.of(userRequest._tag, postRequest._tag) // => ["GetUser", "GetPost"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -377,7 +364,6 @@ export const tagged = <R extends Request<any, any, any> & { _tag: string }>(
  * getUserRequest.id // => 123
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -417,7 +403,6 @@ export const Class: new<A extends Record<string, any>, Success, Error = never, C
  * request.id // => 123
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -445,7 +430,6 @@ export const TaggedClass = <Tag extends string>(
  * @see {@link fail} for completing an entry with a typed failure
  * @see {@link failCause} for completing an entry with a failure `Cause`
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -480,7 +464,6 @@ export const complete: {
  * @see {@link fail} for completing an entry with a typed failure
  * @see {@link failCause} for completing an entry with a failure `Cause`
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -509,7 +492,6 @@ export const completeEffect: {
  * @see {@link completeEffect} for completing an entry from an effect result
  * @see {@link succeed} for completing an entry successfully
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -534,7 +516,6 @@ export const fail: {
  * @see {@link completeEffect} for completing an entry from an effect result
  * @see {@link succeed} for completing an entry successfully
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -560,7 +541,6 @@ export const failCause: {
  * @see {@link fail} for completing an entry with a typed failure
  * @see {@link failCause} for completing an entry with a failure `Cause`
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -582,7 +562,6 @@ export const succeed: {
  * an `uninterruptible` flag used by batching and caching internals, and the
  * `completeUnsafe` callback used by resolvers to supply the final `Exit`.
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -609,7 +588,6 @@ export interface Entry<out R> {
  * most application code receives entries from a `RequestResolver` instead of
  * constructing them directly.
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */

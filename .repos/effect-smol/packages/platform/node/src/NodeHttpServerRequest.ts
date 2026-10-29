@@ -5,7 +5,6 @@
  * `toServerResponse` returns the underlying Node `http.ServerResponse`,
  * evaluating the stored response thunk when the response was created lazily.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type { HttpServerRequest } from "effect/http/HttpServerRequest"
@@ -15,7 +14,6 @@ import type * as Http from "node:http"
  * Returns the underlying Node `IncomingMessage` for a platform Node
  * `HttpServerRequest`.
  *
- * @stability unstable
  * @category accessors
  * @since 4.0.0
  */
@@ -26,7 +24,6 @@ export const toIncomingMessage = (self: HttpServerRequest): Http.IncomingMessage
  * `HttpServerRequest`, evaluating the stored response thunk when the response
  * was created lazily.
  *
- * @stability unstable
  * @category accessors
  * @since 4.0.0
  */

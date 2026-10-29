@@ -4,7 +4,6 @@
  * atoms. Sharing one registry through React context lets components in the same
  * subtree read and write the same atom state.
  *
- * @stability unstable
  * @since 4.0.0
  */
 "use client"
@@ -40,7 +39,6 @@ export function scheduleTask(f: () => void): () => void {
  *
  * @see {@link RegistryProvider} for creating and providing a registry for a React subtree
  *
- * @stability unstable
  * @category context
  * @since 4.0.0
  */
@@ -72,7 +70,6 @@ export const RegistryContext = React.createContext<AtomRegistry.AtomRegistry>(At
  *
  * @see {@link RegistryContext} for the React context supplied by this provider
  *
- * @stability unstable
  * @category context
  * @since 4.0.0
  */

@@ -6,7 +6,6 @@
  * error reporting, `SIGINT` / `SIGTERM` interruption, and optional teardown
  * behavior.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as NodeRuntime from "@effect/platform-node-shared/NodeRuntime"
@@ -34,7 +33,6 @@ import type * as Runtime from "effect/Runtime"
  * - `disableErrorReporting`: Turn off automatic error logging.
  * - `teardown`: Provide custom finalization logic.
  *
- * @stability unstable
  * @category running
  * @since 4.0.0
  */

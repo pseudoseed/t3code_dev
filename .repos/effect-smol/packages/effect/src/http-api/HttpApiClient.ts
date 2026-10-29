@@ -72,16 +72,7 @@ export type ForApi<Api extends HttpApi.Constraint, E = never, R = never> = Api e
   HttpApi.HttpApi<infer _Id, infer Groups> ? Client<Groups, E, R> :
   never
 
-/**
- * Computes the decoded success value a client receives for an endpoint
- * success schema, including headers, streaming Server-Sent Events, and
- * streaming byte responses.
- *
- * @stability unstable
- * @category utility types
- * @since 4.0.0
- */
-export type SuccessType<S> = S extends HttpApiSchema.WithHeaders<
+type SuccessType<S> = S extends HttpApiSchema.WithHeaders<
   infer _Inner,
   infer _Headers
 > ? HttpApiSchema.withHeaders<SuccessType<_Inner>, _Headers["Type"]>
@@ -135,9 +126,9 @@ export declare namespace Client {
    * @category models
    * @since 4.0.0
    */
-  export type Response<Success, Mode extends ResponseMode> = Mode extends "decoded-and-response"
+  export type Response<Success, Mode extends ResponseMode> = [Mode] extends ["decoded-and-response"]
     ? [Success, HttpClientResponse.HttpClientResponse]
-    : Mode extends "response-only" ? HttpClientResponse.HttpClientResponse
+    : [Mode] extends ["response-only"] ? HttpClientResponse.HttpClientResponse
     : Success
 
   type GroupByEndpoint<Group extends HttpApiGroup.Constraint, E, R> = Group["endpoints"] extends
@@ -193,7 +184,7 @@ export declare namespace Client {
     Endpoint extends HttpApiEndpoint.ConstraintRequest,
     E,
     R
-  > = <Mode extends ResponseMode = "decoded-only">(
+  > = <Mode extends ResponseMode = ResponseMode>(
     request: Simplify<
       HttpApiEndpoint.ClientRequest<
         Endpoint["~Params"],

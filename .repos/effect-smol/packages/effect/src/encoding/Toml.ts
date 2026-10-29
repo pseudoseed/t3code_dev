@@ -283,7 +283,7 @@ class TomlParser {
     if (multiline) {
       this.expect("\"")
       this.expect("\"")
-      this.advance(this.input.startsWith("\r\n", this.index) ? 2 : this.peek() === "\n" ? 1 : 0)
+      if (this.peek() === "\n") this.advance()
     }
     let output = ""
     while (!this.done) {
@@ -347,7 +347,7 @@ class TomlParser {
     if (multiline) {
       this.expect("'")
       this.expect("'")
-      this.advance(this.input.startsWith("\r\n", this.index) ? 2 : this.peek() === "\n" ? 1 : 0)
+      if (this.peek() === "\n") this.advance()
     }
     const start = this.index
     while (!this.done) {

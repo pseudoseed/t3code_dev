@@ -7,14 +7,12 @@
  * and runners for connecting Effect programs to JavaScript entry points such as
  * promises, callbacks, and synchronous code.
  *
- * @stability stable
  * @since 2.0.0
  */
 import type * as Context from "./Context.ts"
 import * as Effect from "./Effect.ts"
 import * as Exit from "./Exit.ts"
 import * as Fiber from "./Fiber.ts"
-import { type FiberImpl, scopeRemoveFinalizerUnsafe } from "./internal/effect.ts"
 import * as Layer from "./Layer.ts"
 import { hasProperty } from "./Predicate.ts"
 import * as Scope from "./Scope.ts"
@@ -41,7 +39,6 @@ const TypeId = "~effect/ManagedRuntime"
  *
  * @see {@link make} for creating managed runtimes this guard recognizes
  *
- * @stability stable
  * @category guards
  * @since 3.9.0
  */
@@ -56,7 +53,6 @@ export const isManagedRuntime = (input: unknown): input is ManagedRuntime<unknow
  * Use to reference type-level helpers for extracting managed runtime services
  * and layer errors.
  *
- * @stability stable
  * @since 3.4.0
  */
 export declare namespace ManagedRuntime {
@@ -110,7 +106,6 @@ export declare namespace ManagedRuntime {
  * @see {@link make} for constructing a managed runtime from a layer
  * @see {@link Layer.build} for lower-level scoped layer construction
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -284,7 +279,6 @@ export interface ManagedRuntime<in R, out ER> {
  * @see {@link Layer.MemoMap} for shared layer memoization
  * @see {@link Layer.build} for lower-level scoped layer construction
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -346,12 +340,7 @@ export const make = <R, ER>(
     [Symbol.asyncDispose](): Promise<void> {
       return self.dispose()
     },
-    disposeEffect: Effect.withFiber((fiber) => {
-      // Closing fiberScope interrupts and awaits every managed fiber. Skip the
-      // disposing fiber and its ancestors, which would otherwise await themselves.
-      for (let current = fiber as FiberImpl<any, any> | undefined; current; current = current._parent) {
-        scopeRemoveFinalizerUnsafe(fiberScope, current)
-      }
+    disposeEffect: Effect.suspend(() => {
       ;(self as Mutable<ManagedRuntime<R, ER>>).contextEffect = Effect.die("ManagedRuntime disposed")
       self.cachedContext = undefined
       return Scope.close(self.scope, Exit.void)

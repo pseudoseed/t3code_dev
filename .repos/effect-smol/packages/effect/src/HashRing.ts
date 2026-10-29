@@ -7,7 +7,6 @@
  * can create rings, add or remove nodes by `PrimaryKey`, route an input string
  * to a node, and compute shard assignments.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import { dual } from "./Function.ts"
@@ -35,7 +34,6 @@ const TypeId = "~effect/HashRing" as const
  * Nodes are identified by their `PrimaryKey` value and can be iterated from the
  * ring.
  *
- * @stability unstable
  * @category models
  * @since 3.19.0
  */
@@ -68,7 +66,6 @@ export interface HashRing<A extends PrimaryKey.PrimaryKey> extends Pipeable, Ite
  * @see {@link HashRing} for the type narrowed by this guard
  * @see {@link make} for creating an empty `HashRing`
  *
- * @stability unstable
  * @category guards
  * @since 3.19.0
  */
@@ -90,7 +87,6 @@ export const isHashRing = (u: unknown): u is HashRing<any> => hasProperty(u, Typ
  * @see {@link add} for registering one node after creation
  * @see {@link addMany} for registering several nodes after creation
  *
- * @stability unstable
  * @category constructors
  * @since 3.19.0
  */
@@ -128,7 +124,6 @@ const Proto = {
  *
  * Use to register or update several nodes in a `HashRing` at the same weight.
  *
- * @stability unstable
  * @category combinators
  * @since 3.19.0
  */
@@ -216,7 +211,6 @@ function updateTotalWeight<A extends PrimaryKey.PrimaryKey>(self: HashRing<A>) {
  * @see {@link remove} for unregistering a node
  * @see {@link has} for checking primary-key membership
  *
- * @stability unstable
  * @category combinators
  * @since 3.19.0
  */
@@ -251,7 +245,6 @@ export const add: {
  * @see {@link add} for registering or updating a node
  * @see {@link has} for checking membership by primary key
  *
- * @stability unstable
  * @category combinators
  * @since 3.19.0
  */
@@ -286,7 +279,6 @@ export const remove: {
  * @see {@link remove} for removing nodes by the same primary-key identity
  * @see {@link get} for routing an input string to a node
  *
- * @stability unstable
  * @category combinators
  * @since 3.19.0
  */
@@ -310,7 +302,6 @@ export const has: {
  * @see {@link getShards} for assigning fixed shard indexes instead of routing
  * one input string at a time
  *
- * @stability unstable
  * @category combinators
  * @since 3.19.0
  */
@@ -336,7 +327,6 @@ export const get = <A extends PrimaryKey.PrimaryKey>(self: HashRing<A>, input: s
  * Finite fractional values of `count` are rounded down. `NaN` and non-positive
  * values produce an empty shard distribution.
  *
- * @stability unstable
  * @category combinators
  * @since 3.19.0
  */
