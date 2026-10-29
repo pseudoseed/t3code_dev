@@ -7,7 +7,6 @@
  * links, metadata, temporary files and directories, and file watching through
  * the shared `FileSystem` service.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as BI from "effect/BigInt"
@@ -705,7 +704,6 @@ const makeFileSystem = Effect.map(Effect.serviceOption(FileSystem.WatchBackend),
  * Provides the `FileSystem` service backed by Node filesystem APIs, including
  * file operations, directory operations, links, metadata, and file watching.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

@@ -4,7 +4,6 @@
  * accessor. Each provider creates its own Atom once, so different subtrees can
  * use the same scoped atom definition without sharing state.
  *
- * @stability unstable
  * @since 4.0.0
  */
 "use client"
@@ -20,7 +19,6 @@ import * as React from "react"
  * Used as the computed property key and marker value stored on `ScopedAtom`
  * objects.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -34,7 +32,6 @@ export type TypeId = "~@effect/atom-react/ScopedAtom"
  * Used as the computed property key and marker value stored on `ScopedAtom`
  * objects.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -66,7 +63,6 @@ export const TypeId: TypeId = "~@effect/atom-react/ScopedAtom"
  * renderToStaticMarkup(React.createElement(App)) // => "<div>0</div>"
  * ```
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -124,7 +120,6 @@ export interface ScopedAtom<A extends Atom.Atom<any>, Input = never> {
  * renderToStaticMarkup(React.createElement(App)) // => "<span>Ada</span>"
  * ```
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

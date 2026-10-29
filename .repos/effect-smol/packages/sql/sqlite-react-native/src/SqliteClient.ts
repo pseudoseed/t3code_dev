@@ -9,7 +9,6 @@
  * to the driver's asynchronous query API. Streaming queries and `updateValues`
  * are not supported by this driver.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Sqlite from "@op-engineering/op-sqlite"
@@ -47,7 +46,6 @@ const classifyError = (cause: unknown, message: string, operation: string) =>
 /**
  * Runtime identifier attached to SQLite React Native client values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -56,7 +54,6 @@ export const TypeId: TypeId = "~@effect/sql-sqlite-react-native/SqliteClient"
 /**
  * Type-level identifier for SQLite React Native client values.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -65,7 +62,6 @@ export type TypeId = "~@effect/sql-sqlite-react-native/SqliteClient"
 /**
  * React Native SQLite client service interface, extending `SqlClient` with its configuration and marking `updateValues` as unsupported for SQLite.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -80,7 +76,6 @@ export interface SqliteClient extends Client.SqlClient {
 /**
  * Service tag for the React Native SQLite client.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -89,7 +84,6 @@ export const SqliteClient = Context.Service<SqliteClient>("@effect/sql-sqlite-re
 /**
  * Configuration for a React Native SQLite client, including the database filename, optional location and encryption key, span attributes, and query/result name transforms.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -110,7 +104,6 @@ export interface SqliteClientConfig {
  * Use to switch React Native SQLite query execution to the asynchronous driver
  * API for a scoped effect.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -122,7 +115,6 @@ export const AsyncQuery = Context.Reference<boolean>(
 /**
  * Runs an effect with `AsyncQuery` enabled, causing React Native SQLite queries in that effect to use the asynchronous driver API.
  *
- * @stability unstable
  * @category providing services
  * @since 4.0.0
  */
@@ -134,7 +126,6 @@ interface SqliteConnection extends Connection {}
 /**
  * Creates a scoped React Native SQLite client from the supplied configuration, using a single serialized connection and honoring `AsyncQuery` for query execution.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -255,7 +246,6 @@ export const make = (
 /**
  * Builds a layer from an Effect `Config` value, providing both the React Native `SqliteClient` service and the generic `SqlClient` service.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -276,7 +266,6 @@ export const layerConfig = (
 /**
  * Builds a layer from a React Native SQLite client configuration, providing both `SqliteClient` and the generic `SqlClient` service.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

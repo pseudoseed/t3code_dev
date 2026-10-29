@@ -6,7 +6,6 @@
  * available. The module also provides `invalidate` for forcing the next `get`
  * to acquire a fresh resource.
  *
- * @stability stable
  * @since 3.5.0
  */
 import type * as Duration from "./Duration.ts"
@@ -62,7 +61,6 @@ const TypeId = "~effect/RcRef"
  * await Effect.runPromise(Effect.scoped(program)) // => [true, ["closed Connected to postgres://localhost"]]
  * ```
  *
- * @stability stable
  * @category models
  * @since 3.5.0
  */
@@ -84,7 +82,6 @@ export interface RcRef<out A, out E = never> extends Pipeable {
  *
  * ```
  *
- * @stability stable
  * @since 3.5.0
  */
 export declare namespace RcRef {
@@ -154,7 +151,6 @@ export declare namespace RcRef {
  * events // => ["released foo"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 3.5.0
  */
@@ -218,7 +214,6 @@ export const make: <A, E, R>(
  * await Effect.runPromise(Effect.scoped(program)) // => [true, ["released shared resource"]]
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 3.5.0
  */
@@ -243,7 +238,6 @@ export const get: <A, E>(self: RcRef<A, E>) => Effect.Effect<A, E, Scope> = inte
  *
  * @see {@link get} for acquiring the current cached resource or the fresh resource after invalidation
  *
- * @stability stable
  * @category combinators
  * @since 3.19.6
  */

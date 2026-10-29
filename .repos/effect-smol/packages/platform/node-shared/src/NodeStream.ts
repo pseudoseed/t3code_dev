@@ -7,7 +7,6 @@
  * `Readable`, and collects readable payloads into strings, array buffers, or
  * `Uint8Array`s with optional byte limits.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Arr from "effect/Array"
@@ -33,7 +32,6 @@ import { pullIntoWritable } from "./NodeSink.ts"
  * an optional chunk size, mapping stream errors with `onError`, and destroying
  * the readable on completion unless `closeOnDone` is `false`.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -49,7 +47,6 @@ export const fromReadable = <A = Uint8Array, E = Cause.UnknownError>(options: {
  * errors with `onError` and destroying the readable on completion unless
  * `closeOnDone` is `false`.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -74,7 +71,6 @@ export const fromReadableChannel = <A = Uint8Array, E = Cause.UnknownError>(opti
  * backpressure while emitting chunks read from the duplex and optionally ending
  * the writable side when upstream completes.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -123,7 +119,6 @@ export const fromDuplex = <IE, I = Uint8Array, O = Uint8Array, E = Cause.Unknown
  * Pipes an Effect `Stream` through a Node `Duplex`, writing the stream's
  * chunks to the duplex and emitting chunks read back from it.
  *
- * @stability unstable
  * @category combinators
  * @since 4.0.0
  */
@@ -166,7 +161,6 @@ export const pipeThroughDuplex: {
  * Pipes a stream of strings or bytes through a Node `Duplex` using default
  * options and `Cause.UnknownError` for stream failures.
  *
- * @stability unstable
  * @category combinators
  * @since 4.0.0
  */
@@ -188,7 +182,6 @@ export const pipeThroughSimple: {
  * Effect context to run the stream and destroying the readable if the stream
  * fails.
  *
- * @stability unstable
  * @category converting
  * @since 4.0.0
  */
@@ -202,7 +195,6 @@ export const toReadable = <E, R>(stream: Stream.Stream<string | Uint8Array, E, R
  * Converts a service-free Effect `Stream` into a Node `Readable` using an
  * empty Effect context.
  *
- * @stability unstable
  * @category converting
  * @since 4.0.0
  */
@@ -217,7 +209,6 @@ export const toReadableNever = <E>(stream: Stream.Stream<string | Uint8Array, E,
  * failing through `onError` on stream errors or when `maxBytes` is exceeded
  * and destroying the stream on interruption or failure.
  *
- * @stability unstable
  * @category converting
  * @since 4.0.0
  */
@@ -271,7 +262,6 @@ export const toString = <E = Cause.UnknownError>(
  * `onError` on stream errors or when `maxBytes` is exceeded and destroying the
  * stream on interruption or failure.
  *
- * @stability unstable
  * @category converting
  * @since 4.0.0
  */
@@ -325,7 +315,6 @@ export const toArrayBuffer = <E = Cause.UnknownError>(
  * Consumes a Node readable stream into a `Uint8Array`, using the same error
  * mapping and `maxBytes` handling as `toArrayBuffer`.
  *
- * @stability unstable
  * @category converting
  * @since 4.0.0
  */

@@ -869,7 +869,12 @@ export const make: (params: {
   > =>
     Effect.useSpan(
       "LanguageModel.generateText",
-      { kind: "client" },
+      {
+        attributes: {
+          concurrency: options.concurrency,
+          toolChoice: options.toolChoice
+        }
+      },
       Effect.fnUntraced(
         function*(span) {
           const spanTransformer = yield* getSpanTransformer
@@ -925,8 +930,11 @@ export const make: (params: {
     return Effect.useSpan(
       "LanguageModel.generateObject",
       {
-        kind: "client",
-        attributes: { "effect.ai.object_name": objectName }
+        attributes: {
+          objectName,
+          concurrency: options.concurrency,
+          toolChoice: options.toolChoice
+        }
       },
       Effect.fnUntraced(
         function*(span) {
@@ -998,7 +1006,12 @@ export const make: (params: {
       Tools extends Record<string, Tool.Any>,
       Options extends NoExcessProperties<GenerateTextOptions<Tools>, Options>
     >(options: Options & GenerateTextOptions<Tools>) {
-      const span = yield* Effect.makeSpanScoped("LanguageModel.streamText", { kind: "client" })
+      const span = yield* Effect.makeSpanScoped("LanguageModel.streamText", {
+        attributes: {
+          concurrency: options.concurrency,
+          toolChoice: options.toolChoice
+        }
+      })
 
       const providerOptions: Mutable<ProviderOptions> = {
         prompt: Prompt.make(options.prompt),
@@ -1070,7 +1083,7 @@ export const make: (params: {
     const tracker = Option.getOrUndefined(yield* Effect.serviceOption(ResponseIdTracker.ResponseIdTracker))
     const toolChoice = options.toolChoice ?? "auto"
     const concurrency = options.concurrency ?? "unbounded"
-    annotateRequestOptions(providerOptions, toolChoice, concurrency)
+    providerOptions.span.attribute("concurrency", concurrency)
 
     const generateWithNonIncrementalFallback = () => {
       const requestOptions: ProviderOptions = {
@@ -1323,7 +1336,7 @@ export const make: (params: {
     const tracker = Option.getOrUndefined(yield* Effect.serviceOption(ResponseIdTracker.ResponseIdTracker))
     const toolChoice = options.toolChoice ?? "auto"
     const concurrency = options.concurrency ?? "unbounded"
-    annotateRequestOptions(providerOptions, toolChoice, concurrency)
+    providerOptions.span.attribute("concurrency", concurrency)
 
     const streamWithNonIncrementalFallback = () => {
       const requestOptions: ProviderOptions = {
@@ -2471,16 +2484,6 @@ const resolveToolkit = <Tools extends Record<string, Tool.Any>, E, R>(
   (Effect.isEffect(toolkit)
     ? toolkit
     : Effect.succeed(toolkit as unknown as Toolkit.WithHandler<Tools>)) as any
-
-const annotateRequestOptions = (
-  { responseFormat, span }: ProviderOptions,
-  toolChoice: ToolChoice<any>,
-  concurrency: Concurrency
-): void => {
-  span.attribute("gen_ai.output.type", responseFormat.type)
-  span.attribute("effect.ai.tool_choice", typeof toolChoice === "string" ? toolChoice : JSON.stringify(toolChoice))
-  span.attribute("effect.ai.concurrency", concurrency)
-}
 
 /**
  * @internal

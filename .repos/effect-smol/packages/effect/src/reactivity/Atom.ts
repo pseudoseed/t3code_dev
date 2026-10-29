@@ -712,7 +712,7 @@ export interface AtomRuntime<R, ER = never> extends Atom<AsyncResult.AsyncResult
       | ((
         get: AtomContext
       ) => Effect.Effect<SubscriptionRef.SubscriptionRef<A>, E, Scope.Scope | R | AtomRegistry | Reactivity.Reactivity>)
-  ) => Writable<AsyncResult.AsyncResult<A, E | ER>, A>
+  ) => Writable<AsyncResult.AsyncResult<A, E>, A>
 }
 
 /**
@@ -2168,21 +2168,18 @@ export const batch: (f: () => void) => void = Registry.batch
 // -----------------------------------------------------------------------------
 
 /**
- * Creates a signal atom that increments when the document becomes visible.
+ * Creates a browser-only signal atom that increments when the document becomes visible.
  *
  * **Details**
  *
  * It listens for `visibilitychange` events on `window` and removes the listener
- * when the atom is disposed. Without `window`, it stays at `0` and adds no listener.
+ * when the atom is disposed.
  *
  * @stability unstable
  * @category constants
  * @since 4.0.0
  */
 export const windowFocusSignal: Atom<number> = readable((get) => {
-  if (typeof window === "undefined") {
-    return 0
-  }
   let count = 0
   function update() {
     if (document.visibilityState === "visible") {
@@ -2222,8 +2219,8 @@ export const makeRefreshOnSignal = <_>(signal: Atom<_>) => <A extends Atom<any>>
  *
  * **Details**
  *
- * Without `window`, this helper does not trigger refreshes. Source atom updates
- * are still forwarded.
+ * This helper is browser-only because `windowFocusSignal` depends on `window` and
+ * `document.visibilityState`.
  *
  * @stability unstable
  * @category combinators
@@ -2388,8 +2385,7 @@ function updateSearchParams() {
     }
   }
   searchParamState.updates.clear()
-  const search = searchParams.toString()
-  const newUrl = `${window.location.pathname}${search.length > 0 ? `?${search}` : ""}${window.location.hash}`
+  const newUrl = `${window.location.pathname}?${searchParams.toString()}`
   window.history.pushState({}, "", newUrl)
   searchParamState.updating = false
 }

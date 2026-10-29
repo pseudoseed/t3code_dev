@@ -7,7 +7,6 @@
  * and when another transaction completes the deferred the waiting transaction
  * can resume with either the success value or the typed failure.
  *
- * @stability stable
  * @since 4.0.0
  */
 
@@ -58,7 +57,6 @@ const TypeId = "~effect/TxDeferred"
  * await Effect.runPromise(program) // => [true, false, 42]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -108,7 +106,6 @@ const makeTxDeferred = <A, E>(ref: TxRef.TxRef<Option<Result<A, E>>>): TxDeferre
  * await Effect.runPromise(program) // => Option.none()
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -159,7 +156,6 @@ export {
    *
    * @see {@link poll} for inspecting the current completion state without retrying the transaction
    *
-   * @stability stable
    * @category getters
    * @since 4.0.0
    */
@@ -191,7 +187,6 @@ export {
  * await Effect.runPromise(program) // => [Option.none(), Option.some(Result.succeed(42))]
  * ```
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -220,7 +215,6 @@ export const poll = <A, E>(self: TxDeferred<A, E>): Effect.Effect<Option<Result<
  * await Effect.runPromise(program) // => [true, false]
  * ```
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -261,7 +255,6 @@ export const done: {
  * await Effect.runPromise(program) // => [true, false]
  * ```
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -297,7 +290,6 @@ export const succeed: {
  * await Effect.runPromise(program) // => [true, false, Exit.fail("boom"), Option.some(Cause.fail("boom"))]
  * ```
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -329,7 +321,6 @@ export const fail: {
  * await Effect.runPromise(program) // => [true, false]
  * ```
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */

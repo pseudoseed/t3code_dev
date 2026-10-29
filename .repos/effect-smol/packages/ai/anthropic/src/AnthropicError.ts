@@ -4,7 +4,6 @@
  * Provides Anthropic-specific metadata fields for AI error types through module
  * augmentation, enabling typed access to Anthropic error details.
  *
- * @stability unstable
  * @since 4.0.0
  */
 
@@ -19,7 +18,6 @@
  *
  * @see {@link AnthropicRateLimitMetadata} for rate-limit responses that also include parsed Anthropic rate-limit headers
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -41,7 +39,6 @@ export type AnthropicErrorMetadata = {
  *
  * Extends base error metadata with rate limit-specific information from Anthropic's rate limit headers.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */

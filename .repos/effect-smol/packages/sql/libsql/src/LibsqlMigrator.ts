@@ -8,7 +8,6 @@
  * while `layer` runs migrations during layer construction and provides no
  * services.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type * as Effect from "effect/Effect"
@@ -25,7 +24,6 @@ export * from "effect/sql/Migrator"
 /**
  * Runs SQL migrations using the configured `SqlClient`, returning the migrations that were applied.
  *
- * @stability unstable
  * @category running
  * @since 4.0.0
  */
@@ -40,7 +38,6 @@ export const run: <R2 = never>(
 /**
  * Creates a layer that runs the configured SQL migrations during layer construction.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

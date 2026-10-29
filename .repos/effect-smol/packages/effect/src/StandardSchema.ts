@@ -3,7 +3,6 @@
  *
  * The declarations below are vendored verbatim from `@standard-schema/spec` 1.1.0.
  *
- * @stability stable
  * @since 4.0.0
  */
 

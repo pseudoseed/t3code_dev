@@ -8,7 +8,6 @@
  * Migration transactions can create or delete object stores and indexes, and
  * database failures are represented as `IndexedDbDatabaseError` values.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Context from "effect/Context"
@@ -72,7 +71,6 @@ const SchemaProto = {
 /**
  * String union describing the failure categories for IndexedDB database opening, migration, and schema operations.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -88,7 +86,6 @@ export type ErrorReason =
 /**
  * Tagged error for IndexedDB database operations, carrying a database error reason and the original cause.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -129,7 +126,6 @@ export class IndexedDbDatabaseError extends Data.TaggedError(
  * @see {@link IndexedDb.IndexedDb} for the lower-level browser IndexedDB primitives
  * @see {@link make} for creating a schema that provides this service as a layer
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -146,7 +142,6 @@ export class IndexedDbDatabase extends Context.Service<
 /**
  * Describes an IndexedDB schema version and its migrations, and acts as an effect that yields a query builder for the target version.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -200,7 +195,6 @@ export interface IndexedDbSchema<
 /**
  * Query builder available during a database migration, extended with object-store and index management helpers for the active `IDBTransaction`.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -240,7 +234,6 @@ export interface Transaction<
 /**
  * Extracts the string-literal index names defined by an `IndexedDbTable`.
  *
- * @stability unstable
  * @category utility types
  * @since 4.0.0
  */
@@ -252,7 +245,6 @@ export type IndexFromTable<Table extends IndexedDbTable.AnyWithProps> = IsString
 /**
  * Extracts the valid index names for a table name within an IndexedDB version.
  *
- * @stability unstable
  * @category utility types
  * @since 4.0.0
  */
@@ -266,7 +258,6 @@ export type IndexFromTableName<
 /**
  * Type-erased IndexedDB schema shape used when traversing schema migration chains.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -284,7 +275,6 @@ export interface Any {
 /**
  * Type-erased `IndexedDbSchema` covering any source version, target version, and migration error type.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -297,7 +287,6 @@ export type AnySchema = IndexedDbSchema<
 /**
  * Creates the initial `IndexedDbSchema` from a version and an initialization migration run during database upgrade.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

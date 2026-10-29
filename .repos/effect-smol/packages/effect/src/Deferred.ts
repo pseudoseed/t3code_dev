@@ -5,7 +5,6 @@
  * `Deferred` suspends the fiber instead of blocking an operating-system thread,
  * and every waiter observes the same completion.
  *
- * @stability stable
  * @since 2.0.0
  */
 import type * as Cause from "./Cause.ts"
@@ -53,7 +52,6 @@ const TypeId = "~effect/Deferred"
  * await Effect.runPromise(program) // => "Hello, World!"
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -70,7 +68,6 @@ export interface Deferred<in out A, in out E = never> extends Deferred.Variance<
  * Use to validate unknown values at runtime boundaries before treating them as
  * `Deferred` values.
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -83,7 +80,6 @@ export const isDeferred = <A, E>(u: unknown): u is Deferred<A, E> => hasProperty
  *
  * Use to reference type-level metadata associated with `Deferred`.
  *
- * @stability stable
  * @since 2.0.0
  */
 export declare namespace Deferred {
@@ -144,7 +140,6 @@ DeferredImpl.prototype = DeferredProto
  * Deferred.isDoneUnsafe(deferred) // => false
  * ```
  *
- * @stability stable
  * @category unsafe
  * @since 4.0.0
  */
@@ -171,7 +166,6 @@ export const makeUnsafe = <A, E = never>(): Deferred<A, E> => new DeferredImpl<A
  * await Effect.runPromise(program) // => 42
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -224,7 +218,6 @@ export {
    * @see {@link complete} for completing from an effect and memoizing its result
    * @see {@link completeWith} for completing with an effect directly
    *
-   * @stability stable
    * @category getters
    * @since 2.0.0
    */
@@ -262,7 +255,6 @@ export {
  *
  * @see {@link completeWith} for storing an effect directly without memoizing its result
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -311,7 +303,6 @@ export const complete: {
  * @see {@link complete} for running an effect once and sharing its result
  * @see {@link done} for completing from an already computed `Exit`
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -356,7 +347,6 @@ export const completeWith: {
  * @see {@link succeed} for completing with a success value
  * @see {@link failCause} for completing with a failure cause
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -393,7 +383,6 @@ export const done: {
  * await Effect.runPromise(program) // => [true, Exit.fail("Operation failed")]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -432,7 +421,6 @@ export const fail: {
  * await Effect.runPromise(program) // => [true, Exit.fail("Lazy error")]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -473,7 +461,6 @@ export const failSync: {
  * await Effect.runPromise(program) // => [true, Exit.failCause(Cause.fail("Operation failed"))]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -515,7 +502,6 @@ export const failCause: {
  * await Effect.runPromise(program) // => [true, Exit.failCause(Cause.fail("Lazy error"))]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -557,7 +543,6 @@ export const failCauseSync: {
  * await Effect.runPromise(program) // => [true, Exit.die(defect)]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -596,7 +581,6 @@ export const die: {
  * await Effect.runPromise(program) // => [true, Exit.die(defect)]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -640,7 +624,6 @@ export const dieSync: {
  * Exit.hasInterrupts(exit) // => true
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -676,7 +659,6 @@ export const interrupt = <A, E>(self: Deferred<A, E>): Effect<boolean> =>
  * await Effect.runPromise(program) // => [true, Exit.interrupt(42)]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -713,7 +695,6 @@ export const interruptWith: {
  * await Effect.runPromise(program) // => [false, true]
  * ```
  *
- * @stability stable
  * @category predicates
  * @since 2.0.0
  */
@@ -730,7 +711,6 @@ export const isDone = <A, E>(self: Deferred<A, E>): Effect<boolean> => internalE
  * @see {@link isDone} for checking completion inside `Effect`
  * @see {@link poll} for reading the completed effect when available
  *
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -763,7 +743,6 @@ export const isDoneUnsafe = <A, E>(self: Deferred<A, E>): boolean => self.effect
  * await Effect.runPromise(program) // => [Option.none(), Option.some(42)]
  * ```
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -799,7 +778,6 @@ export function poll<A, E>(self: Deferred<A, E>): Effect<Option.Option<Effect<A,
  * await Effect.runPromise(program) // => 42
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -837,7 +815,6 @@ export const succeed: {
  * await Effect.runPromise(program) // => 42
  * ```
  *
- * @stability stable
  * @category completion
  * @since 2.0.0
  */
@@ -874,7 +851,6 @@ export const sync: {
  * Deferred.doneUnsafe(deferred, Effect.succeed(42)) // => true
  * ```
  *
- * @stability stable
  * @category unsafe
  * @since 4.0.0
  */
@@ -927,7 +903,6 @@ export const doneUnsafe = <A, E>(self: Deferred<A, E>, effect: Effect<A, E>): bo
  * await Effect.runPromise(program) // => [true, 42]
  * ```
  *
- * @stability stable
  * @category completion
  * @since 4.0.0
  */

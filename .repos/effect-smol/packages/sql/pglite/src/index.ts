@@ -1,5 +1,4 @@
 /**
- * @stability unstable
  * @since 4.0.0
  */
 
@@ -12,7 +11,6 @@
 export * as PgliteClient from "./PgliteClient.ts"
 
 /**
- * @stability unstable
  * @since 4.0.0
  */
 export * as PgliteMigrator from "./PgliteMigrator.ts"

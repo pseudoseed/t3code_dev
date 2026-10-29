@@ -7,7 +7,6 @@
  * comparison builders, and helpers for marking objects that should compare only
  * by reference.
  *
- * @stability stable
  * @since 2.0.0
  */
 import type { Equivalence } from "./Equivalence.ts"
@@ -50,7 +49,6 @@ import { hasProperty } from "./Predicate.ts"
  *
  * @see {@link Equal} — the interface that uses this symbol
  * @see {@link isEqual} — type guard for `Equal` implementors
- * @stability stable
  * @category symbols
  * @since 2.0.0
  */
@@ -105,7 +103,6 @@ export const symbol = "~effect/Equal"
  * @see {@link symbol} — the property key used by the equality method
  * @see {@link equals} — the main comparison function
  * @see {@link isEqual} — type guard for `Equal` implementors
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -170,7 +167,6 @@ export interface Equal extends Hash.Hash {
  * @see {@link Equal} — the interface for custom equality
  * @see {@link isEqual} — check whether a value implements `Equal`
  * @see {@link asEquivalence} — wrap `equals` as an `Equivalence`
- * @stability stable
  * @category equality
  * @since 2.0.0
  */
@@ -334,13 +330,11 @@ function compareHashed<A>(
   equivalent: (self: A, that: A) => boolean
 ): boolean {
   const groups = new Map<number, Array<A>>()
-  let remaining = 0
   for (const item of that) {
     const h = hashOf(item)
     const group = groups.get(h)
     if (group) group.push(item)
     else groups.set(h, [item])
-    remaining++
   }
   outer: for (const item of self) {
     const group = groups.get(hashOf(item))
@@ -349,14 +343,13 @@ function compareHashed<A>(
         if (equivalent(item, group[i])) {
           group[i] = group[group.length - 1]
           group.pop()
-          remaining--
           continue outer
         }
       }
     }
     return false
   }
-  return remaining === 0
+  return true
 }
 
 const entryHash = (entry: readonly [unknown, unknown]): number => Hash.hash(entry[0])
@@ -417,7 +410,6 @@ export function makeCompareSet<A>(equivalence: Equivalence<A>) {
  *
  * @see {@link Equal} — the interface being checked
  * @see {@link symbol} — the property key that signals `Equal` support
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -446,7 +438,6 @@ export const isEqual = (u: unknown): u is Equal => hasProperty(u, symbol)
  * ```
  *
  * @see {@link equals} — the underlying comparison function
- * @stability stable
  * @category instances
  * @since 4.0.0
  */
@@ -489,7 +480,6 @@ export const asEquivalence: <A>() => Equivalence<A> = () => equals
  * @see {@link byReferenceUnsafe} — same effect without a proxy (mutates the
  *   original)
  * @see {@link equals} — the comparison function affected by this opt-out
- * @stability stable
  * @category equality
  * @since 4.0.0
  */
@@ -533,7 +523,6 @@ export const byReference = <T extends object>(obj: T): T => byReferenceUnsafe(ne
  *
  * @see {@link byReference} — safer alternative that creates a proxy
  * @see {@link equals} — the comparison function affected by this opt-out
- * @stability stable
  * @category unsafe
  * @since 4.0.0
  */

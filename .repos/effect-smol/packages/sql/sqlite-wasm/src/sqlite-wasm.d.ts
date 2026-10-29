@@ -1,7 +1,6 @@
 /**
  * Declares the wa-sqlite IndexedDB batch-atomic VFS example module.
  *
- * @stability unstable
  * @since 4.0.0
  */
 declare module "@effect/wa-sqlite/src/examples/IDBBatchAtomicVFS.js" {

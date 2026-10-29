@@ -17,7 +17,6 @@
  * suspension or process death, so keep migrations transaction-aware and avoid
  * assuming a fresh database on every launch.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type * as Effect from "effect/Effect"
@@ -34,7 +33,6 @@ export * from "effect/sql/Migrator"
 /**
  * Runs SQL migrations for a React Native SQLite database using the shared `Migrator` implementation and the current `SqlClient`.
  *
- * @stability unstable
  * @category running
  * @since 4.0.0
  */
@@ -49,7 +47,6 @@ export const run: <R>(
 /**
  * Creates a layer that runs the configured React Native SQLite migrations during layer construction and provides no services.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

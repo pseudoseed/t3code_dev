@@ -8,7 +8,6 @@
  * stream lifecycle: create a stream, transform or combine it, control buffering
  * and timing, handle failures, and finally consume it.
  *
- * @stability stable
  * @since 2.0.0
  */
 // @effect-diagnostics returnEffectInGen:off
@@ -76,7 +75,6 @@ import type * as Unify from "./Unify.ts"
 /**
  * String literal type used as the unique brand for `Stream` values.
  *
- * @stability stable
  * @category type IDs
  * @since 4.0.0
  */
@@ -93,7 +91,6 @@ export type TypeId = "~effect/Stream"
  *
  * @see {@link isStream} for the public guard that checks this identifier
  *
- * @stability stable
  * @category type IDs
  * @since 4.0.0
  */
@@ -123,7 +120,6 @@ export const TypeId: TypeId = "~effect/Stream"
  * values // => [2, 4, 6]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -137,7 +133,6 @@ export interface Stream<out A, out E = never, out R = never> extends Variance<A,
 /**
  * Type-level unification hook for Stream within the Effect type system.
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -148,7 +143,6 @@ export interface StreamUnify<A extends { [Unify.typeSymbol]?: any }> extends Eff
 /**
  * Type-level marker that excludes Stream from unification.
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -171,7 +165,6 @@ export interface StreamUnifyIgnore {
  * await Effect.runPromise(Stream.runCollect(stream)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */
@@ -187,7 +180,6 @@ export interface StreamTypeLambda extends TypeLambda {
  * The emitted value `A`, error `E`, and service requirement `R` type
  * parameters are covariant.
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -203,7 +195,6 @@ export interface Variance<out A, out E, out R> {
  *
  * `_A`, `_E`, and `_R` are covariant markers.
  *
- * @stability stable
  * @category models
  * @since 3.4.0
  */
@@ -226,7 +217,6 @@ export interface VarianceStruct<out A, out E, out R> {
  * const value: SuccessType = 42
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 3.4.0
  */
@@ -245,7 +235,6 @@ export type Success<T> = T extends Stream<infer _A, infer _E, infer _R> ? _A : n
  * const error: ErrorType = "boom"
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 3.4.0
  */
@@ -268,7 +257,6 @@ export type Error<T> = T extends Stream<infer _A, infer _E, infer _R> ? _E : nev
  * services.db.query("SELECT 1") // => "SELECT 1"
  * ```
  *
- * @stability stable
  * @category utility types
  * @since 4.0.0
  */
@@ -286,7 +274,6 @@ export type Services<T> = T extends Stream<infer _A, infer _E, infer _R> ? _R : 
  * Stream.isStream({ data: [1, 2, 3] }) // => false
  * ```
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -303,7 +290,6 @@ export const isStream = (u: unknown): u is Stream<unknown, unknown, unknown> => 
  * Stream.DefaultChunkSize // => 4096
  * ```
  *
- * @stability stable
  * @category constants
  * @since 2.0.0
  */
@@ -312,7 +298,6 @@ export const DefaultChunkSize: number = Channel.DefaultChunkSize
 /**
  * Describes how merged streams decide when to halt.
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -331,7 +316,6 @@ export type HaltStrategy = Channel.HaltStrategy
  * await Effect.runPromise(Stream.runCollect(stream)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -351,7 +335,6 @@ export const fromChannel: <Arr extends Arr.NonEmptyReadonlyArray<any>, E, R>(
  * await Effect.runPromise(Stream.runCollect(stream)) // => [42]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -384,7 +367,6 @@ export const fromEffect = <A, E, R>(effect: Effect.Effect<A, E, R>): Stream<A, E
  * ) // => ["Hello, World!"]
  * ```
  *
- * @stability stable
  * @category accessors
  * @since 4.0.0
  */
@@ -427,7 +409,6 @@ export const service = <I, S>(service: Context.Key<I, S>): Stream<S, never, I> =
  * ) // => ["Hello, World!"]
  * ```
  *
- * @stability stable
  * @category accessors
  * @since 4.0.0
  */
@@ -451,7 +432,6 @@ export const serviceOption = <I, S>(service: Context.Key<I, S>): Stream<Option.O
  * drained // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -471,7 +451,6 @@ export const fromEffectDrain = <A, E, R>(effect: Effect.Effect<A, E, R>): Stream
  * await Effect.runPromise(Stream.runCollect(stream)) // => [1, 2, 3, 4, 5]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -491,7 +470,6 @@ export const fromEffectRepeat = <A, E, R>(effect: Effect.Effect<A, E, R>): Strea
  * await Effect.runPromise(Stream.runCollect(stream)) // => ["ping", "ping", "ping"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -531,7 +509,6 @@ export const fromEffectSchedule = <A, E, R, X, AS extends A, ES, RS>(
  * await Effect.runPromise(Stream.tick(0).pipe(Stream.take(3), Stream.runCollect)) // => [undefined, undefined, undefined]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -574,7 +551,6 @@ export const tick = (interval: Duration.Input): Stream<void> =>
  * await Effect.runPromise(program) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -597,7 +573,6 @@ export const fromPull = <A, E, R, EX, RX>(
  * await Effect.runPromise(Stream.runCollect(transformed)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -644,7 +619,6 @@ export const transformPull = <A, E, R, B, E2, R2, EX, RX>(
  * finalized // => [true]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -679,7 +653,6 @@ export const transformPullBracket = <A, E, R, B, E2, R2, EX, RX>(
  * values.flat() // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -718,7 +691,6 @@ export const toChannel = <A, E, R>(
  * await Effect.runPromise(Stream.runCollect(stream)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -741,7 +713,6 @@ export const callback = <A, E = never, R = never>(
  * await Effect.runPromise(Stream.runCollect(Stream.empty)) // => []
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -758,7 +729,6 @@ export const empty: Stream<never> = fromChannel(Channel.empty)
  * await Effect.runPromise(Stream.runCollect(Stream.succeed(3))) // => [3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -777,7 +747,6 @@ export const succeed = <A>(value: A): Stream<A> => fromChannel(Channel.succeed(A
  * await Effect.runPromise(Stream.runCollect(stream)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -798,7 +767,6 @@ export const make = <const As extends ReadonlyArray<any>>(...values: As): Stream
  * await Effect.runPromise(Stream.sync(() => 2 + 1).pipe(Stream.runCollect)) // => [3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -819,7 +787,6 @@ export const sync = <A>(evaluate: LazyArg<A>): Stream<A> => fromChannel(Channel.
  * await Effect.runPromise(Stream.suspend(() => Stream.make(1, 2, 3)).pipe(Stream.runCollect)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -837,7 +804,6 @@ export const suspend = <A, E, R>(stream: LazyArg<Stream<A, E, R>>): Stream<A, E,
  * await Effect.runPromise(Effect.exit(Stream.runCollect(Stream.fail("Uh oh!")))) // => Exit.fail("Uh oh!")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -856,7 +822,6 @@ export const fail = <E>(error: E): Stream<never, E> => fromChannel(Channel.fail(
  * await Effect.runPromise(Stream.runCollect(stream).pipe(Effect.exit)) // => Exit.fail("Uh oh!")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -877,7 +842,6 @@ export const failSync = <E>(evaluate: LazyArg<E>): Stream<never, E> => fromChann
  * await Effect.runPromise(Stream.runCollect(stream)) // => ["recovered"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -897,7 +861,6 @@ export const failCause = <E>(cause: Cause.Cause<E>): Stream<never, E> => fromCha
  * await Effect.runPromise(Effect.exit(Stream.runCollect(stream))) // => Exit.failCause(Cause.die(defect))
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -918,7 +881,6 @@ export const die = (defect: unknown): Stream<never> => fromChannel(Channel.die(d
  * await Effect.runPromise(Stream.runCollect(stream).pipe(Effect.exit)) // => Exit.fail("Connection timeout after retries")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -955,7 +917,6 @@ export const failCauseSync = <E>(evaluate: LazyArg<Cause.Cause<E>>): Stream<neve
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -987,7 +948,6 @@ export const fromIteratorSucceed = <A>(iterator: IterableIterator<A>, maxChunkSi
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1037,7 +997,6 @@ export const fromIterable = <A>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1063,7 +1022,6 @@ export const fromIterableEffect = <A, E, R>(iterable: Effect.Effect<Iterable<A>,
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1088,7 +1046,6 @@ export const fromIterableEffectRepeat = <A, E, R>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1117,7 +1074,6 @@ export const fromArray = <A>(array: ReadonlyArray<A>): Stream<A> =>
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1142,7 +1098,6 @@ export const fromArrayEffect = <A, E, R>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1178,7 +1133,6 @@ export const fromArrays = <Arr extends ReadonlyArray<ReadonlyArray<any>>>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1213,7 +1167,6 @@ export const fromQueue = <A, E>(queue: Queue.Dequeue<A, E>): Stream<A, Exclude<E
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1247,7 +1200,6 @@ export const fromPubSub = <A>(pubsub: PubSub.PubSub<A>): Stream<A> => fromChanne
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1291,7 +1243,6 @@ export const fromPubSubTake = <A, E>(pubsub: PubSub.PubSub<Take.Take<A, E>>): St
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1327,7 +1278,6 @@ export const fromReadableStream = <A, E>(
  *
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1355,7 +1305,6 @@ export const fromAsyncIterable = <A, E>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1396,7 +1345,6 @@ export const fromSchedule = <O, E, R>(schedule: Schedule.Schedule<O, unknown, E,
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -1406,7 +1354,6 @@ export const fromSubscription = <A>(pubsub: PubSub.Subscription<A>): Stream<A> =
 /**
  * Interface representing an event listener target.
  *
- * @stability stable
  * @category models
  * @since 3.4.0
  */
@@ -1459,7 +1406,6 @@ export interface EventListener<A = unknown> {
  *
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 3.1.0
  */
@@ -1509,7 +1455,6 @@ export const fromEventListener = <A = unknown>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1555,7 +1500,6 @@ export const unfold = <S, A, E, R>(
  * await Effect.runPromise(Stream.runCollect(stream)) // => [0, 1, 2, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1600,7 +1544,6 @@ export const paginate = <S, A, E = never, R = never>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1629,7 +1572,6 @@ export const iterate = <A>(value: A, next: (value: A) => A): Stream<A> =>
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1672,7 +1614,6 @@ export const range = (
  * await Effect.runPromise(program) // => []
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1697,7 +1638,6 @@ export const never: Stream<never> = fromChannel(Channel.never)
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -1731,7 +1671,6 @@ export const unwrap = <A, E2, R2, E, R>(
  * events // => ["acquire", "release"]
  * ```
  *
- * @stability stable
  * @category resource management
  * @since 2.0.0
  */
@@ -1751,7 +1690,6 @@ export const scoped = <A, E, R>(
  * await Effect.runPromise(Stream.runCollect(stream)) // => [1, 3, 5]
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -1788,7 +1726,6 @@ export const map: {
  *
  * @see {@link map} for deriving the replacement value from each element
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -1828,7 +1765,6 @@ export const as: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -1869,7 +1805,6 @@ export const mapBoth: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -1920,7 +1855,6 @@ export const mapArray: {
  * events // => ["Processing: 1", "Processing: 2", "Processing: 3"]
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -1978,7 +1912,6 @@ export const mapEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2036,7 +1969,6 @@ export const flattenEffect: <
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -2081,7 +2013,6 @@ export const mapArrayEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -2115,7 +2046,6 @@ export const result = <A, E, R>(self: Stream<A, E, R>): Stream<Result.Result<A, 
  * events // => ["before mapping: 1", "after mapping: 2", "before mapping: 2", "after mapping: 4", "before mapping: 3", "after mapping: 6"]
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2172,7 +2102,6 @@ export const tap: {
  * events // => ["seen: 1", "seen: 2", "error: boom"]
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2230,7 +2159,6 @@ export const tapBoth: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2277,22 +2205,16 @@ export const tapSink: {
 
         const pullAndOffer = pull.pipe(
           Effect.flatMap((chunk_) => {
-            // The sink may have exited while the upstream pull was suspended.
-            if (causeSink) return Effect.failCause(causeSink)
-            if (sinkDone) return Effect.succeed(chunk_)
             chunk = chunk_
             sinkLatch.closeUnsafe()
             upstreamLatch.openUnsafe()
             return Effect.as(sinkLatch.await, chunk_)
           }),
-          Pull.catchDone((): Effect.Effect<never, E2 | Cause.Done> => {
-            if (causeSink) return Effect.failCause(causeSink)
-            if (sinkDone) return Cause.done()
+          Pull.catchDone(() => {
             streamDone = true
             sinkLatch.closeUnsafe()
             upstreamLatch.openUnsafe()
-            return Effect.flatMap(sinkLatch.await, (): Pull.Pull<never, E2> =>
-              causeSink ? Effect.failCause(causeSink) : Cause.done())
+            return Effect.flatMap(sinkLatch.await, () => Cause.done())
           })
         )
 
@@ -2334,7 +2256,6 @@ export const tapSink: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2388,7 +2309,6 @@ export const flatMap: {
  * }))
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 4.0.0
  */
@@ -2451,7 +2371,6 @@ export const switchMap: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2499,7 +2418,6 @@ export const flatten: <
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 4.0.0
  */
@@ -2522,7 +2440,6 @@ export const flattenArray = <A, E, R>(self: Stream<Arr.NonEmptyReadonlyArray<A>,
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2553,7 +2470,6 @@ export const drain = <A, E, R>(self: Stream<A, E, R>): Stream<never, E, R> => fr
  * events // => ["background task"]
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2586,7 +2502,6 @@ export const drainFork: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category repetition
  * @since 2.0.0
  */
@@ -2635,7 +2550,6 @@ export const repeat: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category rate limiting
  * @since 2.0.0
  */
@@ -2678,7 +2592,6 @@ export const schedule: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category delays & timeouts
  * @since 2.0.0
  */
@@ -2715,7 +2628,6 @@ export const timeout: {
  *
  * @see {@link timeout} for ending the stream instead of switching to a fallback stream
  *
- * @stability stable
  * @category delays & timeouts
  * @since 4.0.0
  */
@@ -2808,7 +2720,6 @@ export const timeoutOrElse: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category repetition
  * @since 2.0.0
  */
@@ -2878,7 +2789,6 @@ export const repeatElements: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category repetition
  * @since 2.0.0
  */
@@ -2901,7 +2811,6 @@ export const forever = <A, E, R>(self: Stream<A, E, R>): Stream<A, E, R> => from
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 4.0.0
  */
@@ -2931,7 +2840,6 @@ export const flattenIterable = <A, E, R>(self: Stream<Iterable<A>, E, R>): Strea
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -2959,7 +2867,6 @@ export const flattenTake = <A, E, E2, R>(self: Stream<Take.Take<A, E>, E2, R>): 
  * }))
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -3012,7 +2919,6 @@ function* concatChannels<A, E, R>(self: Stream<A, E, R>, that: Stream<A, E, R>) 
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -3048,7 +2954,6 @@ export const prepend: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -3109,7 +3014,6 @@ export const merge: {
  * events // => ["side task"]
  * ```
  *
- * @stability stable
  * @category merging
  * @since 4.0.0
  */
@@ -3161,7 +3065,6 @@ export const mergeEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 4.0.0
  */
@@ -3211,7 +3114,6 @@ export const mergeResult: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -3258,7 +3160,6 @@ export const mergeLeft: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -3308,7 +3209,6 @@ export const mergeRight: {
  * @see {@link merge} for merging exactly two streams and choosing a halt strategy
  * @see {@link flatten} for flattening a stream that already emits streams
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -3357,7 +3257,6 @@ export const mergeAll: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3394,7 +3293,6 @@ export const cross: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3435,7 +3333,6 @@ export const crossWith: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3502,7 +3399,6 @@ const zipArrays = <AL, AR, A>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 4.0.0
  */
@@ -3606,7 +3502,6 @@ export const zipWithArray: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3645,7 +3540,6 @@ export const zip: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3687,7 +3581,6 @@ export const zipLeft: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3738,7 +3631,6 @@ export const zipRight: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3777,7 +3669,6 @@ export const zipFlatten: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3800,7 +3691,6 @@ export const zipWithIndex = <A, E, R>(self: Stream<A, E, R>): Stream<[A, number]
  * }))
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3842,7 +3732,6 @@ export const zipWithNext = <A, E, R>(self: Stream<A, E, R>): Stream<[A, Option.O
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3876,7 +3765,6 @@ export const zipWithPrevious = <A, E, R>(self: Stream<A, E, R>): Stream<[Option.
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -3945,7 +3833,6 @@ export const zipWithPreviousAndNext = <A, E, R>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 3.3.0
  */
@@ -3961,7 +3848,6 @@ export const zipLatestAll = <T extends ReadonlyArray<Stream<any, any, any>>>(
     const latest: Array<any> = []
     const emitted = new Set<number>()
     const readyLatch = Latch.makeUnsafe()
-    const emptyLatch = Latch.makeUnsafe()
     return Channel.mergeAll(
       Channel.fromArray(
         streams.map((s, i) =>
@@ -3978,9 +3864,7 @@ export const zipLatestAll = <T extends ReadonlyArray<Stream<any, any, any>>>(
               }
               return Effect.succeed(Arr.of(latest.slice()))
             }),
-            Channel.filter(isNotUndefined),
-            // An input ending without a value makes a complete tuple impossible.
-            Channel.mapDoneEffect(() => emitted.has(i) ? Effect.void : emptyLatch.open)
+            Channel.filter(isNotUndefined)
           )
         )
       ),
@@ -3988,7 +3872,7 @@ export const zipLatestAll = <T extends ReadonlyArray<Stream<any, any, any>>>(
         concurrency: "unbounded",
         bufferSize: 0
       }
-    ).pipe(Channel.interruptWhen(emptyLatch.await))
+    )
   })) as any
 
 /**
@@ -4021,7 +3905,6 @@ export const zipLatestAll = <T extends ReadonlyArray<Stream<any, any, any>>>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -4075,7 +3958,6 @@ export const zipLatest: {
  * }))
  * ```
  *
- * @stability stable
  * @category zipping
  * @since 2.0.0
  */
@@ -4124,7 +4006,6 @@ export const zipLatestWith: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category racing
  * @since 3.5.0
  */
@@ -4185,7 +4066,6 @@ export const raceAll = <S extends ReadonlyArray<Stream<any, any, any>>>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category racing
  * @since 3.7.0
  */
@@ -4221,7 +4101,6 @@ export const race: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -4257,7 +4136,6 @@ export const filter: {
  * @see {@link filterMapEffect} for an effectful `Filter`
  * @see {@link partition} for consuming both filter success and failure values
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -4295,7 +4173,6 @@ export const filterMap: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -4332,7 +4209,6 @@ export const filterEffect: {
  * @see {@link filterEffect} for effectfully keeping original elements
  * @see {@link mapEffect} for effectfully transforming every element
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -4382,7 +4258,6 @@ export const filterMapEffect: {
  * await Effect.runPromise(Effect.scoped(program))
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 4.0.0
  */
@@ -4476,14 +4351,6 @@ export const partitionQueue: {
   )
 )
 
-const fromQueueShutdownOnEnd = <A, E>(queue: Queue.Dequeue<A, E>): Stream<A, Exclude<E, Cause.Done>> =>
-  fromChannel(Channel.fromTransform((_, scope) =>
-    Effect.as(
-      Scope.addFinalizer(scope, Queue.shutdown(queue as Queue.Queue<A, E>)),
-      Queue.takeAll(queue)
-    )
-  ))
-
 /**
  * Splits a stream with an effectful `Filter`, returning scoped streams for
  * filter successes and failures.
@@ -4503,7 +4370,6 @@ const fromQueueShutdownOnEnd = <A, E>(queue: Queue.Dequeue<A, E>): Stream<A, Exc
  * @see {@link partitionQueue} for the lower-level queue result
  * @see {@link filterMapEffect} for effectful filtering that discards failed filter results
  *
- * @stability stable
  * @category filtering
  * @since 4.0.0
  */
@@ -4557,7 +4423,7 @@ export const partitionEffect: {
         (result) => result,
         options
       ),
-      ([passes, fails]) => [fromQueueShutdownOnEnd(passes), fromQueueShutdownOnEnd(fails)] as const
+      ([passes, fails]) => [fromQueue(passes), fromQueue(fails)] as const
     )
 )
 
@@ -4591,7 +4457,6 @@ export const partitionEffect: {
  * await Effect.runPromise(Effect.scoped(program))
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -4634,7 +4499,7 @@ export const partition: {
   > =>
     Effect.map(
       partitionQueue(self, filter, { capacity: options?.capacity ?? 16 }),
-      ([passes, fails]) => [fromQueueShutdownOnEnd(passes), fromQueueShutdownOnEnd(fails)] as const
+      ([passes, fails]) => [fromQueue(passes), fromQueue(fails)] as const
     )
 )
 
@@ -4657,7 +4522,6 @@ export const partition: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -4705,7 +4569,6 @@ export const when: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -4733,14 +4596,12 @@ export const peel: {
       return Effect.failCause(cause_)
     })
 
-    const [result, leftover] = yield* Effect.scopedWith((scope) =>
-      sink.transform(pull as Pull.Pull<Arr.NonEmptyReadonlyArray<A>>, scope)
-    )
-    let stream: Stream<A, E> = cause ? empty : fromPull(Effect.succeed(originalPull))
-    if (leftover) {
-      stream = concat(fromArray(leftover), stream)
-    }
-    return [result, stream]
+    let stream = fromPull(Effect.succeed(pull)) as Stream<A, E>
+    const leftover = yield* run(stream, sink)
+    if (cause) return [leftover, empty]
+
+    stream = fromPull(Effect.succeed(originalPull))
+    return [leftover, stream]
   })
 )
 
@@ -4771,7 +4632,6 @@ export const peel: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category buffering
  * @since 2.0.0
  */
@@ -4824,7 +4684,6 @@ export const buffer: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category buffering
  * @since 4.0.0
  */
@@ -4877,7 +4736,6 @@ export const bufferArray: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -4918,7 +4776,6 @@ export const catchCause: {
  * result // => ["recovered: boom"]
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -4964,7 +4821,6 @@ export const catchDefect: {
  * observations // => [false]
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -5020,7 +4876,6 @@ export {
    * await Effect.runPromise(program)
    * ```
    *
-   * @stability stable
    * @category error handling
    * @since 4.0.0
    */
@@ -5051,7 +4906,6 @@ export {
  * errors // => ["boom"]
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -5107,7 +4961,6 @@ export const tapError: {
  * @see {@link tapError} for peeking at every typed error
  * @see {@link catchTag} for recovering from a tagged error
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5188,7 +5041,6 @@ export const tapErrorTag: {
  * @see {@link tapCause} for peeking at the full failure cause
  * @see {@link catchDefect} for recovering from defects
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5239,7 +5091,6 @@ export const tapDefect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5314,7 +5165,6 @@ export const catchIf: {
  * @see {@link catchTags} for `_tag` based recovery from multiple tagged errors
  * @see {@link catchCauseFilter} for filtering full causes
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5389,7 +5239,6 @@ export const catchFilter: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -5507,7 +5356,6 @@ export const catchTag: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -5632,7 +5480,6 @@ export const catchTags: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5768,7 +5615,6 @@ export const catchReason: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5915,7 +5761,6 @@ export const catchReasons: {
  * @see {@link catchReason} for recovering from a specific reason
  * @see {@link catchReasons} for handling several reasons at once
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -5978,7 +5823,6 @@ export const unwrapReason: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -6014,7 +5858,6 @@ export const mapError: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -6063,7 +5906,6 @@ export const catchCauseIf: {
  * @see {@link catchFilter} for filtering typed error values instead of full causes
  * @see {@link catchCause} for recovering from every cause without filtering
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -6111,7 +5953,6 @@ export const catchCauseFilter: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -6152,7 +5993,6 @@ export const orElseIfEmpty: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -6189,7 +6029,6 @@ export const orElseSucceed: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -6242,7 +6081,6 @@ export const orDie = <A, E, R>(self: Stream<A, E, R>): Stream<A, never, R> => fr
  *
  * @see {@link ignoreCause} for a variant that also ignores defects, not just typed failures
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -6292,7 +6130,6 @@ export const ignore: <
  *
  * @see {@link ignore} to ignore only typed failures without suppressing defects
  *
- * @stability stable
  * @category error handling
  * @since 4.0.0
  */
@@ -6344,7 +6181,6 @@ export const ignoreCause: <
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category error handling
  * @since 2.0.0
  */
@@ -6443,7 +6279,6 @@ const retryWithoutReset = <A, E, R, X, E2, R2>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability unstable
  * @category error handling
  * @since 3.16.0
  */
@@ -6591,7 +6426,6 @@ export const withExecutionPlan: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -6627,7 +6461,6 @@ export const take: {
  * await Effect.runPromise(program) // => [[1, 2]]
  * ```
  *
- * @stability unstable
  * @category filtering
  * @since 4.0.0
  */
@@ -6688,7 +6521,6 @@ export const limitBytes: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -6744,7 +6576,6 @@ export const takeRight: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -6804,7 +6635,6 @@ export const takeUntil: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -6867,7 +6697,6 @@ export const takeUntilEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -6921,7 +6750,6 @@ export const takeWhile: {
  * @see {@link filterMap} for filtering across the whole stream instead of only the leading prefix
  * @see {@link dropWhileFilter} for dropping the accepted prefix and keeping the remaining original elements
  *
- * @stability stable
  * @category filtering
  * @since 4.0.0
  */
@@ -6980,7 +6808,6 @@ export const takeWhileFilter: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 4.0.0
  */
@@ -7026,7 +6853,6 @@ export const takeWhileEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -7072,7 +6898,6 @@ export const drop: {
  * }))
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -7109,7 +6934,6 @@ export const dropUntil: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -7152,7 +6976,6 @@ export const dropUntilEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -7194,7 +7017,6 @@ export const dropWhile: {
  * @see {@link takeWhileFilter} for keeping the accepted prefix as filter success values
  * @see {@link dropWhileEffect} for effectful predicate prefix dropping
  *
- * @stability stable
  * @category filtering
  * @since 4.0.0
  */
@@ -7236,7 +7058,6 @@ export const dropWhileFilter: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -7297,7 +7118,6 @@ export const dropWhileEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category filtering
  * @since 2.0.0
  */
@@ -7343,7 +7163,6 @@ export const dropRight: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -7378,7 +7197,6 @@ export const chunks = <A, E, R>(self: Stream<A, E, R>): Stream<Arr.NonEmptyReado
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -7456,7 +7274,6 @@ export const rechunk: {
  * }))
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -7493,7 +7310,6 @@ export const sliding: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -7538,8 +7354,8 @@ export const slidingSize: {
             return Effect.succeed(chunks)
           },
           onFailure(cause_) {
-            // The buffer has already advanced by step after a full window.
-            if (list.length === 0 || (emitted && list.length <= windowSize - step)) return Effect.failCause(cause_)
+            if (emitted) MutableList.takeNVoid(list, windowSize - step)
+            if (list.length === 0) return Effect.failCause(cause_)
             cause = cause_
             return Effect.succeed(Arr.of(MutableList.takeAll(list) as any))
           }
@@ -7573,7 +7389,6 @@ export const slidingSize: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -7642,7 +7457,6 @@ export const split: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -7725,7 +7539,6 @@ export const combine: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 4.0.0
  */
@@ -7789,7 +7602,6 @@ export const combineArray: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -7866,7 +7678,6 @@ export const mapAccum: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -7948,7 +7759,6 @@ const emptyArr = Arr.empty<never>()
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -8036,7 +7846,6 @@ export const mapAccumEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -8106,7 +7915,6 @@ export const mapAccumArrayEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category accumulation
  * @since 2.0.0
  */
@@ -8158,7 +7966,6 @@ export const scan: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category accumulation
  * @since 2.0.0
  */
@@ -8203,7 +8010,6 @@ export const scanEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category rate limiting
  * @since 2.0.0
  */
@@ -8319,7 +8125,6 @@ export const debounce: {
  * }))
  * ```
  *
- * @stability stable
  * @category rate limiting
  * @since 2.0.0
  */
@@ -8483,7 +8288,6 @@ const throttleShapeEffect = <A, E, R, E2, R2>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category rate limiting
  * @since 2.0.0
  */
@@ -8548,7 +8352,6 @@ export const throttle: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -8586,7 +8389,6 @@ export const grouped: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -8635,7 +8437,6 @@ export const groupedWithin: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -8705,7 +8506,6 @@ export const groupBy: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -8786,7 +8586,7 @@ const groupByImpl = <A, E, R, K, V, E2, R2>(
             Queue.make<V, Cause.Done>({ capacity: options?.bufferSize ?? 4096 }).pipe(
               Effect.tap((queue) => {
                 MutableHashMap.set(queueMap, key, queue)
-                return Queue.offer(out, [key, fromQueueShutdownOnEnd(queue)])
+                return Queue.offer(out, [key, fromQueue(queue)])
               })
             ),
             (queue) => {
@@ -8828,7 +8628,6 @@ const groupByImpl = <A, E, R, K, V, E2, R2>(
  * @see {@link groupByKey} for grouping all elements with the same key across the stream
  * @see {@link groupBy} for custom grouped stream construction
  *
- * @stability stable
  * @category grouping
  * @since 2.0.0
  */
@@ -8905,7 +8704,6 @@ export const groupAdjacentBy: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category aggregation
  * @since 2.0.0
  */
@@ -8981,7 +8779,6 @@ export const transduce: {
  * }))
  * ```
  *
- * @stability stable
  * @category aggregation
  * @since 2.0.0
  */
@@ -9035,7 +8832,6 @@ export const aggregate: {
  * }))
  * ```
  *
- * @stability stable
  * @category aggregation
  * @since 2.0.0
  */
@@ -9165,7 +8961,6 @@ export const aggregateWithin: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category broadcasting
  * @since 4.0.0
  */
@@ -9284,7 +9079,6 @@ const makePubSub = <A>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category broadcasting
  * @since 2.0.0
  */
@@ -9366,7 +9160,6 @@ export const broadcast: {
  * result // => { values: [[1, 2, 3], [1, 2, 3]], acquisitions: 1 }
  * ```
  *
- * @stability stable
  * @category broadcasting
  * @since 3.8.0
  */
@@ -9448,7 +9241,6 @@ export const share: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -9496,7 +9288,6 @@ export const pipeThroughChannel: {
  * }))
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -9537,7 +9328,6 @@ export const pipeThroughChannelOrFail: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -9572,7 +9362,6 @@ export const pipeThrough: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category accumulation
  * @since 4.0.0
  */
@@ -9599,7 +9388,6 @@ export const collect = <A, E, R>(self: Stream<A, E, R>): Stream<Array<A>, E, R> 
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category accumulation
  * @since 2.0.0
  */
@@ -9629,7 +9417,6 @@ export const accumulate = <A, E, R>(self: Stream<A, E, R>): Stream<Arr.NonEmptyA
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category deduplication
  * @since 2.0.0
  */
@@ -9655,7 +9442,6 @@ export const changes = <A, E, R>(self: Stream<A, E, R>): Stream<A, E, R> => chan
  * )
  * ```
  *
- * @stability stable
  * @category deduplication
  * @since 2.0.0
  */
@@ -9712,7 +9498,6 @@ export const changesWith: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category deduplication
  * @since 2.0.0
  */
@@ -9786,7 +9571,6 @@ export const changesWithEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category text
  * @since 2.0.0
  */
@@ -9832,7 +9616,6 @@ export const decodeText: <
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category text
  * @since 2.0.0
  */
@@ -9858,7 +9641,6 @@ export const encodeText = <E, R>(self: Stream<string, E, R>): Stream<Uint8Array,
  * }))
  * ```
  *
- * @stability stable
  * @category text
  * @since 2.0.0
  */
@@ -9885,7 +9667,6 @@ export const splitLines = <E, R>(self: Stream<string, E, R>): Stream<string, E, 
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -9930,7 +9711,6 @@ export const intersperse: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 2.0.0
  */
@@ -9974,7 +9754,6 @@ export const intersperseAffixes: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -10019,7 +9798,6 @@ export const interleave: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category merging
  * @since 2.0.0
  */
@@ -10112,7 +9890,6 @@ export const interleaveWith: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category interruption
  * @since 2.0.0
  */
@@ -10162,7 +9939,6 @@ export const interruptWhen: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category interruption
  * @since 2.0.0
  */
@@ -10198,7 +9974,6 @@ export const haltWhen: {
  * exits // => ["success"]
  * ```
  *
- * @stability stable
  * @category resource management
  * @since 4.0.0
  */
@@ -10242,7 +10017,6 @@ export const onExit: {
  * errors // => ["boom"]
  * ```
  *
- * @stability stable
  * @category resource management
  * @since 2.0.0
  */
@@ -10281,7 +10055,6 @@ export const onError: {
  * events // => ["started"]
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 3.6.0
  */
@@ -10316,7 +10089,6 @@ export const onStart: {
  * first // => [1]
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 4.0.0
  */
@@ -10354,7 +10126,6 @@ export const onFirst: {
  * events // => ["ended"]
  * ```
  *
- * @stability stable
  * @category sequencing
  * @since 3.6.0
  */
@@ -10393,7 +10164,6 @@ export const onEnd: {
  * events // => ["cleanup"]
  * ```
  *
- * @stability stable
  * @category resource management
  * @since 2.0.0
  */
@@ -10432,7 +10202,6 @@ export const ensuring: {
  * await Effect.runPromise(Stream.runCollect(withEnv)) // => ["Hello, Ada"]
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 4.0.0
  */
@@ -10491,7 +10260,6 @@ export const provide: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 2.0.0
  */
@@ -10537,7 +10305,6 @@ export const provideContext: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 2.0.0
  */
@@ -10590,7 +10357,6 @@ export const provideService: {
  * events // => ["loading"]
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 2.0.0
  */
@@ -10648,7 +10414,6 @@ export const provideServiceEffect: {
  * )
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 4.0.0
  */
@@ -10689,7 +10454,6 @@ export const updateContext: {
  * await Effect.runPromise(Effect.provideService(program, Counter, { count: 0 }))
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 2.0.0
  */
@@ -10735,7 +10499,6 @@ export const updateService: {
  * )
  * ```
  *
- * @stability stable
  * @category tracing
  * @since 2.0.0
  */
@@ -10775,7 +10538,6 @@ export const withSpan: {
  * await Effect.runPromise(effect)
  * ```
  *
- * @stability stable
  * @category do notation
  * @since 2.0.0
  */
@@ -10818,7 +10580,6 @@ export {
    * await Effect.runPromise(program)
    * ```
    *
-   * @stability stable
    * @category do notation
    * @since 2.0.0
    */
@@ -10843,7 +10604,6 @@ export {
  * await Effect.runPromise(result) // => [{ a: 1, b: 2 }, { a: 2, b: 3 }]
  * ```
  *
- * @stability stable
  * @category do notation
  * @since 2.0.0
  */
@@ -10897,7 +10657,6 @@ export const bind: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category do notation
  * @since 2.0.0
  */
@@ -10946,7 +10705,6 @@ export const bindEffect: {
  * await Effect.runPromise(Stream.runCollect(stream)) // => [{ value: 1 }, { value: 2 }, { value: 3 }]
  * ```
  *
- * @stability stable
  * @category do notation
  * @since 2.0.0
  */
@@ -10971,7 +10729,6 @@ export const bindTo: {
  * await Effect.runPromise(program) // => 6
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11012,7 +10769,6 @@ export const run: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11046,7 +10802,6 @@ export const runCollect = <A, E, R>(self: Stream<A, E, R>): Effect.Effect<Array<
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11069,7 +10824,6 @@ export const runCount = <A, E, R>(self: Stream<A, E, R>): Effect.Effect<number, 
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11101,7 +10855,6 @@ export const runSum = <E, R>(self: Stream<number, E, R>): Effect.Effect<number, 
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11154,7 +10907,6 @@ export const runFold: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11207,7 +10959,6 @@ export const runFoldEffect: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11235,7 +10986,6 @@ export const runHead = <A, E, R>(self: Stream<A, E, R>): Effect.Effect<Option.Op
  * @see {@link runCollect} for collecting every emitted element
  * @see {@link runDrain} for consuming the stream while discarding emitted elements
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11261,7 +11011,6 @@ export const runLast = <A, E, R>(self: Stream<A, E, R>): Effect.Effect<Option.Op
  * values // => ["Processing: 1", "Processing: 2", "Processing: 3"]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11311,7 +11060,6 @@ export const runForEach: {
  * values // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11364,7 +11112,6 @@ export const runForEachWhile: {
  * chunks // => ["1, 2, 3, 4, 5"]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 4.0.0
  */
@@ -11402,7 +11149,6 @@ export const runForEachArray: {
  * values // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11434,7 +11180,6 @@ export const runDrain = <A, E, R>(self: Stream<A, E, R>): Effect.Effect<void, E,
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11459,7 +11204,6 @@ export const toPull = <A, E, R>(
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11494,7 +11238,6 @@ export const mkString = <E, R>(self: Stream<string, E, R>): Effect.Effect<string
  * await Effect.runPromise(program) // => [1, 2, 3, 4]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 4.0.0
  */
@@ -11523,7 +11266,6 @@ export const mkArrayBuffer = <E, R>(self: Stream<Uint8Array, E, R>): Effect.Effe
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 4.0.0
  */
@@ -11553,7 +11295,6 @@ export const mkUint8Array = <E, R>(self: Stream<Uint8Array, E, R>): Effect.Effec
  * values // => [ 1, 2, 3, 4, 5 ]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 4.0.0
  */
@@ -11631,7 +11372,6 @@ export const toReadableStreamWith: {
  * values // => [ 1, 2, 3 ]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11680,7 +11420,6 @@ export const toReadableStream: {
  * await Effect.runPromise(effect)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11725,7 +11464,6 @@ export const toReadableStreamEffect: {
  * await Array.fromAsync(iterable) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 4.0.0
  */
@@ -11835,7 +11573,6 @@ export const toAsyncIterableWith: {
  * await Effect.runPromise(program) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 3.15.0
  */
@@ -11858,7 +11595,6 @@ export const toAsyncIterableEffect = <A, E, R>(self: Stream<A, E, R>): Effect.Ef
  * await Array.fromAsync(Stream.toAsyncIterable(stream)) // => [1, 2, 3]
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 3.15.0
  */
@@ -11894,7 +11630,6 @@ export const toAsyncIterable = <A, E>(self: Stream<A, E>): AsyncIterable<A> =>
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -11945,7 +11680,6 @@ export const runIntoPubSub: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -12020,7 +11754,6 @@ export const toPubSub: {
  * await Effect.runPromise(Effect.scoped(program))
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 4.0.0
  */
@@ -12085,7 +11818,6 @@ export const toPubSubTake: {
  * await Effect.runPromise(Effect.scoped(program))
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */
@@ -12150,7 +11882,6 @@ export const toQueue: {
  * await Effect.runPromise(program)
  * ```
  *
- * @stability stable
  * @category destructors
  * @since 2.0.0
  */

@@ -8,7 +8,6 @@
  * asks workers to close on scope finalization, and terminates them if graceful
  * shutdown times out.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Deferred from "effect/Deferred"
@@ -23,7 +22,6 @@ import { WorkerError, WorkerUnknownError } from "effect/workers/WorkerError"
  * Provides the Bun `WorkerPlatform` together with a `Worker.Spawner` created
  * from the supplied worker spawning function.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -40,7 +38,6 @@ export const layer = (
  * Effect workers and requesting graceful worker shutdown during scope
  * finalization before terminating on timeout.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

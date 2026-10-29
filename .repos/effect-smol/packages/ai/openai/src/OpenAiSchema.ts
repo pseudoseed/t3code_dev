@@ -918,7 +918,6 @@ const ResponseError = Schema.Struct({
  *
  * Cache misses report a reason and token estimates, separate from response usage.
  *
- * @stability unstable
  * @category schemas
  * @since 4.0.0
  */
@@ -947,7 +946,6 @@ export const PromptCacheDiagnostics = Schema.Union([
 /**
  * Prompt cache comparison result reported by the OpenAI Responses API.
  *
- * @stability unstable
  * @category models
  * @since 4.0.0
  */

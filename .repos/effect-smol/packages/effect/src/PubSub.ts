@@ -8,7 +8,6 @@
  * subscribers, message-taking helpers, capacity and shutdown operations, a
  * type guard, and low-level types for custom hub strategies.
  *
- * @stability stable
  * @since 2.0.0
  */
 import * as Arr from "./Array.ts"
@@ -61,7 +60,6 @@ const TypeId = "~effect/PubSub"
  * actual // => ["Hello", "World"]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -83,7 +81,6 @@ export interface PubSub<in out A> extends Pipeable {
  * `PubSub`, including atomic implementations, backing subscriptions, replay
  * windows, and delivery strategies.
  *
- * @stability stable
  * @since 2.0.0
  */
 export declare namespace PubSub {
@@ -165,18 +162,12 @@ export declare namespace PubSub {
     /**
      * Describes how publishers should signal to subscribers that they are
      * waiting for space to become available in the `PubSub`.
-     *
-     * **Details**
-     *
-     * The publisher may have yielded since `publish` checked `ended`, so it
-     * must be checked again before registering or publishing the surplus.
      */
     handleSurplus(
       pubsub: Atomic<A>,
       subscribers: Subscribers<A>,
       elements: Iterable<A>,
-      isShutdown: MutableRef.MutableRef<boolean>,
-      ended: MutableRef.MutableRef<Option.Option<A>>
+      isShutdown: MutableRef.MutableRef<boolean>
     ): Effect.Effect<boolean>
 
     /**
@@ -232,7 +223,6 @@ export declare namespace PubSub {
  * actual // => [true, false, false]
  * ```
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -269,7 +259,6 @@ const SubscriptionTypeId = "~effect/PubSub/Subscription"
  * actual // => { message: "msg1", messages: ["msg2"], allMessages: ["msg3"] }
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -313,7 +302,6 @@ export interface Subscription<out A> extends Pipeable {
  * actual // => true
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -345,8 +333,6 @@ export const make = <A>(
  * them. When the capacity is full, publishers suspend until space is available.
  * Pass an options object to configure both `capacity` and an optional replay
  * buffer for late subscribers.
- * The capacity must be a positive integer or `Infinity` for unbounded storage.
- * Invalid capacities cause the effect to die.
  *
  * **Example** (Creating a bounded PubSub)
  *
@@ -373,7 +359,6 @@ export const make = <A>(
  * actual // => [100, 100]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -394,8 +379,6 @@ export const bounded = <A>(
  *
  * **Details**
  *
- * The capacity must be a positive integer or `Infinity` for unbounded storage.
- * Invalid capacities cause the effect to die.
  * For best performance use capacities that are powers of two.
  *
  * **Example** (Dropping messages when full)
@@ -423,7 +406,6 @@ export const bounded = <A>(
  * actual // => { dropped: true, messages: ["msg1", "msg2", "msg3"] }
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -444,8 +426,6 @@ export const dropping = <A>(
  *
  * **Details**
  *
- * The capacity must be a positive integer or `Infinity` for unbounded storage.
- * Invalid capacities cause the effect to die.
  * For best performance use capacities that are powers of two.
  *
  * **Example** (Sliding old messages when full)
@@ -472,7 +452,6 @@ export const dropping = <A>(
  * actual // => ["msg2", "msg3", "msg4"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -513,7 +492,6 @@ export const sliding = <A>(
  * actual // => ["message-0", "message-1", "message-2"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -541,9 +519,8 @@ export const unbounded = <A>(options?: {
  *
  * **Gotchas**
  *
- * The capacity must be a positive integer or `Infinity` for unbounded storage;
- * invalid capacities throw synchronously before an atomic implementation is
- * created.
+ * The capacity must be greater than zero; invalid capacities throw
+ * synchronously before an atomic implementation is created.
  *
  * @see {@link make} for constructing a `PubSub` from an atomic implementation and delivery strategy
  * @see {@link makeAtomicUnbounded} for an atomic implementation without a bounded capacity
@@ -551,7 +528,6 @@ export const unbounded = <A>(options?: {
  * @see {@link dropping} for the higher-level dropping constructor
  * @see {@link sliding} for the higher-level sliding constructor
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -593,7 +569,6 @@ export const makeAtomicBounded = <A>(
  * @see {@link make} for wrapping an atomic implementation with a delivery strategy
  * @see {@link unbounded} for the high-level effectful constructor for unbounded `PubSub` values
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -624,7 +599,6 @@ export const makeAtomicUnbounded = <A>(options?: {
  * actual // => [100, Number.MAX_SAFE_INTEGER]
  * ```
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -665,7 +639,6 @@ export const capacity = <A>(self: PubSub<A>): number => self.pubsub.capacity
  * actual // => { initialSize: 0, afterPublish: 2, messages: ["msg1", "msg2"] }
  * ```
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -698,7 +671,6 @@ export const size = <A>(self: PubSub<A>): Effect.Effect<number> => Effect.sync((
  * actual // => 0
  * ```
  *
- * @stability stable
  * @category getters
  * @since 4.0.0
  */
@@ -742,7 +714,6 @@ export const sizeUnsafe = <A>(self: PubSub<A>): number => {
  * actual // => { initiallyFull: false, nowFull: true, messages: ["msg1", "msg2"] }
  * ```
  *
- * @stability stable
  * @category predicates
  * @since 2.0.0
  */
@@ -777,7 +748,6 @@ export const isFull = <A>(self: PubSub<A>): Effect.Effect<boolean> =>
  * actual // => { initiallyEmpty: true, nowEmpty: false, message: "Hello" }
  * ```
  *
- * @stability stable
  * @category predicates
  * @since 2.0.0
  */
@@ -815,7 +785,6 @@ export const isEmpty = <A>(self: PubSub<A>): Effect.Effect<boolean> => Effect.ma
  * actual // => { isShutdown: true, published: false }
  * ```
  *
- * @stability stable
  * @category lifecycle
  * @since 2.0.0
  */
@@ -886,7 +855,6 @@ export const shutdown = <A>(self: PubSub<A>): Effect.Effect<void> =>
  *
  * @see {@link shutdown} for interrupting subscribers instead of delivering a final message
  *
- * @stability stable
  * @category lifecycle
  * @since 4.0.0
  */
@@ -902,7 +870,6 @@ export const end: {
  *
  * See {@link end} for the semantics.
  *
- * @stability stable
  * @category lifecycle
  * @since 4.0.0
  */
@@ -958,7 +925,6 @@ export const endUnsafe: {
  * actual // => [false, true]
  * ```
  *
- * @stability stable
  * @category predicates
  * @since 2.0.0
  */
@@ -989,7 +955,6 @@ export const isShutdown = <A>(self: PubSub<A>): Effect.Effect<boolean> => Effect
  * actual // => [false, true]
  * ```
  *
- * @stability stable
  * @category predicates
  * @since 4.0.0
  */
@@ -1027,7 +992,6 @@ export const isShutdownUnsafe = <A>(self: PubSub<A>): boolean => self.shutdownFl
  * actual // => "PubSub has been shutdown!"
  * ```
  *
- * @stability stable
  * @category lifecycle
  * @since 2.0.0
  */
@@ -1072,7 +1036,6 @@ export const awaitShutdown = <A>(self: PubSub<A>): Effect.Effect<void> => self.s
  *
  * @see {@link publishUnsafe} for a synchronous non-blocking attempt that does not run effectful surplus handling
  *
- * @stability stable
  * @category publishing
  * @since 2.0.0
  */
@@ -1094,8 +1057,7 @@ export const publish: {
       self.pubsub,
       self.subscribers,
       [value],
-      self.shutdownFlag,
-      self.ended
+      self.shutdownFlag
     )
   }))
 
@@ -1130,7 +1092,6 @@ export const publish: {
  *
  * @see {@link publish} for effectful publishing that honors the configured surplus strategy
  *
- * @stability stable
  * @category publishing
  * @since 4.0.0
  */
@@ -1178,7 +1139,6 @@ export const publishUnsafe: {
  * actual // => { allPublished: true, firstBatch: ["msg1", "msg2"], result: true, secondBatch: ["msg3", "msg4"] }
  * ```
  *
- * @stability stable
  * @category publishing
  * @since 2.0.0
  */
@@ -1199,8 +1159,7 @@ export const publishAll: {
       self.pubsub,
       self.subscribers,
       surplus,
-      self.shutdownFlag,
-      self.ended
+      self.shutdownFlag
     )
   }))
 
@@ -1252,7 +1211,6 @@ export const publishAll: {
  * actual // => [["Hello", "World"], ["Broadcast", "Broadcast"]]
  * ```
  *
- * @stability stable
  * @category subscriptions
  * @since 2.0.0
  */
@@ -1320,7 +1278,6 @@ const unsubscribe = <A>(self: Subscription<A>): Effect.Effect<void> =>
  * actual // => "Hello"
  * ```
  *
- * @stability stable
  * @category subscriptions
  * @since 4.0.0
  */
@@ -1369,7 +1326,6 @@ export const take = <A>(self: Subscription<A>): Effect.Effect<A> =>
  * actual // => ["msg1", "msg2", "msg3"]
  * ```
  *
- * @stability stable
  * @category subscriptions
  * @since 4.0.0
  */
@@ -1396,17 +1352,7 @@ export const takeAll = <A>(self: Subscription<A>): Effect.Effect<Arr.NonEmptyArr
 const pollForItem = <A>(self: Subscription<A>) =>
   Effect.callback<A>((resume) => {
     if (self.shutdownFlag.current) return resume(Effect.interrupt)
-    if (Option.isSome(self.ended.current)) {
-      // Messages may have been published after the empty check, before this callback ran.
-      const message = self.pollers.length === 0
-        ? self.subscription.poll()
-        : MutableList.Empty
-      if (message !== MutableList.Empty) {
-        self.strategy.onPubSubEmptySpaceUnsafe(self.pubsub, self.subscribers)
-        return resume(Effect.succeed(message))
-      }
-      return resume(Effect.succeed(self.ended.current.value))
-    }
+    if (Option.isSome(self.ended.current)) return resume(Effect.succeed(self.ended.current.value))
     const deferred = Deferred.makeUnsafe<A>()
     let set = self.subscribers.get(self.subscription)
     if (!set) {
@@ -1459,7 +1405,6 @@ const pollForItem = <A>(self: Subscription<A>) =>
  * actual // => [["msg1", "msg2", "msg3"], ["msg4", "msg5"], []]
  * ```
  *
- * @stability stable
  * @category subscriptions
  * @since 4.0.0
  */
@@ -1514,7 +1459,6 @@ export const takeUpTo: {
  * actual // => ["msg1", "msg2", "msg3"]
  * ```
  *
- * @stability stable
  * @category subscriptions
  * @since 4.0.0
  */
@@ -1603,7 +1547,6 @@ const takeRemainderLoop = <A>(
  *
  * @see {@link remainingUnsafe} for a synchronous check that reports shutdown as `Option.none()`
  *
- * @stability stable
  * @category getters
  * @since 4.0.0
  */
@@ -1640,7 +1583,6 @@ export const remaining = <A>(self: Subscription<A>): Effect.Effect<number> =>
  *
  * @see {@link remaining} for the effectful variant that interrupts on shutdown
  *
- * @stability stable
  * @category getters
  * @since 4.0.0
  */
@@ -2528,7 +2470,7 @@ const makePubSubUnsafe = <A>(
 ): PubSub<A> => new PubSubImpl(pubsub, subscribers, scope, shutdownHook, shutdownFlag, strategy, ended)
 
 const ensureCapacity = (capacity: number): void => {
-  if (capacity <= 0 || (capacity !== Infinity && !Number.isInteger(capacity))) {
+  if (capacity <= 0) {
     throw new Error(`Cannot construct PubSub with capacity of ${capacity}`)
   }
 }
@@ -2559,7 +2501,6 @@ const ensureCapacity = (capacity: number): void => {
  * @see {@link DroppingStrategy} for dropping new messages when capacity is full
  * @see {@link SlidingStrategy} for evicting old messages when capacity is full
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -2582,13 +2523,9 @@ export class BackPressureStrategy<in out A> implements PubSub.Strategy<A> {
     pubsub: PubSub.Atomic<A>,
     subscribers: PubSub.Subscribers<A>,
     elements: Iterable<A>,
-    isShutdown: MutableRef.MutableRef<boolean>,
-    ended: MutableRef.MutableRef<Option.Option<A>>
+    isShutdown: MutableRef.MutableRef<boolean>
   ): Effect.Effect<boolean> {
     return Effect.callback<boolean>((resume) => {
-      // The publisher may have yielded since `publish` checked `ended`, and
-      // `end` only rejects publishers that are already registered.
-      if (Option.isSome(ended.current)) return resume(Effect.succeed(false))
       const deferred = Deferred.makeUnsafe<boolean>()
       this.offerUnsafe(elements, deferred)
       this.onPubSubEmptySpaceUnsafe(pubsub, subscribers)
@@ -2705,7 +2642,6 @@ export class BackPressureStrategy<in out A> implements PubSub.Strategy<A> {
  * actual // => { published: [true, true, false], messages: ["msg1", "msg2"] }
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -2789,7 +2725,6 @@ export class DroppingStrategy<in out A> implements PubSub.Strategy<A> {
  * actual // => ["msg3", "msg4"]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -2802,11 +2737,9 @@ export class SlidingStrategy<in out A> implements PubSub.Strategy<A> {
     pubsub: PubSub.Atomic<A>,
     subscribers: PubSub.Subscribers<A>,
     elements: Iterable<A>,
-    _isShutdown: MutableRef.MutableRef<boolean>,
-    ended: MutableRef.MutableRef<Option.Option<A>>
+    _isShutdown: MutableRef.MutableRef<boolean>
   ): Effect.Effect<boolean> {
     return Effect.sync(() => {
-      if (Option.isSome(ended.current)) return false
       this.slidingPublishUnsafe(pubsub, elements)
       this.completeSubscribersUnsafe(pubsub, subscribers)
       return true

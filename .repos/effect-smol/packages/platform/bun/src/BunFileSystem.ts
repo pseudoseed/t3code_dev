@@ -5,7 +5,6 @@
  * the shared Node file-system implementation. Once the layer is provided,
  * programs use the standard `effect/FileSystem` service operations.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem"
@@ -15,7 +14,6 @@ import type * as Layer from "effect/Layer"
 /**
  * Layer that provides the `FileSystem` service for Bun using the shared Node file-system implementation.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

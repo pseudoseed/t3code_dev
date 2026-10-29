@@ -14,7 +14,6 @@ import { SeverityNumber } from "@opentelemetry/api-logs"
 import * as Otel from "@opentelemetry/sdk-logs"
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import * as Arr from "effect/Array"
-import * as Cause from "effect/Cause"
 import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
 import type * as Duration from "effect/Duration"
@@ -26,7 +25,6 @@ import * as Predicate from "effect/Predicate"
 import * as Rec from "effect/Record"
 import * as References from "effect/References"
 import * as Tracer from "effect/Tracer"
-import * as Version from "effect/Version"
 import { nanosToHrTime, unknownToAttributeValue } from "./internal/attributes.ts"
 import { Resource } from "./Resource.ts"
 
@@ -90,16 +88,16 @@ export const make: Effect.Effect<
 > = Effect.gen(function*() {
   const loggerProvider = yield* OtelLoggerProvider
   const clock = yield* Clock.Clock
-  const otelLogger = loggerProvider.getLogger("effect", Version.getCurrentVersion())
+  const otelLogger = loggerProvider.getLogger("@effect/opentelemetry")
 
   return Logger.make((options) => {
-    const attributes: Record<string, any> = {}
+    const attributes: Record<string, any> = {
+      fiberId: options.fiber.id
+    }
 
     for (const [key, value] of Object.entries(options.fiber.getRef(References.CurrentLogAnnotations))) {
       Rec.assignProperty(attributes, key, unknownToAttributeValue(value))
     }
-
-    attributes["effect.fiberId"] = options.fiber.id
 
     const span = Context.getOrUndefined(options.fiber.context, Tracer.ParentSpan)
 
@@ -109,25 +107,18 @@ export const make: Effect.Effect<
     }
 
     const now = options.date.getTime()
-    // Outermost spans win duplicate labels.
     for (const [label, startTime] of options.fiber.getRef(References.CurrentLogSpans)) {
-      attributes[`effect.log_span.${label}`] = now - startTime
-    }
-
-    const errors = Cause.prettyErrors(options.cause, { includeCauseInStack: true })
-    if (errors.length > 0) {
-      attributes["exception.type"] = errors[0].name
-      attributes["exception.message"] = errors[0].message
-      attributes["exception.stacktrace"] = errors.map((error) => error.stack).join("\n")
+      attributes[`logSpan.${label}`] = `${now - startTime}ms`
     }
 
     const message = Arr.ensure(options.message).map(unknownToAttributeValue)
+    const hrTime = nanosToHrTime(clock.currentTimeNanosUnsafe())
     otelLogger.emit({
       body: message.length === 1 ? message[0] : message,
       severityText: options.logLevel,
       severityNumber: logLevelToSeverityNumber(options.logLevel),
-      timestamp: options.date,
-      observedTimestamp: nanosToHrTime(clock.currentTimeNanosUnsafe()),
+      timestamp: hrTime,
+      observedTimestamp: hrTime,
       attributes
     })
   })

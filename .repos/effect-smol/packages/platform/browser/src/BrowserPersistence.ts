@@ -7,7 +7,6 @@
  * returning stored data. The database name can be customized and defaults to
  * `"effect_persistence"`.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type * as Arr from "effect/Array"
@@ -39,7 +38,6 @@ import * as Persistence from "effect/persistence/Persistence"
  *
  * @see {@link layerIndexedDb} for providing the higher-level `Persistence` service
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -75,7 +73,6 @@ const storeIdIndexName = "storeId"
 /**
  * Creates a `Persistence` layer backed by IndexedDB, optionally using the provided database name.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

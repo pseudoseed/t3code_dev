@@ -5,7 +5,6 @@
  * and `document.addEventListener` events into Effect `Stream` values. Both
  * helpers accept the usual listener options and an optional stream buffer size.
  *
- * @stability unstable
  * @since 4.0.0
  */
 
@@ -20,7 +19,6 @@ import * as Stream from "effect/Stream"
  * buffer size by passing an object as the second argument with the `bufferSize`
  * field.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -43,7 +41,6 @@ export const fromEventListenerWindow = <K extends keyof WindowEventMap>(
  * buffer size by passing an object as the second argument with the `bufferSize`
  * field.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */

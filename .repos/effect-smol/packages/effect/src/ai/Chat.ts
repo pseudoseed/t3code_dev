@@ -509,7 +509,7 @@ const makeUnsafe = (history: Ref.Ref<Prompt.Prompt>) => {
       (effect, options) =>
         Effect.withSpan(effect, "Chat.generateObject", {
           attributes: {
-            "effect.ai.object_name": LanguageModel.getObjectName(options.objectName, options.schema)
+            objectName: LanguageModel.getObjectName(options.objectName, options.schema)
           },
           captureStackTrace: false
         })

@@ -5,7 +5,6 @@
  * `Deno.serve` always receives a standard `Request`. Connection information is
  * intentionally kept internal to `DenoHttpServer`.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type { HttpServerRequest } from "effect/http/HttpServerRequest"
@@ -13,7 +12,6 @@ import type { HttpServerRequest } from "effect/http/HttpServerRequest"
 /**
  * Returns the underlying web-standard `Request` from an Effect `HttpServerRequest`.
  *
- * @stability unstable
  * @category accessors
  * @since 4.0.0
  */

@@ -7,7 +7,6 @@
  * property and tag checks, tuple and struct checks, boolean combinators, and
  * helpers for composing predicates and refinements.
  *
- * @stability stable
  * @since 2.0.0
  */
 import { dual } from "./Function.ts"
@@ -41,7 +40,6 @@ import type { TupleOf, TupleOfAtLeast } from "./Types.ts"
  * @see {@link Refinement}
  * @see {@link mapInput}
  * @see {@link and}
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -75,7 +73,6 @@ export interface Predicate<in A> {
  * ```
  *
  * @see {@link Predicate}
- * @stability stable
  * @category utility types
  * @since 2.0.0
  */
@@ -113,7 +110,6 @@ export interface PredicateTypeLambda extends TypeLambda {
  * @see {@link Predicate}
  * @see {@link compose}
  * @see {@link isString}
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -147,7 +143,6 @@ export interface Refinement<in A, out B extends A> {
  *
  * @see {@link Predicate}
  * @see {@link Refinement}
- * @stability stable
  * @since 3.6.0
  */
 export declare namespace Predicate {
@@ -238,7 +233,6 @@ export declare namespace Predicate {
  *
  * @see {@link Refinement}
  * @see {@link Predicate}
- * @stability stable
  * @since 3.6.0
  */
 export declare namespace Refinement {
@@ -360,7 +354,6 @@ export declare namespace Refinement {
  * @see {@link Predicate}
  * @see {@link and}
  * @see {@link not}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -394,7 +387,6 @@ export const mapInput: {
  *
  * @see {@link isTupleOfAtLeast}
  * @see {@link Tuple}
- * @stability stable
  * @category guards
  * @since 3.3.0
  */
@@ -428,7 +420,6 @@ export const isTupleOf: {
  *
  * @see {@link isTupleOf}
  * @see {@link Tuple}
- * @stability stable
  * @category guards
  * @since 3.3.0
  */
@@ -461,7 +452,6 @@ export const isTupleOfAtLeast: {
  *
  * @see {@link isNullish}
  * @see {@link isNotNullish}
- * @stability stable
  * @category predicates
  * @since 2.0.0
  */
@@ -494,7 +484,6 @@ export function isTruthy(input: unknown): boolean {
  *
  * @see {@link isMap}
  * @see {@link isIterable}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -527,7 +516,6 @@ export function isSet(input: unknown): input is Set<unknown> {
  *
  * @see {@link isSet}
  * @see {@link isIterable}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -562,7 +550,6 @@ export function isMap(input: unknown): input is Map<unknown, unknown> {
  * @see {@link isNumber}
  * @see {@link isBoolean}
  * @see {@link Refinement}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -596,7 +583,6 @@ export function isString(input: unknown): input is string {
  *
  * @see {@link isBigInt}
  * @see {@link isString}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -630,7 +616,6 @@ export function isNumber(input: unknown): input is number {
  *
  * @see {@link isString}
  * @see {@link isNumber}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -663,7 +648,6 @@ export function isBoolean(input: unknown): input is boolean {
  * ```
  *
  * @see {@link isNumber}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -696,7 +680,6 @@ export function isBigInt(input: unknown): input is bigint {
  * ```
  *
  * @see {@link isPropertyKey}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -732,7 +715,6 @@ export function isSymbol(input: unknown): input is symbol {
  * @see {@link isString}
  * @see {@link isNumber}
  * @see {@link isSymbol}
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -765,7 +747,6 @@ export function isPropertyKey(u: unknown): u is PropertyKey {
  * ```
  *
  * @see {@link isObjectKeyword}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -797,7 +778,6 @@ export function isFunction(input: unknown): input is Function {
  *
  * @see {@link isNotUndefined}
  * @see {@link isNullish}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -828,7 +808,6 @@ export function isUndefined(input: unknown): input is undefined {
  *
  * @see {@link isUndefined}
  * @see {@link isNotNullish}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -859,7 +838,6 @@ export function isNotUndefined<A>(input: A): input is Exclude<A, undefined> {
  *
  * @see {@link isNotNull}
  * @see {@link isNullish}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -890,7 +868,6 @@ export function isNull(input: unknown): input is null {
  *
  * @see {@link isNull}
  * @see {@link isNotNullish}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -921,7 +898,6 @@ export function isNotNull<A>(input: A): input is Exclude<A, null> {
  * @see {@link isNotNullish}
  * @see {@link isUndefined}
  * @see {@link isNull}
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -953,7 +929,6 @@ export function isNullish<A>(input: A): input is A & (null | undefined) {
  * @see {@link isNullish}
  * @see {@link isNotNull}
  * @see {@link isNotUndefined}
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -977,7 +952,6 @@ export function isNotNullish<A>(input: A): input is NonNullable<A> {
  * ```
  *
  * @see {@link isUnknown}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1001,7 +975,6 @@ export function isNever(_: unknown): _ is never {
  * ```
  *
  * @see {@link isNever}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1031,7 +1004,6 @@ export function isUnknown(_: unknown): _ is unknown {
  *
  * @see {@link isObject}
  * @see {@link isObjectKeyword}
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -1064,7 +1036,6 @@ export function isObjectOrArray(input: unknown): input is { [x: PropertyKey]: un
  *
  * @see {@link isObjectOrArray}
  * @see {@link isReadonlyObject}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1098,7 +1069,6 @@ export function isObject(input: unknown): input is { [x: PropertyKey]: unknown }
  * ```
  *
  * @see {@link isObject}
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -1129,7 +1099,6 @@ export function isReadonlyObject(input: unknown): input is { readonly [x: Proper
  *
  * @see {@link isObject}
  * @see {@link isObjectOrArray}
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -1165,7 +1134,6 @@ export function isObjectKeyword(input: unknown): input is object {
  *
  * @see {@link isTagged}
  * @see {@link isObjectKeyword}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1201,7 +1169,6 @@ export const hasProperty: {
  * ```
  *
  * @see {@link hasProperty}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1235,7 +1202,6 @@ export const isTagged: {
  * ```
  *
  * @see {@link isUnknown}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1266,7 +1232,6 @@ export function isError(input: unknown): input is Error {
  *
  * @see {@link isIterable}
  * @see {@link isSet}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1296,7 +1261,6 @@ export function isUint8Array(input: unknown): input is Uint8Array {
  * ```
  *
  * @see {@link isRegExp}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1327,7 +1291,6 @@ export function isDate(input: unknown): input is Date {
  *
  * @see {@link isSet}
  * @see {@link isMap}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1357,7 +1320,6 @@ export function isIterable(input: unknown): input is Iterable<unknown> {
  * ```
  *
  * @see {@link isPromiseLike}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1388,7 +1350,6 @@ export function isPromise(input: unknown): input is Promise<unknown> {
  * ```
  *
  * @see {@link isPromise}
- * @stability stable
  * @category guards
  * @since 2.0.0
  */
@@ -1418,7 +1379,6 @@ export function isPromiseLike(input: unknown): input is PromiseLike<unknown> {
  * ```
  *
  * @see {@link isDate}
- * @stability stable
  * @category guards
  * @since 3.9.0
  */
@@ -1454,7 +1414,6 @@ export function isRegExp(input: unknown): input is RegExp {
  *
  * @see {@link and}
  * @see {@link Refinement}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1494,7 +1453,6 @@ export const compose: {
  *
  * @see {@link Struct}
  * @see {@link isTupleOf}
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -1544,7 +1502,6 @@ export function Tuple<const T extends ReadonlyArray<Predicate.Any>>(
  *
  * @see {@link Tuple}
  * @see {@link hasProperty}
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -1591,7 +1548,6 @@ export function Struct<R extends Record<string, Predicate.Any>>(
  * @see {@link and}
  * @see {@link or}
  * @see {@link xor}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1624,7 +1580,6 @@ export function not<A>(self: Predicate<A>): Predicate<A> {
  *
  * @see {@link and}
  * @see {@link xor}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1671,7 +1626,6 @@ export const or: {
  *
  * @see {@link or}
  * @see {@link not}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1707,7 +1661,6 @@ export const and: {
  *
  * @see {@link or}
  * @see {@link and}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1739,7 +1692,6 @@ export const xor: {
  * ```
  *
  * @see {@link xor}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1775,7 +1727,6 @@ export const eqv: {
  *
  * @see {@link and}
  * @see {@link or}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1810,7 +1761,6 @@ export const implies: {
  *
  * @see {@link or}
  * @see {@link not}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1845,7 +1795,6 @@ export const nor: {
  *
  * @see {@link and}
  * @see {@link not}
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -1881,7 +1830,6 @@ export const nand: {
  *
  * @see {@link some}
  * @see {@link and}
- * @stability stable
  * @category combining
  * @since 2.0.0
  */
@@ -1920,7 +1868,6 @@ export function every<A>(collection: Iterable<Predicate<A>>): Predicate<A> {
  *
  * @see {@link every}
  * @see {@link or}
- * @stability stable
  * @category combining
  * @since 2.0.0
  */

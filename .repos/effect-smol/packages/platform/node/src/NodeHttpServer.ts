@@ -10,7 +10,6 @@
  * constructors plus layers for the server alone, HTTP support services, the
  * combined server, configurable options, and tests.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Cause from "effect/Cause"
@@ -44,7 +43,6 @@ import {
 import * as Request from "effect/http/HttpServerRequest"
 import { HttpServerRequest } from "effect/http/HttpServerRequest"
 import type { HttpServerResponse } from "effect/http/HttpServerResponse"
-import * as Response from "effect/http/HttpServerResponse"
 import type * as Multipart from "effect/http/Multipart"
 import * as Latch from "effect/Latch"
 import * as Layer from "effect/Layer"
@@ -69,7 +67,6 @@ import { NodeWS } from "./NodeSocket.ts"
 /**
  * Options accepted by the Node `HttpServer` constructors and layers.
  *
- * @stability unstable
  * @category options
  * @since 4.0.0
  */
@@ -94,7 +91,6 @@ export interface Options extends Net.ListenOptions {
  * with the supplied options, registers request and upgrade handling, and closes
  * the server during scope finalization with optional graceful-shutdown control.
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -170,14 +166,11 @@ export const make = Effect.fnUntraced(function*(
         middleware: middleware as any,
         scope
       })
-      yield* Scope.addFinalizerExit(serveScope, () =>
-        Effect.ensuring(
-          preemptiveShutdown,
-          Effect.sync(() => {
-            server.off("request", handler)
-            server.off("upgrade", upgradeHandler)
-          })
-        ))
+      yield* Scope.addFinalizerExit(serveScope, () => {
+        server.off("request", handler)
+        server.off("upgrade", upgradeHandler)
+        return preemptiveShutdown
+      })
       server.on("request", handler)
       server.on("upgrade", upgradeHandler)
     })
@@ -189,7 +182,6 @@ export const make = Effect.fnUntraced(function*(
  * injecting a `HttpServerRequest` and interrupting the request fiber if the
  * client closes the response before it finishes.
  *
- * @stability unstable
  * @category handlers
  * @since 4.0.0
  */
@@ -261,11 +253,12 @@ export const makeUpgradeHandler = <
       socket: Duplex,
       head: Buffer
     ) {
+      let upgraded = false
       let nodeResponse_: Http.ServerResponse | undefined = undefined
       const nodeResponse = () => {
         if (nodeResponse_ === undefined) {
           nodeResponse_ = new Http.ServerResponse(nodeRequest)
-          if (request.upgraded || socket.destroyed) {
+          if (upgraded || socket.destroyed) {
             // End without assigning the socket so handleResponse skips HTTP writes.
             nodeResponse_.end()
           } else {
@@ -296,15 +289,18 @@ export const makeUpgradeHandler = <
               socket.once("close", onClose)
               wss.handleUpgrade(nodeRequest, socket, head, (ws) => {
                 socket.off("close", onClose)
-                request.upgraded = true
+                upgraded = true
                 resume(Effect.succeed(ws))
               })
             }),
             (ws, exit) => Effect.sync(() => ws.close(closeCode(exit)))
           )
       ))
-      const request = new ServerRequestImpl(nodeRequest, nodeResponse, upgradeEffect)
-      const context = Context.add(services, HttpServerRequest, request)
+      const context = Context.add(
+        services,
+        HttpServerRequest,
+        new ServerRequestImpl(nodeRequest, nodeResponse, upgradeEffect)
+      )
       const fiber = Fiber.runIn(Effect.runForkWith(context as Context.Context<any>)(handledApp), options.scope)
       socket.on("error", () => {})
       socket.on("close", () => {
@@ -320,7 +316,6 @@ class ServerRequestImpl extends NodeHttpIncomingMessage<HttpServerError> impleme
   readonly [Request.TypeId]: typeof Request.TypeId
   readonly response: Http.ServerResponse | LazyArg<Http.ServerResponse>
   private upgradeEffect?: Effect.Effect<Socket.Socket, HttpServerError> | undefined
-  upgraded = false
   readonly url: string
   private headersOverride?: Headers.Headers | undefined
 
@@ -442,7 +437,6 @@ class ServerRequestImpl extends NodeHttpIncomingMessage<HttpServerError> impleme
  * Provides an `HttpServer` by creating and managing a scoped Node
  * `http.Server` with the supplied listen and shutdown options.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -455,7 +449,6 @@ export const layerServer: (
  * Provides the Node HTTP support services used by `NodeHttpServer`, including
  * the HTTP platform, ETag generator, and core Node platform services.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -471,7 +464,6 @@ export const layerHttpServices: Layer.Layer<
  * Provides a Node `HttpServer` together with the Node HTTP platform, ETag, and
  * core platform services required to serve requests.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -492,7 +484,6 @@ export const layer = (
  * and core Node platform services, reading the listen and shutdown options from
  * a `Config` value.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -514,7 +505,6 @@ export const layerConfig = (
  * Provides a test HTTP server listening on an ephemeral port together with a
  * Fetch-backed `HttpClient` configured for server integration tests.
  *
- * @stability unstable
  * @category testing
  * @since 4.0.0
  */
@@ -543,16 +533,10 @@ export const layerTest: Layer.Layer<
 const closeCode = (exit: Exit.Exit<unknown, unknown>): number =>
   Exit.isSuccess(exit) ? 1000 : Cause.hasInterruptsOnly(exit.cause) ? 1001 : 1011
 
-// Reported to middleware in place of the handler's discarded response.
-const upgradedResponse = Response.empty({ status: 101 })
-
 const handleResponse = (
   request: HttpServerRequest,
   response: HttpServerResponse
-): Effect.Effect<unknown, HttpServerError> => {
-  if ((request as ServerRequestImpl).upgraded) {
-    return Effect.succeed(upgradedResponse)
-  }
+): Effect.Effect<void, HttpServerError> => {
   const nodeResponse = (request as ServerRequestImpl).resolvedResponse
   if (nodeResponse.writableEnded) {
     return Effect.void

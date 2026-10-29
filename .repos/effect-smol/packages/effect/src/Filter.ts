@@ -8,7 +8,6 @@
  * filters for common JavaScript values and tags, helpers for combining filters,
  * and conversions to predicates, options, and results.
  *
- * @stability stable
  * @since 4.0.0
  */
 import type { Effect } from "./Effect.ts"
@@ -39,7 +38,6 @@ import type { EqualsWith, ExcludeTag, ExtractReason, ExtractTag, ReasonTags, Tag
  * positiveFilter(-3) // => Result.fail(-3)
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -81,7 +79,6 @@ export interface Filter<in Input, out Pass = Input, out Fail = Input> {
  * await Effect.runPromise(validateUser("")) // => Result.fail({ id: "", isActive: false })
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -123,7 +120,6 @@ export interface FilterEffect<
  * uppercaseFilter("ok") // => Result.succeed("OK")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -156,7 +152,6 @@ export const make = <Input, Pass, Fail>(
  * await Effect.runPromise(asyncValidate("id")) // => Result.succeed("id")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -168,7 +163,6 @@ export const makeEffect = <Input, Pass, Fail, E, R>(
  * Transforms the failure value produced by a `Filter`, leaving successful
  * results unchanged.
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -197,7 +191,6 @@ export {
    * Creates a Filter that tries to apply a function and returns `fail` on
    * error.
    *
-   * @stability stable
    * @category constructors
    * @since 4.0.0
    */
@@ -231,7 +224,6 @@ export {
  * isString("ok") // => Result.succeed("ok")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -245,7 +237,6 @@ export const fromPredicate: {
  * Creates a `Filter` from a function that returns an `Option`; `Some(value)`
  * passes with `value`, and `None` fails with the original input.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -265,7 +256,6 @@ export const fromPredicateOption = <A, B>(predicate: (a: A) => Option.Option<B>)
  * @see {@link toOption} for keeping passed values and discarding failure values
  * @see {@link toResult} for preserving both pass and failure values
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */
@@ -286,7 +276,6 @@ export const toPredicate = <A, Pass, Fail>(
  * Filter.string(42) // => Result.fail(42)
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -310,7 +299,6 @@ export const string: Filter<unknown, string> = fromPredicate(Predicate.isString)
  * @see {@link equals} for structural equality when distinct values with equal
  * contents should pass
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -332,7 +320,6 @@ export const equalsStrict =
  * @see {@link Predicate.hasProperty} for guarding property presence instead of
  * calling an input's `has` method
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -360,7 +347,6 @@ export const has =
  *
  * @see {@link fromPredicate} for custom predicate-based narrowing
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -381,7 +367,6 @@ export const instanceOf =
  * Filter.number("42") // => Result.fail("42")
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -403,7 +388,6 @@ export const number: Filter<unknown, number> = fromPredicate(Predicate.isNumber)
  * @see {@link Predicate.isBoolean} for the underlying guard
  * @see {@link fromPredicate} for custom predicate-based filters
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -430,7 +414,6 @@ export const boolean: Filter<unknown, boolean> = fromPredicate(Predicate.isBoole
  * @see {@link number} for JavaScript `number` values
  * @see {@link Predicate.isBigInt} for the underlying guard
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -439,7 +422,6 @@ export const bigint: Filter<unknown, bigint> = fromPredicate(Predicate.isBigInt)
 /**
  * A predefined filter that only passes through Symbol values.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -467,7 +449,6 @@ export const symbol: Filter<unknown, symbol> = fromPredicate(Predicate.isSymbol)
  * @see {@link instanceOf} for constructor-based filtering
  * @see {@link fromPredicate} for custom date checks
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -494,7 +475,6 @@ export const date: Filter<unknown, Date> = fromPredicate(Predicate.isDate)
  * `Filter` result is not needed
  * @see {@link reason} for extracting a nested reason variant from tagged errors
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -518,7 +498,6 @@ const taggedImpl =
 /**
  * Creates a filter that extracts a reason from a tagged error.
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -568,7 +547,6 @@ const reasonImpl =
  * equality
  * @see {@link Equal.equals} for the underlying structural equality semantics
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -579,7 +557,6 @@ export const equals =
 /**
  * Combines two filters with logical OR semantics.
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -614,7 +591,6 @@ export const or: {
  *
  * @see {@link zip} for combining two filters into a tuple
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -661,7 +637,6 @@ export const zipWith: {
  * positiveAndEven(2) // => Result.succeed([2, 2])
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -696,7 +671,6 @@ export const zip: {
  * positiveEven(2) // => Result.succeed(2)
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -732,7 +706,6 @@ export const andLeft: {
  * positiveDoubled(2) // => Result.succeed(4)
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -768,7 +741,6 @@ export const andRight: {
  * stringToUpper("hello") // => Result.succeed("HELLO")
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -799,7 +771,6 @@ export const compose: {
  * If either filter fails, the returned filter fails with the original input
  * instead of the intermediate failure value.
  *
- * @stability stable
  * @category combinators
  * @since 4.0.0
  */
@@ -835,7 +806,6 @@ export const composePassthrough: {
  * @see {@link toResult} for keeping the filter failure value
  * @see {@link toPredicate} for plain boolean pass/fail checks
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */
@@ -859,7 +829,6 @@ export const toOption = <A, Pass, Fail>(
  * @see {@link toOption} for keeping only passed values
  * @see {@link toPredicate} for plain boolean pass/fail checks
  *
- * @stability stable
  * @category converting
  * @since 4.0.0
  */

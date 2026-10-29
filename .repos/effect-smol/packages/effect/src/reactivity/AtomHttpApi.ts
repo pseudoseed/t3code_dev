@@ -57,7 +57,7 @@ export interface AtomHttpApiClient<Self, Id extends string, Groups extends HttpA
       HttpApiGroup.Endpoints<Group>,
       EndpointIdentifier
     >,
-    const ResponseMode extends HttpApiEndpoint.ClientResponseMode = "decoded-only"
+    const ResponseMode extends HttpApiEndpoint.ClientResponseMode = HttpApiEndpoint.ClientResponseMode
   >(
     group: GroupIdentifier,
     endpoint: EndpointIdentifier,
@@ -353,7 +353,9 @@ type ResponseByMode<
   Endpoint extends HttpApiEndpoint.Constraint,
   ResponseMode extends HttpApiEndpoint.ClientResponseMode
 > = HttpApiClient.Client.Response<
-  HttpApiClient.SuccessType<Extract<Endpoint, HttpApiEndpoint.ConstraintRequest>["~Success"]>,
+  Effect.Success<
+    ReturnType<HttpApiClient.Client.Method<Extract<Endpoint, HttpApiEndpoint.ConstraintRequest>, never, never>>
+  >,
   ResponseMode
 >
 

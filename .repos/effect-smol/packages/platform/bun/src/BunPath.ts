@@ -6,7 +6,6 @@
  * Bun code should receive path operations from the Effect environment instead
  * of importing runtime path helpers directly.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as NodePath from "@effect/platform-node-shared/NodePath"
@@ -16,7 +15,6 @@ import type { Path } from "effect/Path"
 /**
  * Layer that provides the default `Path` service for Bun using the shared Node path implementation.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -25,7 +23,6 @@ export const layer: Layer.Layer<Path> = NodePath.layer
 /**
  * Layer that provides the POSIX `Path` service for Bun using the shared Node path implementation.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -34,7 +31,6 @@ export const layerPosix: Layer.Layer<Path> = NodePath.layerPosix
 /**
  * Layer that provides the Win32 `Path` service for Bun using the shared Node path implementation.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

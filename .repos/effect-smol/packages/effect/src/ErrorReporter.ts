@@ -8,7 +8,6 @@
  * layers for installing reporters and symbols for marking errors as ignored or
  * attaching severity and attributes.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import type * as Cause from "./Cause.ts"
@@ -31,7 +30,6 @@ import type * as Scope from "./Scope.ts"
  *
  * Use to refer to the runtime type identifier type in low-level integrations.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -46,7 +44,6 @@ export type TypeId = "~effect/ErrorReporter"
  * implementations. Most code should create reporters with `make` and register
  * them with `layer`.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -73,7 +70,6 @@ export const TypeId: TypeId = "~effect/ErrorReporter"
  * @see {@link report} for manually reporting a `Cause`
  * @see {@link Effect.withErrorReporting} for reporting failures from an effect
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -124,7 +120,6 @@ export interface ErrorReporter {
  * @see {@link layer} for registering reporters in the environment
  * @see {@link report} for manually reporting a `Cause`
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -175,7 +170,6 @@ export const make = (
  * Use when you need to read or replace the current set of error reporters
  * directly.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -234,7 +228,6 @@ export const CurrentErrorReporters: Context.Reference<ReadonlySet<ErrorReporter>
  * @see {@link make} for creating an `ErrorReporter` from a callback
  * @see {@link CurrentErrorReporters} for low-level access to the current reporters
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -291,7 +284,6 @@ export const layer = <
  * output // => "fallback value"
  * ```
  *
- * @stability unstable
  * @category logging
  * @since 4.0.0
  */
@@ -323,31 +315,12 @@ export const report = <E>(cause: Cause.Cause<E>): Effect.Effect<void> =>
  * @see {@link attributes} for the runtime annotation key that attaches reporter
  * metadata
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
 export interface Reportable {
-  /**
-   * Suppress reports for this error.
-   *
-   * @stability unstable
-   * @since 4.0.0
-   */
   readonly [ignore]?: boolean
-  /**
-   * Override the severity level for this error.
-   *
-   * @stability unstable
-   * @since 4.0.0
-   */
   readonly [severity]?: Severity
-  /**
-   * Attach extra key/value metadata to this error.
-   *
-   * @stability unstable
-   * @since 4.0.0
-   */
   readonly [attributes]?: ReadonlyRecord<string, unknown>
 }
 
@@ -370,7 +343,6 @@ declare global {
  * from being forwarded to reporters. This is useful for expected failures such
  * as HTTP 404 responses.
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -407,7 +379,6 @@ export type ignore = "~effect/ErrorReporter/ignore"
  * @see {@link Reportable} for the annotation contract recognized on object
  * errors
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -424,7 +395,6 @@ export const ignore: ignore = "~effect/ErrorReporter/ignore"
  *
  * @see {@link ignore} for the annotation key this predicate reads
  *
- * @stability unstable
  * @category predicates
  * @since 4.0.0
  */
@@ -444,7 +414,6 @@ export const isIgnored = (u: unknown): boolean =>
  * When set to a valid `LogLevel.Severity`, the reporter callback receives this
  * value as `severity`. Missing or invalid values fall back to `"Info"`.
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -479,7 +448,6 @@ export type severity = "~effect/ErrorReporter/severity"
  * @see {@link Reportable} for the annotation contract recognized on object
  * errors
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -497,7 +465,6 @@ export const severity: severity = "~effect/ErrorReporter/severity"
  * @see {@link severity} for the annotation key used to override severity
  * @see {@link Reportable} for the annotation properties recognized on object errors
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -522,7 +489,6 @@ export const getSeverity = (error: object): Severity => {
  * include contextual information such as user IDs, request IDs, or other
  * domain-specific debugging data.
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -564,7 +530,6 @@ export type attributes = "~effect/ErrorReporter/attributes"
  * @see {@link Reportable} for the annotation contract recognized on object
  * errors
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */
@@ -592,7 +557,6 @@ export const attributes: attributes = "~effect/ErrorReporter/attributes"
  * @see {@link attributes} for the annotation key used to attach metadata
  * @see {@link Reportable} for the annotation properties recognized on object errors
  *
- * @stability unstable
  * @category annotations
  * @since 4.0.0
  */

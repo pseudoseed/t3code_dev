@@ -8,7 +8,6 @@
  * histogram boundaries, registry snapshots, text dumps, and controls for
  * enabling runtime metrics.
  *
- * @stability stable
  * @since 2.0.0
  */
 
@@ -106,7 +105,6 @@ import type { Contravariant, Covariant } from "./Types.ts"
  * ] // => [1, 128, 1]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -185,7 +183,6 @@ export interface Metric<in Input, out State> extends Pipeable {
  * const counts = [result.requests.count, result.bytes.count] // => [6, 1024n]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -246,7 +243,6 @@ export interface Counter<in Input extends number | bigint> extends Metric<Input,
  * const counts = [result.requests.total, result.errors.total, result.bytes.total] // => [3, 3, 1024000n]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -321,7 +317,6 @@ export interface CounterState<in Input extends number | bigint> {
  * const values = [result.statusAnalysis.mostFrequent, result.actionAnalysis.mostFrequent] // => ["200", "login"]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -406,7 +401,6 @@ export interface Frequency extends Metric<string, FrequencyState> {}
  * mostCommon.map(({ key, count }) => [key, count]) // => [["200", 3], ["click", 3]]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -468,7 +462,6 @@ export interface FrequencyState {
  * const values = [result.memory.currentValue, result.disk.currentValue] // => [704, 5000000000n]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -537,7 +530,6 @@ export interface Gauge<in Input extends number | bigint> extends Metric<Input, G
  * values // => [23.1, 5000000000n, 15]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -626,7 +618,6 @@ export interface GaugeState<in Input extends number | bigint> {
  * values // => [4, 445, 118]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -714,7 +705,6 @@ export interface Histogram<Input> extends Metric<Input, HistogramState> {}
  * values // => [5, 50, 750, 1295]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -820,7 +810,6 @@ export interface HistogramState {
  * counts // => [5, 1461, 3]
  * ```
  *
- * @stability stable
  * @category models
  * @since 2.0.0
  */
@@ -903,7 +892,6 @@ export interface Summary<Input> extends Metric<Input, SummaryState> {}
  * values // => [7, 45, 890, 1879]
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -957,7 +945,6 @@ export interface SummaryState {
  * const values = [result.counter.count, result.gauge.value] // => [1, 12]
  * ```
  *
- * @stability stable
  * @since 2.0.0
  */
 export declare namespace Metric {
@@ -1568,7 +1555,6 @@ export declare namespace Metric {
  * const key = result // => { keyValue: "effect/Metric/CurrentMetricAttributes", keyType: "string", isConstant: true }
  * ```
  *
- * @stability stable
  * @category constants
  * @since 4.0.0
  */
@@ -1616,7 +1602,6 @@ export const CurrentMetricAttributesKey = "effect/Metric/CurrentMetricAttributes
  * const actual = attributes // => { service: "api", version: "1.0" }
  * ```
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -1629,7 +1614,6 @@ const MetricRegistryKey = "effect/Metric/MetricRegistry"
 /**
  * The registry used to store metric metadata and hooks.
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -1658,7 +1642,6 @@ export type MetricRegistry = Map<string, Metric.Metadata<any, any>>
  * @see {@link snapshot} for reading all registered metrics from the current `Effect` context
  * @see {@link snapshotUnsafe} for reading all registered metrics from an explicit `Context`
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -2034,7 +2017,6 @@ class MetricTransform<in Input, out State, in Input2> extends Metric$<Input2, St
  * Metric.isMetric({ name: "requests" }) // => false
  * ```
  *
- * @stability stable
  * @category guards
  * @since 4.0.0
  */
@@ -2095,7 +2077,6 @@ export const isMetric = (u: unknown): u is Metric<never, unknown> =>
  * const counts = [result.requestValue.count, result.eventValue.count, result.bytesValue.count] // => [6, 1, 1024n]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -2182,7 +2163,6 @@ export const counter: {
  * const values = [result.memoryValue.value, result.cpuValue.value, result.diskValue.value] // => [800, 75, 1024000000n]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -2277,7 +2257,6 @@ export const gauge: {
  * counts // => [3, 2, 2]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -2357,7 +2336,6 @@ export const frequency = (name: string, options?: {
  * values // => [5, 500, 3]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -2434,7 +2412,6 @@ export const histogram = (name: string, options: {
  * const payloadValues = [payload.count, payload.min, payload.max, payload.sum] // => [4, 1.2, 15.6, 26]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -2487,7 +2464,6 @@ export const summary = (name: string, options: {
  * const metadata = [responseTimesSummary.id, responseTimesSummary.type] // => ["response_times_summary", "Summary"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -2541,7 +2517,6 @@ export const summaryWithTimestamp = (name: string, options: {
  * ) // => { count: 1, min: 120, max: 120, sum: 120 }
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -2602,7 +2577,6 @@ export const timer = (name: string, options?: {
  * ) // => { requestCount: 1, count: 1, min: 750, max: 750, average: 750 }
  * ```
  *
- * @stability stable
  * @category getters
  * @since 2.0.0
  */
@@ -2653,7 +2627,6 @@ export const value = <Input, State>(
  * await Effect.runPromise(Effect.provideService(program, Metric.MetricRegistry, new Map())) // => [22, 15]
  * ```
  *
- * @stability stable
  * @category mutations
  * @since 3.6.5
  */
@@ -2716,7 +2689,6 @@ export const modify: {
  * await Effect.runPromise(Effect.provideService(program, Metric.MetricRegistry, new Map())) // => [67.8, 2, 3]
  * ```
  *
- * @stability stable
  * @category mutations
  * @since 2.0.0
  */
@@ -2762,7 +2734,6 @@ export const update: {
  * const values = [value.count, value.sum] // => [1, 250]
  * ```
  *
- * @stability stable
  * @category annotations
  * @since 2.0.0
  */
@@ -2825,7 +2796,6 @@ export const mapInput: {
  * const count = value.count // => 3
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 2.0.0
  */
@@ -2891,7 +2861,6 @@ export const withConstantInput: {
  * await Effect.runPromise(Effect.provideService(result, Metric.MetricRegistry, new Map())) // => [2, 1]
  * ```
  *
- * @stability stable
  * @category mapping
  * @since 4.0.0
  */
@@ -2957,7 +2926,6 @@ export const withAttributes: {
  * const ids = snapshots.map((snapshot) => snapshot.id).sort() // => ["http_requests", "response_time_ms"]
  * ```
  *
- * @stability stable
  * @category snapshotting
  * @since 2.0.0
  */
@@ -3017,7 +2985,6 @@ export const snapshot: Effect<ReadonlyArray<Metric.Snapshot>> = InternalEffect.m
  * included // => [true, true, true]
  * ```
  *
- * @stability stable
  * @category formatting
  * @since 4.0.0
  */
@@ -3086,7 +3053,6 @@ export const dump: Effect<string> = InternalEffect.flatMap(InternalEffect.contex
  * await Effect.runPromise(Effect.provideService(program, Metric.MetricRegistry, new Map())) // => ["http_requests"]
  * ```
  *
- * @stability stable
  * @category snapshotting
  * @since 4.0.0
  */
@@ -3176,7 +3142,6 @@ const attributesToString = (attributes: Metric.AttributeSet): string => {
  * Metric.boundariesFromIterable([-5, 0, 10, 10, 25, 50]) // => [10, 25, 50, Infinity]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -3202,7 +3167,6 @@ export const boundariesFromIterable = (iterable: Iterable<number>): ReadonlyArra
  * Metric.linearBoundaries({ start: 10, width: 20, count: 5 }) // => [10, 30, 50, 70, Infinity]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -3229,7 +3193,6 @@ export const linearBoundaries = (options: {
  * Metric.exponentialBoundaries({ start: 1, factor: 2, count: 5 }) // => [1, 2, 4, 8, Infinity]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -3269,7 +3232,6 @@ const fiberFailures = counter("child_fiber_failures", {
  * Metric.FiberRuntimeMetricsKey // => "effect/Metric/FiberRuntimeMetrics"
  * ```
  *
- * @stability stable
  * @category constants
  * @since 4.0.0
  */
@@ -3298,7 +3260,6 @@ export const FiberRuntimeMetricsKey: "effect/Metric/FiberRuntimeMetrics" = Inter
  * events // => ["start", "success"]
  * ```
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -3338,7 +3299,6 @@ export interface FiberRuntimeMetricsService {
  * const isDefault = result // => true
  * ```
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -3361,7 +3321,6 @@ export const FiberRuntimeMetrics = Context.Reference<FiberRuntimeMetricsService 
  * ] // => ["function", "function"]
  * ```
  *
- * @stability stable
  * @category services
  * @since 4.0.0
  */
@@ -3402,7 +3361,6 @@ export const FiberRuntimeMetricsImpl: FiberRuntimeMetricsService = {
  * await Effect.runPromise(Effect.provide(program, Metric.enableRuntimeMetricsLayer)) // => true
  * ```
  *
- * @stability stable
  * @category layers
  * @since 4.0.0
  */
@@ -3442,7 +3400,6 @@ export const enableRuntimeMetricsLayer = Layer.succeed(FiberRuntimeMetrics)(Fibe
  * const values = [result.counterValue.count, result.metricsEnabled] // => [1, false]
  * ```
  *
- * @stability stable
  * @category layers
  * @since 4.0.0
  */
@@ -3470,7 +3427,6 @@ export const disableRuntimeMetricsLayer = Layer.succeed(FiberRuntimeMetrics)(und
  * await Effect.runPromise(Metric.enableRuntimeMetrics(program)) // => true
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 4.0.0
  */
@@ -3500,7 +3456,6 @@ export const enableRuntimeMetrics: <A, E, R>(self: Effect<A, E, R>) => Effect<A,
  * await Effect.runPromise(Metric.disableRuntimeMetrics(program)) // => true
  * ```
  *
- * @stability stable
  * @category providing services
  * @since 4.0.0
  */

@@ -9,7 +9,6 @@
  * provides a constructor for service values and a small test layer with
  * overridable defaults.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Context from "./Context.ts"
@@ -26,7 +25,6 @@ import * as Stream from "./Stream.ts"
  *
  * Use to type the runtime identifier stored on `Stdio` service implementations.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -40,7 +38,6 @@ export type TypeId = "~effect/Stdio"
  * This marker is part of the runtime representation of `Stdio` service
  * implementations.
  *
- * @stability unstable
  * @category type IDs
  * @since 4.0.0
  */
@@ -60,7 +57,6 @@ export const TypeId: TypeId = "~effect/Stdio"
  * standard error, and a stream of standard input bytes. I/O operations can fail
  * with `PlatformError`.
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -98,7 +94,6 @@ export interface Stdio {
  * @see {@link make} for constructing a `Stdio` service directly
  * @see {@link layerTest} for a test layer with defaults and overrides
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -121,7 +116,6 @@ export const Stdio: Context.Service<Stdio, Stdio> = Context.Service<Stdio>(TypeI
  *
  * @see {@link layerTest} for a test layer with default fields that can be overridden
  *
- * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -152,7 +146,6 @@ export const make = (
  *
  * @see {@link make} for constructing a `Stdio` service directly without a `Layer` or defaults
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

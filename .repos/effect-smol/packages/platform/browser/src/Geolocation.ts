@@ -8,7 +8,6 @@
  * `PermissionDenied`, or `Timeout` reasons. The module also provides the
  * browser-backed layer and a `watchPosition` accessor.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Cause from "effect/Cause"
@@ -45,7 +44,6 @@ const ErrorTypeId = "~@effect/platform-browser/Geolocation/GeolocationError"
  * @see {@link GeolocationError} for represented browser geolocation failures
  * @see {@link layer} for the browser-backed service implementation
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -73,7 +71,6 @@ export interface Geolocation {
  *
  * @see {@link layer} for providing the browser-backed geolocation service
  *
- * @stability unstable
  * @category services
  * @since 4.0.0
  */
@@ -82,7 +79,6 @@ export const Geolocation: Context.Service<Geolocation, Geolocation> = Context.Se
 /**
  * Tagged error wrapping a browser geolocation failure reason.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -108,7 +104,6 @@ export class GeolocationError extends Data.TaggedError("GeolocationError")<{
 /**
  * Error reason for the browser geolocation `POSITION_UNAVAILABLE` failure.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -123,7 +118,6 @@ export class PositionUnavailable extends Data.TaggedError("PositionUnavailable")
 /**
  * Error reason for the browser geolocation `PERMISSION_DENIED` failure.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -138,7 +132,6 @@ export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
 /**
  * Error reason for the browser geolocation `TIMEOUT` failure.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -153,7 +146,6 @@ export class Timeout extends Data.TaggedError("Timeout")<{
 /**
  * Union of browser geolocation error reasons represented by the service.
  *
- * @stability unstable
  * @category errors
  * @since 4.0.0
  */
@@ -201,7 +193,6 @@ const makeQueue = (
 /**
  * Layer that provides `Geolocation` using `navigator.geolocation`, with watched positions buffered in a sliding queue.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -226,7 +217,6 @@ export const layer: Layer.Layer<Geolocation> = Layer.succeed(
  * Reads geolocation positions from the `Geolocation` service as a stream, with
  * an optional sliding buffer size.
  *
- * @stability unstable
  * @category accessors
  * @since 4.0.0
  */

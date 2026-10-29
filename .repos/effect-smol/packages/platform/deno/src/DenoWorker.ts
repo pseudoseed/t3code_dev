@@ -1,7 +1,6 @@
 /**
  * Parent-side Deno platform for Effect workers.
  *
- * @stability unstable
  * @since 4.0.0
  */
 import * as Deferred from "effect/Deferred"
@@ -14,7 +13,6 @@ import { WorkerError, WorkerReceiveError } from "effect/workers/WorkerError"
 /**
  * Creates Deno worker layers by combining the default worker platform with a spawner.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -29,7 +27,6 @@ export const layer = (
 /**
  * Layer that provides the Deno worker platform.
  *
- * @stability unstable
  * @category layers
  * @since 4.0.0
  */

@@ -35,32 +35,11 @@
       "name": "@effect/language-service",
       "namespaceImportPackages": ["effect", "@effect/*"],
       "diagnosticSeverity": {
-        "globalErrorInEffectFailure": "off", // TODO: Check if we should fix the warnings this reports
-        "unstableApiUsage": "off"
+        "globalErrorInEffectFailure": "off" // TODO: Check if we should fix the warnings this reports
       },
       "includeSuggestionsInTsc": false,
       "ignoreEffectWarningsInTscExitCode": true,
-      "ignoreEffectErrorsInTscExitCode": true,
-      "overrides": [
-        {
-          "exclude": [
-            "**/internal/**/*",
-            "**/index.ts",
-            "**/index.tsx",
-            "**/index.mts",
-            "**/index.cts",
-            "**/ai-docs/**/*",
-            "**/test/**/*",
-            "**/Generated.ts",
-            "**/packages/tools/**/*"
-          ],
-          "options": {
-            "diagnosticSeverity": {
-              "apiStabilityLeak": "error"
-            }
-          }
-        }
-      ]
+      "ignoreEffectErrorsInTscExitCode": true
     }]
   }
 }

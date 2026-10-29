@@ -9,7 +9,6 @@
  * core operations for reading, setting, updating, and modifying a transactional
  * value while returning a separate result.
  *
- * @stability stable
  * @since 4.0.0
  */
 import * as Effect from "./Effect.ts"
@@ -56,7 +55,6 @@ const TypeId = "~effect/TxRef"
  * await Effect.runPromise(program) // => 1
  * ```
  *
- * @stability stable
  * @category models
  * @since 4.0.0
  */
@@ -97,7 +95,6 @@ export interface TxRef<in out A> extends Pipeable {
  * await Effect.runPromise(program) // => [42, "Bob"]
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 2.0.0
  */
@@ -125,7 +122,6 @@ export const make = <A>(initial: A) => Effect.sync(() => makeUnsafe(initial))
  * config.value // => { timeout: 5000, retries: 3 }
  * ```
  *
- * @stability stable
  * @category constructors
  * @since 4.0.0
  */
@@ -173,7 +169,6 @@ const journalEntry = <A>(state: Effect.Transaction["Service"], self: TxRef<A>) =
  * await Effect.runPromise(program) // => [0, 1]
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -223,7 +218,6 @@ export const modify: {
  * await Effect.runPromise(program) // => 20
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -261,7 +255,6 @@ export const update: {
  * await Effect.runPromise(program) // => 42
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
@@ -297,7 +290,6 @@ export const get = <A>(self: TxRef<A>): Effect.Effect<A> =>
  * await Effect.runPromise(program) // => 100
  * ```
  *
- * @stability stable
  * @category combinators
  * @since 2.0.0
  */
