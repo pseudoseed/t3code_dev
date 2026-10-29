@@ -1,8 +1,4 @@
-import {
-  type EnvironmentId,
-  UsageLimitSourceId,
-  type UsageLimitSourceKind,
-} from "@t3tools/contracts";
+import type { EnvironmentId, UnifiedSettings, UsageLimitSourceKind } from "@t3tools/contracts";
 import { useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -17,25 +13,10 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { sourceIdFromUrl } from "./AddUsageLimitSourceDialog.logic";
 import { SecretInput } from "./SecretInput";
 import { Label } from "../ui/label";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-
-/**
- * Dots and dashes in the host are kept so `foo-bar.com` and `foo.bar.com` do
- * not collide; anything else (a port's colon, a path) is folded to a dash.
- */
-function sourceIdFromUrl(kind: UsageLimitSourceKind, url: string): UsageLimitSourceId {
-  let host = url;
-  try {
-    host = new URL(url).host;
-  } catch {}
-  const slug = host
-    .toLowerCase()
-    .replace(/[^a-z0-9.-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return UsageLimitSourceId.make(`${kind}-${slug || "source"}`);
-}
 
 const KINDS: ReadonlyArray<{
   readonly kind: UsageLimitSourceKind;
@@ -72,11 +53,13 @@ export function AddUsageLimitSourceDialog({
   onOpenChange,
   environmentId,
   environmentLabel,
+  sources,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
+  readonly sources: UnifiedSettings["usageLimitSources"];
 }) {
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [kind, setKind] = useState<UsageLimitSourceKind>("cliproxy");
@@ -96,8 +79,7 @@ export function AddUsageLimitSourceDialog({
 
   const save = () => {
     if (!canSave) return;
-    const id = sourceIdFromUrl(kind, trimmedUrl);
-    // The patch names only this entry; the server merges it into its map.
+    const id = sourceIdFromUrl(kind, trimmedUrl, sources);
     updateSettings({
       usageLimitSources: {
         [id]: {
