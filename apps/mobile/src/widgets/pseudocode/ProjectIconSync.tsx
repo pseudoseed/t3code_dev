@@ -21,6 +21,7 @@ export function ProjectIconSync({
     }),
   );
   const key = `${project.environmentId}:${project.id}`;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- downscales the project favicon for the native widget and aborts the download on cleanup
   useEffect(() => {
     const controller = new AbortController();
     if (url && !isProjectFaviconFallbackUrl(url))

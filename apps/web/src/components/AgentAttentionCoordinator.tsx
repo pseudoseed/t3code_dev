@@ -37,7 +37,7 @@ function EnvironmentAttentionObserver({ environmentId }: { environmentId: Enviro
       const ref = scopeThreadRef(environmentId, request.threadId);
       try {
         const notification = showAgentAttentionNotification({
-          title: `${APP_DISPLAY_NAME} — ${request.kind === "approval" ? "Approval needed" : "Input needed"}`,
+          title: `${APP_DISPLAY_NAME}: ${request.kind === "approval" ? "Approval needed" : "Input needed"}`,
           body: request.title,
           tag: `agent-attention:${scopedThreadKey(ref)}`,
           onClick: () => {
@@ -53,6 +53,7 @@ function EnvironmentAttentionObserver({ environmentId }: { environmentId: Enviro
     return delivered;
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the environment shell atom and closes the system notifications it raised on cleanup
   useEffect(() => {
     const track = createAgentAttentionTracker();
     const notifications = new Map<ThreadId, Notification>();
@@ -103,6 +104,7 @@ function EnvironmentAttentionObserver({ environmentId }: { environmentId: Enviro
 export function AgentAttentionCoordinator() {
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const soundEnabled = useClientSettings((settings) => settings.agentAttentionSound);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds window gesture listeners that unlock browser audio while the sound setting is on
   useEffect(() => {
     if (!soundEnabled || isElectron) return;
     const removeListeners = () => {

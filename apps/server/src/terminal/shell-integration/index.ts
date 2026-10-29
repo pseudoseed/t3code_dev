@@ -1,14 +1,3 @@
-/**
- * Wires OSC 133 shell integration into terminal spawns.
- *
- * The terminal renders whatever the shell sends, and a default zsh or bash
- * prompt sends no styling at all. We give stock zsh prompts a compact colored
- * layout and preserve custom prompts. OSC 133 markers identify prompt, input,
- * and output boundaries for libghostty-vt.
- *
- * Supported for zsh and bash on POSIX platforms. Every other shell spawns
- * untouched.
- */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 

@@ -1,14 +1,3 @@
-/**
- * aiUsageApi — the `aiusage` source kind: a local AI usage dashboard that
- * polls each vendor's own limits endpoint. It exposes the same
- * `readAccounts` / `consume` pair as {@link ./cliproxyApi.ts}, so
- * UsageLimitSources only has to pick an adapter by `config.kind`.
- *
- * A dashboard runs on this machine and authenticates nothing, so there is no
- * management key and no per-account credential handling here.
- *
- * @module usage/aiUsageApi
- */
 import {
   UsageLimitSourceError,
   type ProviderConsumeResetCreditResult,
@@ -51,7 +40,7 @@ const failureDetail = (error: { readonly _tag: string }): string => {
   }
 };
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const makeAiUsageApi = Effect.gen(function* () {
   const client = yield* HttpClient.HttpClient;
 

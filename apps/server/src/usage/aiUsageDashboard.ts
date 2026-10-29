@@ -1,20 +1,3 @@
-/**
- * Maps an AI usage dashboard's `/api/usage` response onto the usage limit
- * windows the Limits view renders, one row per account it polls.
- *
- * The dashboard groups accounts by company and hands each one a flat list of
- * meters it has already normalised from the vendor's own limits endpoint:
- * `{ id, group, name, percent, resets_at }`, where `group` is exactly the
- * window kinds this contract uses. So the mapping is mostly a rename, plus a
- * driver lookup for the icon and Codex's banked reset credits.
- *
- * Unlike a CLIProxyAPI hub, the dashboard reports accounts this environment
- * is not signed into. An account it could not read keeps its row with the
- * failure on it rather than disappearing, matching how the dashboard's own
- * cards behave.
- *
- * @module usage/aiUsageDashboard
- */
 import {
   ProviderDriverKind,
   type ServerProviderUsageLimits,

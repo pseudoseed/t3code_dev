@@ -38,8 +38,10 @@ git merge --no-ff upstream/main
 Resolve every conflict so both sides survive: upstream's change and the fork's behaviour or text.
 When upstream rewrote code the fork had changed, carry the fork's intent into upstream's new shape,
 including its conventions (for example `Effect.fn` in place of plain arrow functions). Resolving a
-whole file to one side is how fork changes go missing. Done when
-`git diff --name-only --diff-filter=U` prints nothing and the merge is committed.
+whole file to one side is how fork changes go missing. Chris wants no comments in code unless
+absolutely needed, so a fork comment that conflicts or that upstream's comment lint rejects is
+deleted, not trimmed. Done when `git diff --name-only --diff-filter=U` prints nothing and the merge
+is committed.
 
 ### 3. Prove fork changes survived
 
@@ -68,15 +70,19 @@ it separately: `chore(release): bump PseudoCode to <version>`.
 
 ```sh
 vp run check:changed
+vp run lint
 .agents/skills/sync-upstream/scripts/run-suites.sh
 ```
+
+`vp run lint` is CI's whole-repo lint. A sync brings upstream's new lint rules, and they fail fork
+files the merge never touched, which `check:changed` does not read.
 
 `run-suites.sh` runs every package's tests one at a time, the one place in this repo where the full
 suites run locally: Chris needs a sync green before it ships. Fix each failure at its cause. When
 you believe a failure belongs to this machine rather than the code, prove it: run the same test in
 a clean upstream worktree (`git worktree add ../t3-upstream-check upstream/main`, then `vp i`
 there). If it fails there too, report it with that evidence as a failure, never as a pass, and
-remove the worktree. Done when both commands pass, or every remaining failure carries that proof.
+remove the worktree. Done when all 3 commands pass, or every remaining failure carries that proof.
 
 ### 6. Check the app live
 
@@ -89,7 +95,13 @@ merge touched. Done when each surface was driven and what you saw is written dow
 Push the branch to `origin` and open a PR into the fork's `main`. The body names the upstream
 commit merged, the fork changes restored, each DROPPED line accepted and why, the test counts, and
 what the live check covered. Chris merges it with a **merge commit**; a squash would orphan the
-commits the release tag points at. Done when the PR is open. Stop there until Chris merges.
+commits the release tag points at.
+
+The PR's CI must pass. This Mac is arm64 and CI runs on x64 Linux, so some failures only show up
+there; fix them at their cause like any other. A job GitHub cancels with "not acquired by Runner"
+never got a macOS runner: rerun it with
+`gh run rerun <run-id> --failed --repo pseudoseed/t3code_dev`. Done when the PR is open and every CI
+job passes. Stop there until Chris merges.
 
 ### 8. Release from merged main
 

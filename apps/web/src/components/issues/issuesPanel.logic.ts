@@ -18,14 +18,6 @@ export const ISSUE_SORTS = [
 
 export type IssueSort = (typeof ISSUE_SORTS)[number]["value"];
 
-/**
- * Rows as the panel shows them.
- *
- * Newest change first by default, which is the order somebody scanning a list expects and the
- * order every host reports its own "recently updated" in. The other two answer the two
- * questions a list of issues actually gets asked: what has been sitting here longest, and what
- * is being argued about.
- */
 export function sortIssues(
   entries: ReadonlyArray<IssueListEntry>,
   sort: IssueSort = "recent",
@@ -79,14 +71,6 @@ export function labelColor(color: string | null): string | undefined {
   return /^[0-9a-f]{3}$|^[0-9a-f]{6}$/iu.test(hex) ? `#${hex}` : undefined;
 }
 
-/**
- * An issue as a block of context for the composer.
- *
- * The whole thing rather than a link: an agent handed a URL has to go and fetch it, and it
- * cannot — the panel read it with the reader's own credentials. Comments are included because
- * the argument in them is usually the part worth acting on, and the description alone often is
- * not the current state of the question.
- */
 export function issueContextForComposer(issue: {
   readonly number: number;
   readonly title: string;
@@ -129,14 +113,6 @@ export function appendIssueContext(prompt: string, context: string): string {
   return existing.length === 0 ? `${context}\n\n` : `${existing}\n\n${context}\n\n`;
 }
 
-/**
- * A branch for work on an issue: the number first so it sorts and greps by issue, then as much
- * of the title as reads. The number alone would be unreadable in a branch list, and the title
- * alone would collide the moment two issues are worded alike.
- *
- * A title that sanitises to nothing becomes the shared helper's own "update", which says less
- * than the number already has, so it is dropped.
- */
 export function issueBranchName(issue: {
   readonly number: number;
   readonly title: string;
@@ -149,14 +125,6 @@ export function issueBranchName(issue: {
 
 const ISSUE_BRANCH_PATTERN = /^issue-(\d+)(?:-|$)/u;
 
-/**
- * The issue a branch was made for, or null.
- *
- * Read from the branch rather than recorded anywhere: "Start work" names branches
- * `issue-{number}-{slug}`, so the link already exists in the one place git will keep it. That
- * costs nothing to store and survives a thread being renamed or moved, and it is honest about
- * its limit — a branch somebody named themselves says nothing, and gets nothing.
- */
 export function issueNumberFromBranch(branch: string | null | undefined): number | null {
   if (typeof branch !== "string") return null;
   // A worktree branch may carry a namespace, so the last segment is the one that was named here.

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import type { DirectPushDelivery, EnvironmentId } from "@t3tools/contracts";
@@ -62,6 +62,7 @@ function Coordinator() {
     ]),
   );
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for app foregrounding and push token rotation
   useEffect(() => {
     const app = AppState.addEventListener("change", (state) => {
       if (state === "active") setRefresh((n) => n + 1);
@@ -74,6 +75,7 @@ function Coordinator() {
       tokens.remove();
     };
   }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- installs the native notification handler while direct push is on
   useEffect(() => {
     if (!enabled) return;
     Notifications.setNotificationHandler({
@@ -87,6 +89,7 @@ function Coordinator() {
     return () => Notifications.setNotificationHandler(null);
   }, [enabled]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps native Live Activities and the server's preference in step with the direct push setting
   useEffect(() => {
     if (!chosen) return;
     if (enabled) endLocalLiveActivities("Could not close the Cloud Connect Live Activity.");
@@ -97,11 +100,7 @@ function Coordinator() {
       });
   }, [enabled, chosen]);
 
-  // Registration follows the socket, not the foreground: a reconnect while
-  // backgrounded (or a token rotated while suspended) must still reach the
-  // server, or the widget's push path stays dead until the next open.
-  useEffect(() => {
-    if (!chosen || enabled) return;
+  const disableConnected = useEffectEvent(() => {
     for (const environment of environments) {
       if (environment.connection.phase === "connected") {
         void disableDirectPush(environment.environmentId)
@@ -111,43 +110,49 @@ function Coordinator() {
           );
       }
     }
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- turns direct push off on each server as it connects, backgrounded or not
+  useEffect(() => {
+    if (!chosen || enabled) return;
+    disableConnected();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- connection changes and app foregrounding repeat the disable
   }, [connectionKey, chosen, enabled, refresh]);
 
-  useEffect(() => {
-    if (!loaded || !enabled) return;
-
-    let cancelled = false;
-    // Coalesce bursts from shell hydration and provider lifecycle changes.
-    const timer = setTimeout(() => {
-      for (const environment of environments) {
-        if (environment.connection.phase !== "connected") continue;
-        const id = environment.environmentId;
-        setStatus(id, "Registering…");
-        void syncDirectPush(id, liveEnabled)
-          .then((status) => {
-            if (cancelled) return;
-            setDelivery(id, status?.lastDelivery);
+  const registerConnected = useEffectEvent((isCancelled: () => boolean) => {
+    for (const environment of environments) {
+      if (environment.connection.phase !== "connected") continue;
+      const id = environment.environmentId;
+      setStatus(id, "Registering…");
+      void syncDirectPush(id, liveEnabled)
+        .then((status) => {
+          if (isCancelled()) return;
+          setDelivery(id, status?.lastDelivery);
+          setStatus(
+            id,
+            status?.registered
+              ? "Registered with Apple notification delivery"
+              : "APNs setup needed on this server",
+          );
+        })
+        .catch((error: unknown) => {
+          if (!isCancelled())
             setStatus(
               id,
-              status?.registered
-                ? "Registered with Apple notification delivery"
-                : "APNs setup needed on this server",
+              error instanceof Error ? error.message : "Registration failed. Reconnect to retry.",
             );
-          })
-          .catch((error: unknown) => {
-            if (!cancelled)
-              setStatus(
-                id,
-                error instanceof Error ? error.message : "Registration failed. Reconnect to retry.",
-              );
-          });
-      }
-    }, 500);
+        });
+    }
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers each connected server for direct push, coalescing bursts of shell updates
+  useEffect(() => {
+    if (!loaded || !enabled) return;
+    let cancelled = false;
+    const timer = setTimeout(() => registerConnected(() => cancelled), 500);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-    // The signatures exclude incidental object changes from shell updates.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- connection, thread activity, setting and foreground changes repeat the registration
   }, [connectionKey, activityKey, enabled, liveEnabled, loaded, refresh]);
   return null;
 }
