@@ -38,7 +38,7 @@ const registration: DirectPushRegistration = {
   liveActivitiesEnabled: true,
 };
 
-const activeSession = Schema.decodeUnknownSync(AuthSessionRecord)({
+const activeSession = Schema.decodeSync(AuthSessionRecord)({
   sessionId,
   subject: "user",
   scopes: [AuthOrchestrationReadScope],
@@ -145,7 +145,7 @@ function harness() {
         }),
         Layer.mock(ProjectService)({
           snapshot: Effect.succeed({ projects: [project], updatedAt: now }),
-          getById: () => Effect.succeed(Option.some(project)),
+          getById: () => Effect.succeedSome(project),
         }),
       ),
     ),

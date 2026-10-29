@@ -57,7 +57,7 @@ const make = Effect.gen(function* () {
       cause,
     });
   return ForgejoTransport.of({
-    request: (input) =>
+    request: Effect.fn("ForgejoTransport.request")((input) =>
       cli
         .api({
           cwd: input.cwd ?? ".",
@@ -77,7 +77,8 @@ const make = Effect.gen(function* () {
               (input.maxBytes !== undefined && result.stdout.length > input.maxBytes),
           })),
         ),
-    resolveLocator: (input) =>
+    ),
+    resolveLocator: Effect.fn("ForgejoTransport.resolveLocator")((input) =>
       cli.resolveRepository(input).pipe(
         Effect.mapError(failure("resolveLocator")),
         Effect.map((repo) => {
@@ -91,6 +92,7 @@ const make = Effect.gen(function* () {
           };
         }),
       ),
+    ),
   });
 });
 

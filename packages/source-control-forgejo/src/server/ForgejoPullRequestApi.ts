@@ -335,7 +335,9 @@ const make = Effect.gen(function* () {
           ),
         );
 
-  const getViewer: ForgejoPullRequestApiShape["getViewer"] = (input) =>
+  const getViewer: ForgejoPullRequestApiShape["getViewer"] = Effect.fn(
+    "ForgejoPullRequestApi.getViewer",
+  )((input) =>
     Effect.gen(function* () {
       const host = yield* resolveHost(input);
       const cached = viewerByHost.get(host);
@@ -361,7 +363,8 @@ const make = Effect.gen(function* () {
         }),
         Effect.tap((login) => Effect.sync(() => viewerByHost.set(host, login))),
       );
-    });
+    }),
+  );
 
   /**
    * Forgejo has `open`, `closed` and `all`, and treats a merged change request as closed. A
@@ -408,7 +411,9 @@ const make = Effect.gen(function* () {
           Effect.orElseSucceed(() => [] as ReadonlyArray<PullRequestCheck>),
         );
 
-  const listChangeRequests: ForgejoPullRequestApiShape["listChangeRequests"] = (input) =>
+  const listChangeRequests: ForgejoPullRequestApiShape["listChangeRequests"] = Effect.fn(
+    "ForgejoPullRequestApi.listChangeRequests",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "listChangeRequests");
       const pageSize = Math.min(Math.max(input.limit, 1), MAX_PAGE_SIZE);
@@ -447,11 +452,9 @@ const make = Effect.gen(function* () {
         ) {
           continue;
         }
-        // Forgejo's `/pulls` takes no text filter, so the narrowing happens here, over the same
-        // title and description its own `q` searches, and reaches as far as the page fetched.
-        // Forgejo does have a search across repositories, and it is deliberately not used: it
-        // answers with issues rather than pull requests, carrying no head or base branch, and a
-        // row without them is not a change request this can show.
+        // `/pulls` takes no text filter, so narrow here over the title and description `q` would
+        // search, within the fetched page. Forgejo's cross-repository search returns issues with
+        // no head or base branch, so it cannot list change requests.
         const needle = input.query?.trim().toLowerCase() ?? "";
         if (
           needle.length > 0 &&
@@ -477,7 +480,8 @@ const make = Effect.gen(function* () {
         cursorAdvance: rows.length,
         continues: true,
       } satisfies ProviderChangeRequestPage;
-    }).pipe(Effect.withSpan("ForgejoPullRequestApi.listChangeRequests"));
+    }).pipe(Effect.withSpan("ForgejoPullRequestApi.listChangeRequests")),
+  );
 
   /**
    * What this account may do, from the one thing Forgejo says about it: whether it can write.
@@ -510,7 +514,9 @@ const make = Effect.gen(function* () {
       : { updateMethods: writable ? (["merge", "rebase"] as const) : [] }),
   });
 
-  const getChangeRequest: ForgejoPullRequestApiShape["getChangeRequest"] = (input) =>
+  const getChangeRequest: ForgejoPullRequestApiShape["getChangeRequest"] = Effect.fn(
+    "ForgejoPullRequestApi.getChangeRequest",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "getChangeRequest");
       const [pullRequest, repository] = yield* Effect.all(
@@ -549,7 +555,8 @@ const make = Effect.gen(function* () {
         mergeCapabilities: Json.normalizeMergeCapabilities(repository),
         viewerPermissions: viewerPermissionsFrom(repository, writable),
       } satisfies ProviderChangeRequestDetail;
-    });
+    }),
+  );
 
   const getViewerPermissions: ForgejoPullRequestApiShape["getViewerPermissions"] = (input) =>
     readRepository(input, "getViewerPermissions").pipe(
@@ -592,151 +599,153 @@ const make = Effect.gen(function* () {
     return step(1, []);
   };
 
-  const getChangeRequestActivity: ForgejoPullRequestApiShape["getChangeRequestActivity"] = (
-    input,
-  ) =>
-    Effect.gen(function* () {
-      const base = yield* repositoryPath(input.repository, "getChangeRequestActivity");
-      const [comments, reviews, commits] = yield* Effect.all(
-        [
-          readAllPages({
-            operation: "getChangeRequestActivity",
-            host: input.host,
-            cwd: input.cwd,
-            path: `${base}/issues/${input.number}/comments`,
-            decode: Json.decodeForgejoCommentList,
-          }),
-          readAllPages({
-            operation: "getChangeRequestActivity",
-            host: input.host,
-            cwd: input.cwd,
-            path: `${base}/pulls/${input.number}/reviews`,
-            decode: Json.decodeForgejoReviewList,
-          }),
-          readAllPages({
-            operation: "getChangeRequestActivity",
-            host: input.host,
-            cwd: input.cwd,
-            path: `${base}/pulls/${input.number}/commits`,
-            decode: Json.decodeForgejoCommitList,
-          }).pipe(
-            // A change request whose head has gone leaves no commits to read; the conversation
-            // is still worth showing.
-            Effect.orElseSucceed(() => ({ items: [], truncated: false })),
-          ),
-        ],
-        { concurrency: 3 },
-      );
-
-      // Every line note lives under a review, so the notes are collected from the reviews rather
-      // than from an endpoint of their own, which Forgejo does not have.
-      const reviewComments = yield* Effect.forEach(
-        reviews.items,
-        (review) =>
-          read({
-            operation: "getChangeRequestActivity",
-            method: "GET",
-            host: input.host,
-            cwd: input.cwd,
-            path: `${base}/pulls/${input.number}/reviews/${review.id}/comments`,
-            decode: Json.decodeForgejoReviewCommentList,
-          }).pipe(
-            Effect.orElseSucceed(
-              () => [] as ReadonlyArray<typeof Json.ForgejoReviewCommentSchema.Type>,
+  const getChangeRequestActivity: ForgejoPullRequestApiShape["getChangeRequestActivity"] =
+    Effect.fn("ForgejoPullRequestApi.getChangeRequestActivity")((input) =>
+      Effect.gen(function* () {
+        const base = yield* repositoryPath(input.repository, "getChangeRequestActivity");
+        const [comments, reviews, commits] = yield* Effect.all(
+          [
+            readAllPages({
+              operation: "getChangeRequestActivity",
+              host: input.host,
+              cwd: input.cwd,
+              path: `${base}/issues/${input.number}/comments`,
+              decode: Json.decodeForgejoCommentList,
+            }),
+            readAllPages({
+              operation: "getChangeRequestActivity",
+              host: input.host,
+              cwd: input.cwd,
+              path: `${base}/pulls/${input.number}/reviews`,
+              decode: Json.decodeForgejoReviewList,
+            }),
+            readAllPages({
+              operation: "getChangeRequestActivity",
+              host: input.host,
+              cwd: input.cwd,
+              path: `${base}/pulls/${input.number}/commits`,
+              decode: Json.decodeForgejoCommitList,
+            }).pipe(
+              // A change request whose head has gone leaves no commits to read; the conversation
+              // is still worth showing.
+              Effect.orElseSucceed(() => ({ items: [], truncated: false })),
             ),
-          ),
-        { concurrency: 4 },
-      );
-
-      const issueReactions = yield* read({
-        operation: "getChangeRequestActivity",
-        method: "GET",
-        host: input.host,
-        cwd: input.cwd,
-        path: `${base}/issues/${input.number}/reactions`,
-        decode: Json.decodeForgejoReactionList,
-      }).pipe(Effect.orElseSucceed(() => []));
-
-      const commentReactions = yield* Effect.forEach(
-        comments.items,
-        (comment) =>
-          read({
-            operation: "getChangeRequestActivity",
-            method: "GET",
-            host: input.host,
-            cwd: input.cwd,
-            path: `${base}/issues/comments/${comment.id}/reactions`,
-            decode: Json.decodeForgejoReactionList,
-          }).pipe(
-            Effect.map(
-              (rows) => [comment.id, Json.normalizeReactions(rows, input.viewer)] as const,
-            ),
-            Effect.orElseSucceed(
-              () => [comment.id, [] as ReadonlyArray<PullRequestReaction>] as const,
-            ),
-          ),
-        { concurrency: 4 },
-      );
-      const reactionsByComment = new Map(commentReactions);
-
-      const conversation: Array<PullRequestComment> = [];
-      for (const comment of comments.items) {
-        conversation.push(
-          Json.normalizeIssueComment(comment, reactionsByComment.get(comment.id) ?? []),
+          ],
+          { concurrency: 3 },
         );
-      }
-      for (const review of reviews.items) {
-        const entry = Json.normalizeReview(review);
-        if (entry !== null) conversation.push(entry);
-      }
-      conversation.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 
-      const commitEntries: Array<PullRequestCommit> = [];
-      for (const commit of commits.items) {
-        const entry = Json.normalizeCommit(commit);
-        if (entry !== null) commitEntries.push(entry);
-      }
+        // Every line note lives under a review, so the notes are collected from the reviews rather
+        // than from an endpoint of their own, which Forgejo does not have.
+        const reviewComments = yield* Effect.forEach(
+          reviews.items,
+          (review) =>
+            read({
+              operation: "getChangeRequestActivity",
+              method: "GET",
+              host: input.host,
+              cwd: input.cwd,
+              path: `${base}/pulls/${input.number}/reviews/${review.id}/comments`,
+              decode: Json.decodeForgejoReviewCommentList,
+            }).pipe(
+              Effect.orElseSucceed(
+                () => [] as ReadonlyArray<typeof Json.ForgejoReviewCommentSchema.Type>,
+              ),
+            ),
+          { concurrency: 4 },
+        );
 
-      const threads: ReadonlyArray<PullRequestReviewThread> = Json.normalizeReviewThreads(
-        reviewComments.flat(),
-      );
+        const issueReactions = yield* read({
+          operation: "getChangeRequestActivity",
+          method: "GET",
+          host: input.host,
+          cwd: input.cwd,
+          path: `${base}/issues/${input.number}/reactions`,
+          decode: Json.decodeForgejoReactionList,
+        }).pipe(Effect.orElseSucceed(() => []));
 
-      return {
-        comments: conversation,
-        commentCount: conversation.length,
-        commentsTruncated: comments.truncated || reviews.truncated,
-        reviewThreads: threads.map((thread) => ({
-          ...thread,
-          id: encodeThreadId({ path: thread.path, position: thread.line }),
-        })),
-        commits: commitEntries,
-        reactions: Json.normalizeReactions(issueReactions, input.viewer),
-      } satisfies ProviderChangeRequestActivity;
-    });
+        const commentReactions = yield* Effect.forEach(
+          comments.items,
+          (comment) =>
+            read({
+              operation: "getChangeRequestActivity",
+              method: "GET",
+              host: input.host,
+              cwd: input.cwd,
+              path: `${base}/issues/comments/${comment.id}/reactions`,
+              decode: Json.decodeForgejoReactionList,
+            }).pipe(
+              Effect.map(
+                (rows) => [comment.id, Json.normalizeReactions(rows, input.viewer)] as const,
+              ),
+              Effect.orElseSucceed(
+                () => [comment.id, [] as ReadonlyArray<PullRequestReaction>] as const,
+              ),
+            ),
+          { concurrency: 4 },
+        );
+        const reactionsByComment = new Map(commentReactions);
 
-  const getDiff: ForgejoPullRequestApiShape["getDiff"] = (input) =>
-    Effect.gen(function* () {
-      const base = yield* repositoryPath(input.repository, "getDiff");
-      const path =
-        input.commit === undefined
-          ? `${base}/pulls/${input.number}.diff`
-          : `${base}/git/commits/${encodeURIComponent(input.commit)}.diff`;
-      const response = yield* send({
-        operation: "getDiff",
-        method: "GET",
-        host: input.host,
-        cwd: input.cwd,
-        path,
-        accept: "text/plain",
-        maxBytes: MAX_DIFF_BYTES,
-      });
-      return {
-        patch: response.body,
-        truncated: response.truncated,
-        // Forgejo serves a whole patch in one response, so there is never a next slice.
-        nextCursor: null,
-      } satisfies ProviderDiffSlice;
-    });
+        const conversation: Array<PullRequestComment> = [];
+        for (const comment of comments.items) {
+          conversation.push(
+            Json.normalizeIssueComment(comment, reactionsByComment.get(comment.id) ?? []),
+          );
+        }
+        for (const review of reviews.items) {
+          const entry = Json.normalizeReview(review);
+          if (entry !== null) conversation.push(entry);
+        }
+        conversation.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+        const commitEntries: Array<PullRequestCommit> = [];
+        for (const commit of commits.items) {
+          const entry = Json.normalizeCommit(commit);
+          if (entry !== null) commitEntries.push(entry);
+        }
+
+        const threads: ReadonlyArray<PullRequestReviewThread> = Json.normalizeReviewThreads(
+          reviewComments.flat(),
+        );
+
+        return {
+          comments: conversation,
+          commentCount: conversation.length,
+          commentsTruncated: comments.truncated || reviews.truncated,
+          reviewThreads: threads.map((thread) => ({
+            ...thread,
+            id: encodeThreadId({ path: thread.path, position: thread.line }),
+          })),
+          commits: commitEntries,
+          reactions: Json.normalizeReactions(issueReactions, input.viewer),
+        } satisfies ProviderChangeRequestActivity;
+      }),
+    );
+
+  const getDiff: ForgejoPullRequestApiShape["getDiff"] = Effect.fn("ForgejoPullRequestApi.getDiff")(
+    (input) =>
+      Effect.gen(function* () {
+        const base = yield* repositoryPath(input.repository, "getDiff");
+        const path =
+          input.commit === undefined
+            ? `${base}/pulls/${input.number}.diff`
+            : `${base}/git/commits/${encodeURIComponent(input.commit)}.diff`;
+        const response = yield* send({
+          operation: "getDiff",
+          method: "GET",
+          host: input.host,
+          cwd: input.cwd,
+          path,
+          accept: "text/plain",
+          maxBytes: MAX_DIFF_BYTES,
+        });
+        return {
+          patch: response.body,
+          truncated: response.truncated,
+          // Forgejo serves a whole patch in one response, so there is never a next slice.
+          nextCursor: null,
+        } satisfies ProviderDiffSlice;
+      }),
+  );
 
   const readFileAt = (input: {
     readonly base: string;
@@ -770,7 +779,9 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => ""),
     );
 
-  const getDiffFileContents: ForgejoPullRequestApiShape["getDiffFileContents"] = (input) =>
+  const getDiffFileContents: ForgejoPullRequestApiShape["getDiffFileContents"] = Effect.fn(
+    "ForgejoPullRequestApi.getDiffFileContents",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "getDiffFileContents");
       const pullRequest = yield* read({
@@ -807,7 +818,8 @@ const make = Effect.gen(function* () {
         { concurrency: 2 },
       );
       return { oldContents, newContents } satisfies ProviderDiffFileContents;
-    });
+    }),
+  );
 
   const FORGEJO_MERGE_STYLE: Record<PullRequestMergeMethod, string> = {
     merge: "merge",
@@ -815,7 +827,9 @@ const make = Effect.gen(function* () {
     rebase: "rebase",
   };
 
-  const runAction: ForgejoPullRequestApiShape["runAction"] = (input) =>
+  const runAction: ForgejoPullRequestApiShape["runAction"] = Effect.fn(
+    "ForgejoPullRequestApi.runAction",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "runAction");
       const pullRequest = `${base}/pulls/${input.number}`;
@@ -897,7 +911,8 @@ const make = Effect.gen(function* () {
           return;
         }
       }
-    });
+    }),
+  );
 
   const updateChangeRequest: ForgejoPullRequestApiShape["updateChangeRequest"] = (input) =>
     repositoryPath(input.repository, "updateChangeRequest").pipe(
@@ -932,7 +947,9 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
     );
 
-  const updateComment: ForgejoPullRequestApiShape["updateComment"] = (input) =>
+  const updateComment: ForgejoPullRequestApiShape["updateComment"] = Effect.fn(
+    "ForgejoPullRequestApi.updateComment",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "updateComment");
       const decoded = decodeCommentId(input.commentId);
@@ -952,7 +969,8 @@ const make = Effect.gen(function* () {
         path: `${base}/issues/comments/${decoded.id}`,
         body: { body: input.body },
       });
-    });
+    }),
+  );
 
   const VERDICT_EVENT: Record<PullRequestReviewVerdict, string> = {
     comment: "COMMENT",
@@ -987,7 +1005,9 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
     );
 
-  const replyToThread: ForgejoPullRequestApiShape["replyToThread"] = (input) =>
+  const replyToThread: ForgejoPullRequestApiShape["replyToThread"] = Effect.fn(
+    "ForgejoPullRequestApi.replyToThread",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "replyToThread");
       const thread = decodeThreadId(input.threadId);
@@ -1017,9 +1037,12 @@ const make = Effect.gen(function* () {
           ],
         },
       });
-    });
+    }),
+  );
 
-  const listReviewerCandidates: ForgejoPullRequestApiShape["listReviewerCandidates"] = (input) =>
+  const listReviewerCandidates: ForgejoPullRequestApiShape["listReviewerCandidates"] = Effect.fn(
+    "ForgejoPullRequestApi.listReviewerCandidates",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "listReviewerCandidates");
       const [people, pullRequest] = yield* Effect.all(
@@ -1065,7 +1088,8 @@ const make = Effect.gen(function* () {
         });
       }
       return { candidates, truncated: false };
-    });
+    }),
+  );
 
   const setReviewerRequest: ForgejoPullRequestApiShape["setReviewerRequest"] = (input) =>
     repositoryPath(input.repository, "setReviewerRequest").pipe(
@@ -1089,7 +1113,9 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
     );
 
-  const setReaction: ForgejoPullRequestApiShape["setReaction"] = (input) =>
+  const setReaction: ForgejoPullRequestApiShape["setReaction"] = Effect.fn(
+    "ForgejoPullRequestApi.setReaction",
+  )((input) =>
     Effect.gen(function* () {
       const base = yield* repositoryPath(input.repository, "setReaction");
       // No subject is the change request itself, whose reactions sit on its description.
@@ -1114,7 +1140,8 @@ const make = Effect.gen(function* () {
         path: subject,
         body: { content: Json.forgejoReactionName(input.content) },
       });
-    });
+    }),
+  );
 
   return ForgejoPullRequestApi.of({
     getViewer,
