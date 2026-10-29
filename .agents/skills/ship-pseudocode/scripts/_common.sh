@@ -32,6 +32,21 @@ load_env_local() {
   set +a
 }
 
+# A release is built from fork main as merged on GitHub, so its tag can point at the exact
+# commit that produced the artifact. Anything else is a build of code main does not have.
+require_main_head() {
+  git fetch --quiet origin main
+  if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+    echo "HEAD is not origin/main. Merge the release PR, then build from origin/main:" >&2
+    echo "  git switch --detach origin/main" >&2
+    exit 1
+  fi
+  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    echo "Uncommitted changes. A release builds exactly what origin/main holds." >&2
+    exit 1
+  fi
+}
+
 require_vars() {
   local missing=()
   for name in "$@"; do

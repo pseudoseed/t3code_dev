@@ -14,6 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ROOT="$(repo_root)"
 cd "$ROOT"
+require_main_head
+COMMIT="$(git rev-parse HEAD)"
 setup_path "$ROOT"
 load_env_local "$ROOT"
 require_vars T3CODE_APP_NAME T3CODE_APP_ICON T3CODE_DESKTOP_UPDATE_REPOSITORY
@@ -91,13 +93,18 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   echo "Adding $VERSION $ARCH artifacts to $TAG"
   gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
 else
-  echo "Creating release $TAG"
+  # A draft, pinned to the built commit: going live is a separate, approved step, and the tag
+  # GitHub creates on publish lands on the commit that produced these files.
+  echo "Creating draft release $TAG"
   gh release create "$TAG" "${ASSETS[@]}" \
     --repo "$REPO" \
+    --draft \
+    --target "$COMMIT" \
     --title "PseudoCode $VERSION" \
     --notes "Desktop build for macOS. Signed and notarized."
 fi
 
 echo
 echo "Shipped: $DMG"
-echo "Published: $(gh release view "$TAG" --repo "$REPO" --json url --jq .url)"
+echo "Draft: $(gh release view "$TAG" --repo "$REPO" --json url --jq .url)"
+echo "Publish once approved: gh release edit $TAG --repo $REPO --draft=false --latest"

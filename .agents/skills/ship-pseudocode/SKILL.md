@@ -25,12 +25,15 @@ Homebrew, export the branding variables the desktop build needs, bump the iOS bu
 the signing team to every target, and verify the
 result before claiming success.
 
-`ship-mac.sh` ends with `spctl` reporting `source=Notarized Developer ID`, then publishes the DMG to
-GitHub Releases under the tag `pseudocode-v<version>`, taking the version from
+`ship-mac.sh` builds only from `origin/main` with a clean tree: release changes reach main through
+a merged PR first, and the release is cut from that merged commit. It ends with `spctl` reporting
+`source=Notarized Developer ID`, then uploads the DMG to a **draft** GitHub release under the tag
+`pseudocode-v<version>`, pinned to the built commit, taking the version from
 `apps/server/package.json`, which is the one electron-builder stamps onto the artifact. Anything
 less than a notarized result is a failure, not a warning, and
-publishing only happens after verification passes: an unnotarized DMG on a release page is worse
-than no DMG, because macOS refuses to open it.
+uploading only happens after verification passes: an unnotarized DMG on a release page is worse
+than no DMG, because macOS refuses to open it. Going live is a separate step, once Chris approves
+that release: `gh release edit pseudocode-v<version> --repo pseudoseed/t3code_dev --draft=false --latest`.
 
 The tag is deliberately not `v<version>`. The release workflow triggers on `v*.*.*` and cannot
 produce a usable artifact here, so a tag in that shape starts a run guaranteed to fail. Re-running
