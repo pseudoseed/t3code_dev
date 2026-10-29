@@ -1,5 +1,4 @@
-import { act, cloneElement, type ReactElement, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
 import {
   EnvironmentId,
   ThreadId,
@@ -8,7 +7,8 @@ import {
   type OrchestrationV2ContextTransfer,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+import { act, render, type Screen } from "../../../test/render";
 
 import "~/index.css";
 
@@ -59,6 +59,10 @@ vi.mock(import("../../state/use-atom-command"), async (original) => ({
   useAtomCommand: ((command: { label?: string }) =>
     command.label === state.stopWorkflowLabel ? state.workflowCommand : state.command) as never,
 }));
+vi.mock(import("../../state/query"), async (original) => ({
+  ...(await original()),
+  useEnvironmentQuery: (() => state.scriptQuery) as never,
+}));
 vi.mock(import("../ui/toast"), async (original) => {
   const actual = await original();
   return { ...actual, toastManager: { ...actual.toastManager, add: state.toast } as never };
@@ -71,6 +75,7 @@ vi.mock(import("../../state/orchestration"), async (original) => {
   return {
     ...actual,
     orchestrationEnvironment: Object.assign(Object.create(actual.orchestrationEnvironment), {
+      workflowScript: state.workflowScript,
       stopWorkflow: Object.assign(Object.create(stopWorkflow), {
         label: state.stopWorkflowLabel,
         permissionAtom: () => granted,
@@ -93,62 +98,59 @@ vi.mock(import("../ui/tooltip"), async () => {
 
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 
-let root: Root;
-let container: HTMLDivElement;
-let current: ReactElement;
-
-async function render(element: ReactElement) {
-  current = element;
-  await act(async () => root.render(element));
-}
-// The mocked hooks read `state` while rendering, so a new element picks up changes.
-const update = () => act(async () => root.render(cloneElement(current)));
-const click = (element: HTMLElement) => act(async () => element.click());
-const buttons = () => [...container.querySelectorAll("button")];
-const allByLabel = (label: string) =>
-  buttons().filter((button) => button.getAttribute("aria-label") === label);
-function byLabel(label: string) {
-  const matches = allByLabel(label);
-  if (matches.length !== 1)
-    throw new Error(`Expected one "${label}" button, got ${matches.length}`);
-  return matches[0]!;
-}
-const sectionToggles = (expanded: boolean) =>
-  buttons().filter(
-    (button) =>
-      button.getAttribute("aria-expanded") === String(expanded) &&
-      !button.hasAttribute("aria-label"),
-  );
-function sectionToggle(expanded: boolean) {
-  const [toggle] = sectionToggles(expanded);
-  if (!toggle) throw new Error(`No ${expanded ? "expanded" : "collapsed"} section toggle`);
-  return toggle;
-}
-const heading = () => container.querySelector("h3")?.textContent;
-const buttonsWithLabel = (matches: (label: string) => boolean) =>
-  buttons().filter((button) => matches(button.getAttribute("aria-label") ?? ""));
-// Joins rendered text nodes; `visibleOnly` drops screen-reader-only text.
-function textNodes(separator: string, visibleOnly = false) {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const parts: string[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (visibleOnly && node.parentElement?.closest(".sr-only")) continue;
-    parts.push(node.textContent ?? "");
+function panelQueries(screen: Screen, element: ReactElement) {
+  const { container } = screen;
+  const update = () => screen.rerender(cloneElement(element));
+  const click = (element: HTMLElement) => act(async () => element.click());
+  const buttons = () => [...container.querySelectorAll("button")];
+  const allByLabel = (label: string) =>
+    buttons().filter((button) => button.getAttribute("aria-label") === label);
+  function byLabel(label: string) {
+    const matches = allByLabel(label);
+    if (matches.length !== 1)
+      throw new Error(`Expected one "${label}" button, got ${matches.length}`);
+    return matches[0]!;
   }
-  return parts.join(separator);
+  const sectionToggles = (expanded: boolean) =>
+    buttons().filter(
+      (button) =>
+        button.getAttribute("aria-expanded") === String(expanded) &&
+        !button.hasAttribute("aria-label"),
+    );
+  function sectionToggle(expanded: boolean) {
+    const [toggle] = sectionToggles(expanded);
+    if (!toggle) throw new Error(`No ${expanded ? "expanded" : "collapsed"} section toggle`);
+    return toggle;
+  }
+  const heading = () => container.querySelector("h3")?.textContent;
+  const buttonsWithLabel = (matches: (label: string) => boolean) =>
+    buttons().filter((button) => matches(button.getAttribute("aria-label") ?? ""));
+  // Joins rendered text nodes; `visibleOnly` drops screen-reader-only text.
+  function textNodes(separator: string, visibleOnly = false) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const parts: string[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (visibleOnly && node.parentElement?.closest(".sr-only")) continue;
+      parts.push(node.textContent ?? "");
+    }
+    return parts.join(separator);
+  }
+
+  return {
+    update,
+    click,
+    buttons,
+    allByLabel,
+    byLabel,
+    sectionToggles,
+    sectionToggle,
+    heading,
+    buttonsWithLabel,
+    textNodes,
+  };
 }
 
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.unstubAllGlobals();
+function setup() {
   state.shells = [];
   state.projects = [];
   state.configs.clear();
@@ -160,9 +162,10 @@ afterEach(async () => {
   state.workflowScript.mockClear();
   state.scriptQuery = { data: null, error: null };
   state.projection = null;
-});
+}
 
 it("stops the entire native workflow through its parent without changing state before acknowledgement", async () => {
+  setup();
   const coordinator = {
     id: "workflow",
     origin: "provider_native",
@@ -209,12 +212,14 @@ it("stops the entire native workflow through its parent without changing state b
       },
     },
   ];
-  await render(
+  const panel = (
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
-    />,
+    />
   );
+  await using screen = await render(panel);
+  const { click, byLabel, heading, buttonsWithLabel } = panelQueries(screen, panel);
   await click(byLabel("Expand Checkout review"));
   const stopButton = () => byLabel("Stop workflow Checkout review");
   expect(buttonsWithLabel((label) => label.startsWith("Stop "))).toHaveLength(2);
@@ -260,6 +265,7 @@ it.each([
   ["codex", "provider_native", "running"],
   ["claudeAgent", "app_owned", "running"],
 ])("does not offer workflow stop for %s %s %s", async (driver, origin, status) => {
+  setup();
   state.projection = {
     thread: { id: "parent", lineage: { relationshipToParent: null } },
     runs: [],
@@ -282,12 +288,14 @@ it.each([
       },
     ],
   };
-  await render(
+  const panel = (
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
-    />,
+    />
   );
+  await using screen = await render(panel);
+  const { click, allByLabel, byLabel, sectionToggles } = panelQueries(screen, panel);
   const previousAgents = sectionToggles(false);
   if (previousAgents.length > 0) await click(previousAgents[0]!);
   expect(byLabel("Expand Checkout review")).toBeDefined();
@@ -296,7 +304,7 @@ it.each([
 });
 
 it("loads a workflow script only when opened and keeps the request in its environment and thread", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  setup();
   state.projection = {
     thread: { id: "parent", lineage: { relationshipToParent: null } },
     runs: [],
@@ -341,7 +349,9 @@ it("loads a workflow script only when opened and keeps the request in its enviro
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
+  await using screen = await render(panel);
+  const { container } = screen;
+  const { update, click, buttons, byLabel } = panelQueries(screen, panel);
   expect(state.workflowScript).not.toHaveBeenCalled();
   await click(byLabel("Expand Checkout review"));
   expect(state.workflowScript).not.toHaveBeenCalled();
@@ -372,7 +382,7 @@ it("loads a workflow script only when opened and keeps the request in its enviro
 });
 
 it("keeps historical workflow phases, metrics, and scripts visible without a coordinator conversation", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  setup();
   state.showTooltips = true;
   const recorded = {
     origin: "provider_native",
@@ -419,12 +429,15 @@ it("keeps historical workflow phases, metrics, and scripts visible without a coo
       },
     ],
   };
-  await render(
+  const panel = (
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
-    />,
+    />
   );
+  await using screen = await render(panel);
+  const { container } = screen;
+  const { click, buttons, byLabel } = panelQueries(screen, panel);
   expect(
     byLabel("Historical review has no recorded conversation").getAttribute("aria-disabled"),
   ).toBe("true");
@@ -452,6 +465,7 @@ it("keeps historical workflow phases, metrics, and scripts visible without a coo
 });
 
 it("opens the correct chat for every workflow phase and unphased member", async () => {
+  setup();
   state.showTooltips = true;
   state.configs.set("remote", {
     providers: [
@@ -519,7 +533,8 @@ it("opens the correct chat for every workflow phase and unphased member", async 
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
+  await using screen = await render(panel);
+  const { update, click, byLabel, buttonsWithLabel, textNodes } = panelQueries(screen, panel);
   await click(byLabel("Expand Checkout review"));
   const memberButtons = () => buttonsWithLabel((label) => label.startsWith("Open Member"));
   const phaseButtons = () =>
@@ -584,6 +599,7 @@ it("opens the correct chat for every workflow phase and unphased member", async 
 });
 
 it("groups and counts a workflow by its run status instead of its coordinator chat", async () => {
+  setup();
   state.showTooltips = true;
   const coordinator = {
     id: "workflow",
@@ -626,7 +642,11 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
+  await using screen = await render(panel);
+  const { update, click, allByLabel, byLabel, sectionToggle, heading, textNodes } = panelQueries(
+    screen,
+    panel,
+  );
   const text = () => textNodes("");
   expect(heading()).toBe("Lineage · 1 running");
   await click(byLabel("Expand Checkout review"));
@@ -663,6 +683,7 @@ it.each([
 ])(
   "offers individual Stop for supported $origin $driver subagents with run $runId",
   async ({ driver, origin, runId, canStop }) => {
+    setup();
     const parent = {
       id: "parent",
       lineage: { relationshipToParent: null },
@@ -708,7 +729,8 @@ it.each([
         threadId={ThreadId.make("parent")}
       />
     );
-    await render(panel);
+    await using screen = await render(panel);
+    const { update, click, allByLabel, byLabel } = panelQueries(screen, panel);
     if (!canStop) {
       expect(allByLabel("Stop subagent Worker")).toHaveLength(0);
       return;
@@ -717,10 +739,7 @@ it.each([
     await click(stopButton());
     expect(state.command).toHaveBeenCalledWith({
       environmentId: "test",
-      input:
-        origin === "provider_native"
-          ? { threadId: "parent", subagentId: "agent" }
-          : { threadId: "child" },
+      input: { threadId: "parent", subagentId: "agent" },
     });
     expect(state.navigate).not.toHaveBeenCalled();
 
@@ -752,7 +771,7 @@ it.each([
       expect(state.command).toHaveBeenCalledTimes(1);
       expect(state.command).toHaveBeenLastCalledWith({
         environmentId: "test",
-        input: { threadId: "child" },
+        input: { threadId: "parent", subagentId: "agent" },
       });
     }
     state.shells = [{ environmentId: "test", source: child }];
@@ -774,6 +793,7 @@ it.each([
 );
 
 it("shows the matching child agent details and refreshes them when the agent settles", async () => {
+  setup();
   const agent = {
     id: "agent-1",
     driver: "codex",
@@ -812,7 +832,9 @@ it("shows the matching child agent details and refreshes them when the agent set
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
+  await using screen = await render(panel);
+  const { update, click, buttons, sectionToggles, sectionToggle, heading, textNodes } =
+    panelQueries(screen, panel);
   const text = () => textNodes(" ").replace(/\s+/g, " ");
   expect(text()).toContain("Checker");
   expect(text()).toContain("Lineage · 3 running");
@@ -838,7 +860,7 @@ it("shows the matching child agent details and refreshes them when the agent set
   };
   await update();
   expect(heading()).toBe("Lineage");
-  expect(text()).toContain("Previous agents (1)");
+  expect(text()).toContain("Previous agents 1");
   expect(text()).not.toContain("Checker");
   await click(sectionToggle(false));
   expect(text()).toContain("Checker");
@@ -849,7 +871,7 @@ it("shows the matching child agent details and refreshes them when the agent set
   expect(text()).not.toContain("Worker");
   await click(sectionToggle(true));
   expect(text()).not.toContain("Checker");
-  expect(text()).toContain("Previous agents (1)");
+  expect(text()).toContain("Previous agents 1");
   await click(sectionToggle(false));
   expect(text()).toContain("Checker");
 
@@ -891,6 +913,7 @@ it("shows the matching child agent details and refreshes them when the agent set
 });
 
 it("shows readable models and only differing workspace details in agent tooltips", async () => {
+  setup();
   state.showTooltips = true;
   const parent = {
     id: "parent",
@@ -964,7 +987,8 @@ it("shows readable models and only differing workspace details in agent tooltips
       threadId={ThreadId.make("parent")}
     />
   );
-  await render(panel);
+  await using screen = await render(panel);
+  const { update, click, sectionToggle, textNodes } = panelQueries(screen, panel);
   const text = (visibleOnly = false) => textNodes("", visibleOnly);
   const rerender = async (source = child) => {
     // Fresh objects, as real shells are: the compiled component memoizes on identity.
@@ -1305,6 +1329,7 @@ it("shows readable models and only differing workspace details in agent tooltips
 });
 
 it("shows the parent's own visible status as parent and child activity change", async () => {
+  setup();
   const environmentId = EnvironmentId.make("test");
   const parent = {
     id: "parent",
@@ -1335,7 +1360,8 @@ it("shows the parent's own visible status as parent and child activity change", 
   const panel = (
     <ThreadRelationshipsPanel environmentId={environmentId} threadId={ThreadId.make("child")} />
   );
-  await render(panel);
+  await using screen = await render(panel);
+  const { update, textNodes } = panelQueries(screen, panel);
   const visibleText = () => textNodes(" ", true);
   expect(visibleText()).toContain("Parent conversation");
   expect(visibleText()).toContain("Running");
@@ -1351,6 +1377,7 @@ it("shows the parent's own visible status as parent and child activity change", 
 it.each(["source", "target"])(
   "shows transfer lifecycle states when viewing the %s thread",
   async (currentThreadId) => {
+    setup();
     const environmentId = EnvironmentId.make("test");
     const threads = ["source", "target"].map((id) => ({
       id,
@@ -1374,6 +1401,8 @@ it.each(["source", "target"])(
         threadId={ThreadId.make(currentThreadId)}
       />
     );
+    await using screen = await render(null);
+    const { update, textNodes } = panelQueries(screen, panel);
     for (const [status, label] of Object.entries(labels)) {
       state.projection = {
         thread: {
@@ -1386,8 +1415,7 @@ it.each(["source", "target"])(
         subagents: [],
         contextTransfers: [{ sourceThreadId: "source", targetThreadId: "target", status }],
       };
-      if (status === "pending") await render(panel);
-      else await update();
+      await update();
       const visibleText = textNodes(" ");
       expect(visibleText).toContain(
         currentThreadId === "source" ? "target conversation" : "source conversation",

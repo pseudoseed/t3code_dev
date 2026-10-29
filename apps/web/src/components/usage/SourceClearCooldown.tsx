@@ -26,19 +26,17 @@ export function SourceClearCooldown({
     pending.current = true;
     setBusy(true);
     setStatus(null);
-    try {
-      const result = await clearCooldown({ environmentId, input });
-      setStatus(
-        result._tag === "Success"
-          ? "Proxy cooldown cleared. Retry your request."
-          : "error" in result.cause && result.cause.error instanceof Error
-            ? result.cause.error.message
-            : "Could not clear the proxy cooldown.",
-      );
-    } finally {
+    const result = await clearCooldown({ environmentId, input }).finally(() => {
       pending.current = false;
       setBusy(false);
-    }
+    });
+    setStatus(
+      result._tag === "Success"
+        ? "Proxy cooldown cleared. Retry your request."
+        : "error" in result.cause && result.cause.error instanceof Error
+          ? result.cause.error.message
+          : "Could not clear the proxy cooldown.",
+    );
   };
 
   return (

@@ -781,8 +781,10 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   const accountStatus = managedAuth
     ? { status: "ready" as const, auth: managedAuth, message: undefined }
     : accountProbeStatus(snapshot);
-  const usageLimits =
-    snapshot.account.account?.type === "apiKey"
+  // Signed-out accounts are already covered by auth status; no usage was requested.
+  const usageLimits = !snapshot.account.account
+    ? undefined
+    : snapshot.account.account.type === "apiKey"
       ? makeUnavailableUsageLimits({
           checkedAt,
           reason: "unsupported",
@@ -835,7 +837,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         : snapshot.models === undefined
           ? { message: "Codex did not return its model catalog in time." }
           : {}),
-      ...(managedAuth ? {} : { usageLimits }),
+      ...(managedAuth || !usageLimits ? {} : { usageLimits }),
     },
   });
 });
