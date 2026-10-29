@@ -4,15 +4,6 @@ import { resolveCopyOnSelectText } from "~/lib/copyOnSelect";
 
 import { writeTextToClipboard } from "./useCopyToClipboard";
 
-/**
- * Copies a pointer-made text selection when the drag that made it ends.
- *
- * Scoped to `scope`: the gesture must start inside it and both ends of the
- * resulting selection must land inside it, which is what keeps the behavior in
- * the thread transcript instead of loose across the app. Passing
- * `enabled: false` detaches the listeners, so the setting toggles without
- * remounting the view.
- */
 export function useCopyOnSelect(input: {
   enabled: boolean;
   scope: HTMLElement | null;
@@ -21,6 +12,7 @@ export function useCopyOnSelect(input: {
   const { enabled, scope } = input;
   const target = input.target ?? "selection";
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds the mousedown and mouseup listeners that copy a finished selection while enabled
   useEffect(() => {
     if (!enabled || scope === null) return;
 

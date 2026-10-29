@@ -9,14 +9,6 @@ import {
 } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
-/**
- * Issues for the project the panel is following.
- *
- * Every read costs a request to the host, so answers are reused for a short while and refreshed
- * when the reader asks. Writes run serially per environment and refresh what they changed: a
- * comment and a state change both alter the issue that is on screen, and a new issue alters the
- * list behind it.
- */
 export function createIssueEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {

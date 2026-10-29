@@ -154,6 +154,7 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
 
       yield* Command.runWith(main, { version: "0.0.0" })(["ensure", "ios", "simulator"]).pipe(
         Effect.provideService(HostProcess.Platform, "darwin"),
+        Effect.provideService(HostProcess.Architecture, "arm64"),
         Effect.provideService(HostProcess.Environment, environment),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(FileSystem.FileSystem, {

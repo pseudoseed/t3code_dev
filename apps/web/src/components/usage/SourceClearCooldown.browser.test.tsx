@@ -1,7 +1,7 @@
 import { EnvironmentId, UsageLimitSourceId } from "@t3tools/contracts";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+
+import { act, render, type Screen } from "../../../test/render";
 
 const state = vi.hoisted(() => ({ clear: vi.fn() }));
 vi.mock("../../state/server", () => ({ serverEnvironment: { clearSourceCooldown: null } }));
@@ -11,62 +11,51 @@ import { SourceClearCooldown } from "./SourceClearCooldown";
 
 const environmentId = EnvironmentId.make("remote");
 const input = { sourceId: UsageLimitSourceId.make("hub"), accountId: "claude.json" };
-let root: Root;
-let container: HTMLDivElement;
-const button = () => container.querySelector("button")!;
-const status = () => container.querySelector('[role="status"]')?.textContent;
-async function renderControl() {
-  await act(() => root.render(<SourceClearCooldown environmentId={environmentId} input={input} />));
-}
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+const button = (screen: Screen) => screen.container.querySelector("button")!;
+const status = (screen: Screen) => screen.container.querySelector('[role="status"]')?.textContent;
+function setup() {
   state.clear.mockReset();
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-afterEach(async () => {
-  await act(() => root.unmount());
-  container.remove();
-  vi.unstubAllGlobals();
-});
+}
+const control = () => <SourceClearCooldown environmentId={environmentId} input={input} />;
 
 it("prevents duplicate clears while pending and reports success without a credit confirmation", async () => {
+  setup();
   let complete!: () => void;
   const pending = new Promise<{ _tag: "Success"; value: undefined }>((resolve) => {
     complete = () => resolve({ _tag: "Success", value: undefined });
   });
   state.clear.mockReturnValue(pending);
-  await renderControl();
+  await using screen = await render(control());
   await act(() => {
-    button().click();
-    button().click();
+    button(screen).click();
+    button(screen).click();
   });
-  expect(button().disabled).toBe(true);
-  expect(button().textContent).toBe("Clearing…");
+  expect(button(screen).disabled).toBe(true);
+  expect(button(screen).textContent).toBe("Clearing…");
   expect(state.clear).toHaveBeenCalledExactlyOnceWith({ environmentId, input });
   await act(async () => {
     complete();
   });
-  expect(button().disabled).toBe(false);
-  expect(status()).toBe("Proxy cooldown cleared. Retry your request.");
+  expect(button(screen).disabled).toBe(false);
+  expect(status(screen)).toBe("Proxy cooldown cleared. Retry your request.");
 });
 
 it("shows the hub's failure and allows a fresh retry", async () => {
+  setup();
   state.clear
     .mockResolvedValueOnce({
       _tag: "Failure",
       cause: { error: new Error("The hub could not be reached.") },
     })
     .mockResolvedValueOnce({ _tag: "Success", value: undefined });
-  await renderControl();
+  await using screen = await render(control());
   await act(async () => {
-    button().click();
+    button(screen).click();
   });
-  expect(status()).toBe("The hub could not be reached.");
-  expect(button().disabled).toBe(false);
+  expect(status(screen)).toBe("The hub could not be reached.");
+  expect(button(screen).disabled).toBe(false);
   await act(async () => {
-    button().click();
+    button(screen).click();
   });
-  expect(status()).toBe("Proxy cooldown cleared. Retry your request.");
+  expect(status(screen)).toBe("Proxy cooldown cleared. Retry your request.");
 });

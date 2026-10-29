@@ -3,13 +3,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-/**
- * Notices when the process stopped being scheduled. A one-second timer that
- * fires many seconds late means the host suspended, napped, or starved this
- * process, which from a remote client looks like a server that ignores
- * requests. Each stall becomes a span so the trace log carries proof of when
- * and for how long, next to the connection churn it caused.
- */
 interface EventLoopStallMonitorOptions {
   readonly intervalMs: number;
   readonly thresholdMs: number;

@@ -1,11 +1,3 @@
-/**
- * Issues, as the clients read and write them.
- *
- * Deliberately narrower than the change request contract next door: an issue has no branches,
- * no diff, no review and no merge, so what is left is a conversation with a state. The actor and
- * label shapes are the change request's own, because a person and a label are the same thing
- * whichever list they appear in.
- */
 import * as Schema from "effect/Schema";
 
 import {
@@ -209,23 +201,3 @@ export class IssueOperationError extends Schema.TaggedError<IssueOperationError>
 
 export const IssueRpcError = Schema.Union([IssueUnavailableError, IssueOperationError]);
 export type IssueRpcError = typeof IssueRpcError.Type;
-
-/** What a host needs before its issues can be read, as a sentence the panel can show. */
-function issueProviderRequirement(
-  provider: SourceControlProviderKind,
-  reason: IssueUnavailableReason,
-): string | null {
-  if (reason === "provider-unsupported") return null;
-  switch (provider) {
-    case "github":
-      return reason === "cli-missing"
-        ? "GitHub CLI (`gh`) is required to read issues on this host. Install it from https://cli.github.com/ and reload."
-        : "GitHub CLI is not authenticated. Run `gh auth login` and retry.";
-    case "forgejo":
-      return reason === "cli-missing"
-        ? "Forgejo CLI (`fj`) is required to sign in to an instance. Install it from https://codeberg.org/forgejo-contrib/forgejo-cli and run `fj auth login --host <host>`."
-        : "Forgejo rejected the stored token, or it lacks the access this needs. Run `fj auth login --host <host>` again with issue read and write.";
-    default:
-      return null;
-  }
-}

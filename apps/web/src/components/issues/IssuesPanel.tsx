@@ -8,7 +8,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { CircleCheck, CircleDot, Loader2, Plus, RefreshCw, Search, X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
@@ -88,17 +88,14 @@ export function IssuesPanel(props: IssuesPanelProps) {
 
   const result = listQuery.data;
   const searchesOnHost = result?.provider?.searchesOnHost ?? false;
-  const entries = useMemo(() => {
-    const rows = sortIssues(result?.entries ?? [], sort);
-    // A host that searched for us has already matched bodies this cannot see.
-    return searchesOnHost ? rows : narrowIssues(rows, submittedSearch);
-  }, [result?.entries, searchesOnHost, sort, submittedSearch]);
+  const sortedEntries = sortIssues(result?.entries ?? [], sort);
+  const entries = searchesOnHost ? sortedEntries : narrowIssues(sortedEntries, submittedSearch);
 
-  const submitSearch = useCallback(() => setSubmittedSearch(search), [search]);
-  const clearSearch = useCallback(() => {
+  const submitSearch = () => setSubmittedSearch(search);
+  const clearSearch = () => {
     setSearch("");
     setSubmittedSearch("");
-  }, []);
+  };
 
   if (openNumber !== null) {
     const repository = entries.find((entry) => entry.number === openNumber)?.repository;
@@ -332,14 +329,11 @@ function IssueDetailView(props: {
   readonly onBack: () => void;
   readonly onChanged: () => void;
 }) {
-  const reference = useMemo(
-    () => ({
-      projectId: props.projectId,
-      repository: props.repository,
-      number: props.number,
-    }),
-    [props.projectId, props.repository, props.number],
-  );
+  const reference = {
+    projectId: props.projectId,
+    repository: props.repository,
+    number: props.number,
+  };
   const detailQuery = useEnvironmentQuery(
     issueEnvironment.detail({ environmentId: props.environmentId, input: reference }),
   );
@@ -354,7 +348,7 @@ function IssueDetailView(props: {
 
   const detail = detailQuery.data;
 
-  const postComment = useCallback(async () => {
+  const postComment = async () => {
     const body = draft.trim();
     if (!canComment || body.length === 0 || pending !== null) return;
     setPending("comment");
@@ -365,9 +359,9 @@ function IssueDetailView(props: {
     setPending(null);
     // The draft is kept on failure: the reader's words are the one thing worth not losing.
     if (result._tag === "Success") setDraft("");
-  }, [canComment, comment, draft, pending, props.environmentId, reference]);
+  };
 
-  const toggleState = useCallback(async () => {
+  const toggleState = async () => {
     if (!canSetState || !detail || pending !== null) return;
     setPending("state");
     const result = await setState({
@@ -376,13 +370,13 @@ function IssueDetailView(props: {
     });
     setPending(null);
     if (result._tag === "Success") props.onChanged();
-  }, [canSetState, detail, pending, props, reference, setState]);
+  };
 
   /**
    * Opens a thread on this project, on a branch named for the issue, with the issue already in
    * its composer. Nothing is sent: the reader reads what is there and decides.
    */
-  const startWork = useCallback(async () => {
+  const startWork = async () => {
     if (!detail || starting) return;
     setStarting(true);
     const opened = await newThread(scopeProjectRef(props.environmentId, props.projectId), {
@@ -408,7 +402,7 @@ function IssueDetailView(props: {
       title: "Thread opened",
       description: "The issue is in the composer. Read it over, then send.",
     });
-  }, [detail, newThread, props.environmentId, props.projectId, starting]);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -536,7 +530,7 @@ function NewIssueView(props: {
   const create = useAtomCommand(issueEnvironment.create, { reportFailure: true });
   const [pending, setPending] = useState(false);
 
-  const submit = useCallback(async () => {
+  const submit = async () => {
     const trimmed = title.trim();
     if (!canCreate || trimmed.length === 0 || pending) return;
     setPending(true);
@@ -551,7 +545,7 @@ function NewIssueView(props: {
     setPending(false);
     // The draft stays on screen where it failed, so nothing typed is thrown away.
     if (result._tag === "Success") props.onCreated(result.value.number);
-  }, [body, canCreate, create, pending, props, title]);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">

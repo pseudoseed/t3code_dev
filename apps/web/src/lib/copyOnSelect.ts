@@ -1,12 +1,3 @@
-/**
- * Copy-on-select: the terminal-emulator behavior where finishing a drag that
- * selects text also puts that text on the clipboard.
- *
- * The decision lives here, apart from the DOM listeners in `useCopyOnSelect`,
- * so the rules that matter — what counts as in scope, what is never copied —
- * are testable without a browser.
- */
-
 // Selecting inside a field is part of editing it, not a request to copy.
 // Auto-copying there would clobber the clipboard mid-edit, which is exactly
 // when a user is most likely to be holding something they mean to paste.

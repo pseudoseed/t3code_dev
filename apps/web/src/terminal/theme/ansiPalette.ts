@@ -1,17 +1,3 @@
-/**
- * Fork-local ANSI palette for the Ghostty surface.
- *
- * Upstream only hands Ghostty a foreground, background, and cursor color, so
- * every SGR color falls through to libghostty's built-in palette, which is
- * tuned for a dark background. On a light app theme that renders `\e[97m` and
- * friends as white-on-white. This module builds the full 256-entry default
- * palette the terminal is initialized with, picking a light or dark base set
- * from the terminal background's luminance.
- *
- * Kept out of the upstream terminal files on purpose: the only edits it forces
- * are the optional `palette` field on `GhosttyTheme` and one call site, so
- * upstream merges stay cheap.
- */
 import type { GhosttyColor } from "../ghostty/core";
 
 /** Number of entries libghostty expects for GHOSTTY_TERMINAL_OPT_COLOR_PALETTE. */

@@ -65,11 +65,13 @@ function IosAgentWidgetSync() {
   // entry is dated from the last write, and a quiet, healthy app must not
   // let the widget claim its updates are late.
   const [refreshTick, setRefreshTick] = useState(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs the timer that forces a periodic widget write
   useEffect(() => {
     const timer = setInterval(() => setRefreshTick((tick) => tick + 1), WIDGET_REFRESH_MS);
     return () => clearInterval(timer);
   }, []);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the snapshot to the native widget's shared storage
   useEffect(() => {
     // Register the gallery layout even before a server snapshot is available.
     if (canPublish && previousContent.current === contentKey && refreshTick === lastTick.current)

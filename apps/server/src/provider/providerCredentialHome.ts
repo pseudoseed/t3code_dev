@@ -1,20 +1,3 @@
-/**
- * Per-instance credential directories.
- *
- * A provider CLI keeps one signed-in account per credential directory, so two
- * instances of the same provider need two directories or the second sign-in
- * overwrites the first. Users should not have to know that, so PseudoCode
- * provisions a directory for any instance that does not already have one.
- *
- * The rule has one deliberate exception. The instance whose id equals its
- * driver kind is the one migrated from the single-instance world; it keeps
- * pointing at the provider's own default home (`~/.claude`, `~/.codex`) so an
- * existing sign-in, and everything else the user has in that directory, keeps
- * working untouched. Every additional instance is new by definition and gets
- * its own directory.
- *
- * @module provider/providerCredentialHome
- */
 import {
   defaultInstanceIdForDriver,
   type ProviderDriverKind,
