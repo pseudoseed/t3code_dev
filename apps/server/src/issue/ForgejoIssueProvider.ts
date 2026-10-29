@@ -1,16 +1,10 @@
 import { SourceControlProviderKind } from "@t3tools/contracts";
 /**
- * Forgejo's issues, over its v1 REST API.
- *
- * Sits on `ForgejoTransport.request` for credentials and transport, the same way the change request
- * reader does. Gitea speaks the same API, so one provider serves both. Schemas and normalization
- * live here rather than in a file of their own: an issue is small enough that splitting it would
- * cost more to follow than it saves.
+ * Forgejo's issues over its v1 REST API, on `ForgejoTransport.request` like the change request
+ * reader. Gitea speaks the same API, so one provider serves both.
  */
-import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -185,10 +179,6 @@ function repositoryPath(
     : Effect.succeed(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
 }
 
-class ForgejoIssueProvider extends Context.Service<ForgejoIssueProvider, IssueProviderApi>()(
-  "t3/issue/ForgejoIssueProvider",
-) {}
-
 export const make = Effect.gen(function* () {
   const forgejo = yield* ForgejoTransport.ForgejoTransport;
 
@@ -257,99 +247,103 @@ export const make = Effect.gen(function* () {
 
   const viewerByHost = new Map<string, string>();
 
-  const getViewer: IssueProviderApi["getViewer"] = (input) =>
-    Effect.gen(function* () {
-      const locator = yield* forgejo
-        .resolveLocator({ cwd: input.cwd })
-        .pipe(Effect.mapError(fail("getViewer")));
-      const cached = viewerByHost.get(locator.host);
-      if (cached !== undefined) return cached;
-      const user = yield* read({
-        operation: "getViewer",
-        method: "GET",
-        host: locator.host,
-        cwd: input.cwd,
-        path: "/user",
-        decode: decodeUser,
-      });
-      const login = text(user.login).trim();
-      if (login.length === 0) {
-        return yield* new IssueProviderError({
-          provider: SourceControlProviderKind.make("forgejo"),
+  const getViewer: IssueProviderApi["getViewer"] = Effect.fn("ForgejoIssueProvider.getViewer")(
+    (input) =>
+      Effect.gen(function* () {
+        const locator = yield* forgejo
+          .resolveLocator({ cwd: input.cwd })
+          .pipe(Effect.mapError(fail("getViewer")));
+        const cached = viewerByHost.get(locator.host);
+        if (cached !== undefined) return cached;
+        const user = yield* read({
           operation: "getViewer",
-          reason: "unauthenticated",
-          detail: "Forgejo did not name the signed-in account.",
+          method: "GET",
+          host: locator.host,
+          cwd: input.cwd,
+          path: "/user",
+          decode: decodeUser,
         });
-      }
-      viewerByHost.set(locator.host, login);
-      return login;
-    });
+        const login = text(user.login).trim();
+        if (login.length === 0) {
+          return yield* new IssueProviderError({
+            provider: SourceControlProviderKind.make("forgejo"),
+            operation: "getViewer",
+            reason: "unauthenticated",
+            detail: "Forgejo did not name the signed-in account.",
+          });
+        }
+        viewerByHost.set(locator.host, login);
+        return login;
+      }),
+  );
 
   const hostState = (state: IssueListState): "open" | "closed" | "all" => state;
 
-  const listIssues: IssueProviderApi["listIssues"] = (input) =>
-    Effect.gen(function* () {
-      const base = yield* repositoryPath(input.repository, "listIssues");
-      const limit = Math.min(Math.max(input.limit, 1), MAX_PAGE_SIZE);
-      const query = new URLSearchParams({
-        // Forgejo lists issues and pull requests together unless it is told which.
-        type: "issues",
-        state: hostState(input.state),
-        sort: "recentupdate",
-        page: "1",
-        limit: String(limit),
-      });
-      const search = input.query?.trim() ?? "";
-      if (search.length > 0) query.set("q", search);
-      if (input.involvement === "authored" && input.viewer.length > 0) {
-        query.set("created_by", input.viewer);
-      }
-      if (input.involvement === "assigned" && input.viewer.length > 0) {
-        query.set("assigned_by", input.viewer);
-      }
+  const listIssues: IssueProviderApi["listIssues"] = Effect.fn("ForgejoIssueProvider.listIssues")(
+    (input) =>
+      Effect.gen(function* () {
+        const base = yield* repositoryPath(input.repository, "listIssues");
+        const limit = Math.min(Math.max(input.limit, 1), MAX_PAGE_SIZE);
+        const query = new URLSearchParams({
+          // Forgejo lists issues and pull requests together unless it is told which.
+          type: "issues",
+          state: hostState(input.state),
+          sort: "recentupdate",
+          page: "1",
+          limit: String(limit),
+        });
+        const search = input.query?.trim() ?? "";
+        if (search.length > 0) query.set("q", search);
+        if (input.involvement === "authored" && input.viewer.length > 0) {
+          query.set("created_by", input.viewer);
+        }
+        if (input.involvement === "assigned" && input.viewer.length > 0) {
+          query.set("assigned_by", input.viewer);
+        }
 
-      const rows = yield* read({
-        operation: "listIssues",
-        method: "GET",
-        host: input.host,
-        cwd: input.cwd,
-        path: `${base}/issues?${query.toString()}`,
-        decode: decodeIssueList,
-      }).pipe(
-        // Forgejo answers 404 for a repository whose tracker is off, which is the same answer it
-        // gives for one that is not there. Rather than guess, the repository is read: it says
-        // which of the two this is, and only a failed listing pays for the question.
-        Effect.catchIf(
-          (error) => error.reason === "failed",
-          (error) =>
-            read({
-              operation: "listIssues",
-              method: "GET",
-              host: input.host,
-              cwd: input.cwd,
-              path: base,
-              decode: decodeRepository,
-            }).pipe(
-              Effect.map((repository) => repository.has_issues !== false),
-              // Unknown counts as on, so a real failure is still reported as one.
-              Effect.orElseSucceed(() => true),
-              Effect.flatMap((enabled) => (enabled ? Effect.fail(error) : Effect.succeed(null))),
-            ),
-        ),
-      );
-      if (rows === null) {
-        return {
-          items: [],
-          truncated: false,
-          disabledReason: "Issues are turned off for this repository on this instance.",
-        };
-      }
+        const rows = yield* read({
+          operation: "listIssues",
+          method: "GET",
+          host: input.host,
+          cwd: input.cwd,
+          path: `${base}/issues?${query.toString()}`,
+          decode: decodeIssueList,
+        }).pipe(
+          // Forgejo answers 404 for a repository whose tracker is off, which is the same answer it
+          // gives for one that is not there. Rather than guess, the repository is read: it says
+          // which of the two this is, and only a failed listing pays for the question.
+          Effect.catchIf(
+            (error) => error.reason === "failed",
+            (error) =>
+              read({
+                operation: "listIssues",
+                method: "GET",
+                host: input.host,
+                cwd: input.cwd,
+                path: base,
+                decode: decodeRepository,
+              }).pipe(
+                Effect.map((repository) => repository.has_issues !== false),
+                // Unknown counts as on, so a real failure is still reported as one.
+                Effect.orElseSucceed(() => true),
+                Effect.flatMap((enabled) => (enabled ? Effect.fail(error) : Effect.succeed(null))),
+              ),
+          ),
+        );
+        if (rows === null) {
+          return {
+            items: [],
+            truncated: false,
+            disabledReason: "Issues are turned off for this repository on this instance.",
+          };
+        }
 
-      // `type=issues` is honoured by current Forgejo, and the guard costs nothing on a host
-      // that ignores it: a row carrying `pull_request` is a change request, not an issue.
-      const items = rows.filter((row) => !row.pull_request).map(toIssue);
-      return { items, truncated: rows.length >= limit };
-    });
+        // `type=issues` is honoured by current Forgejo, and the guard costs nothing on a host
+        // that ignores it: a row carrying `pull_request` is a change request, not an issue.
+        const items = rows.filter((row) => !row.pull_request).map(toIssue);
+        return { items, truncated: rows.length >= limit };
+      }),
+  );
 
   const readComments = (input: ProviderIssueRef & { readonly number: number }) => {
     const step = (
@@ -382,49 +376,51 @@ export const make = Effect.gen(function* () {
     );
   };
 
-  const getIssue: IssueProviderApi["getIssue"] = (input) =>
-    Effect.gen(function* () {
-      const base = yield* repositoryPath(input.repository, "getIssue");
-      const [raw, conversation, repository] = yield* Effect.all(
-        [
-          read({
-            operation: "getIssue",
-            method: "GET",
-            host: input.host,
-            cwd: input.cwd,
-            path: `${base}/issues/${input.number}`,
-            decode: decodeIssue,
-          }),
-          readComments(input),
-          read({
-            operation: "getIssue",
-            method: "GET",
-            host: input.host,
-            cwd: input.cwd,
-            path: base,
-            decode: decodeRepository,
-          }).pipe(
-            // A permission that could not be read is granted: a hidden composer leaves someone
-            // entitled to write with no way to, and a refusal at least says why.
-            Effect.orElseSucceed(() => ({ permissions: null })),
-          ),
-        ],
-        { concurrency: 3 },
-      );
+  const getIssue: IssueProviderApi["getIssue"] = Effect.fn("ForgejoIssueProvider.getIssue")(
+    (input) =>
+      Effect.gen(function* () {
+        const base = yield* repositoryPath(input.repository, "getIssue");
+        const [raw, conversation, repository] = yield* Effect.all(
+          [
+            read({
+              operation: "getIssue",
+              method: "GET",
+              host: input.host,
+              cwd: input.cwd,
+              path: `${base}/issues/${input.number}`,
+              decode: decodeIssue,
+            }),
+            readComments(input),
+            read({
+              operation: "getIssue",
+              method: "GET",
+              host: input.host,
+              cwd: input.cwd,
+              path: base,
+              decode: decodeRepository,
+            }).pipe(
+              // A permission that could not be read is granted: a hidden composer leaves someone
+              // entitled to write with no way to, and a refusal at least says why.
+              Effect.orElseSucceed(() => ({ permissions: null })),
+            ),
+          ],
+          { concurrency: 3 },
+        );
 
-      const permissions = repository.permissions;
-      return {
-        ...toIssue(raw),
-        body: text(raw.body),
-        closedAt: text(raw.closed_at).trim().length > 0 ? iso(raw.closed_at) : null,
-        comments: conversation.comments,
-        commentsTruncated: conversation.truncated,
-        viewerCanWrite:
-          permissions === null || permissions === undefined
-            ? true
-            : permissions.push === true || permissions.admin === true,
-      } satisfies ProviderIssueDetail;
-    });
+        const permissions = repository.permissions;
+        return {
+          ...toIssue(raw),
+          body: text(raw.body),
+          closedAt: text(raw.closed_at).trim().length > 0 ? iso(raw.closed_at) : null,
+          comments: conversation.comments,
+          commentsTruncated: conversation.truncated,
+          viewerCanWrite:
+            permissions === null || permissions === undefined
+              ? true
+              : permissions.push === true || permissions.admin === true,
+        } satisfies ProviderIssueDetail;
+      }),
+  );
 
   return {
     kind: SourceControlProviderKind.make("forgejo"),
@@ -482,5 +478,3 @@ export const make = Effect.gen(function* () {
 function stringifyBody(body: unknown): string {
   return JSON.stringify(body);
 }
-
-const layer = Layer.effect(ForgejoIssueProvider, make);

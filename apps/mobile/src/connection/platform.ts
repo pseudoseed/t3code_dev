@@ -141,7 +141,7 @@ const layerWakeups = Layer.effect(
   Effect.gen(function* () {
     const network = yield* MobileNetworkState;
     const wakeups = yield* PubSub.unbounded<
-      "application-active-probe" | "application-active-reconnect"
+      "application-active-probe" | "application-active-long"
     >();
     yield* Effect.acquireRelease(
       Effect.sync(() => {

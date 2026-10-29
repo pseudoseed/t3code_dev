@@ -109,7 +109,7 @@ export const make = Effect.gen(function* () {
   const read = <A, I>(input: GitHubRest.GitHubRestInput, schema: Schema.Codec<A, I>) =>
     request(input).pipe(
       Effect.flatMap((response) =>
-        Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(response.body).pipe(
+        Schema.decodeEffect(Schema.fromJsonString(schema))(response.body).pipe(
           Effect.mapError(
             (cause) =>
               new IssueProviderError({
@@ -135,11 +135,12 @@ export const make = Effect.gen(function* () {
   return {
     kind: SourceControlProviderKind.make("github"),
     capabilities: { comment: true, create: true, close: true, search: true },
-    getViewer: (input) =>
+    getViewer: Effect.fn("GitHubIssueProvider.getViewer")((input) =>
       read({ host: input.host ?? "github.com", operation: "getViewer", path: "user" }, Actor).pipe(
         Effect.map((viewer) => viewer.login),
       ),
-    listIssues: (input) =>
+    ),
+    listIssues: Effect.fn("GitHubIssueProvider.listIssues")((input) =>
       Effect.gen(function* () {
         const limit = Math.min(Math.max(input.limit, 1), 200);
         const query = [
@@ -206,7 +207,8 @@ export const make = Effect.gen(function* () {
             ),
         ),
       ),
-    getIssue: (input) =>
+    ),
+    getIssue: Effect.fn("GitHubIssueProvider.getIssue")((input) =>
       Effect.gen(function* () {
         const path = `${repositoryPath(input.repository)}/issues/${input.number}`;
         const [raw, repository] = yield* Effect.all(
@@ -251,6 +253,7 @@ export const make = Effect.gen(function* () {
             permissions.maintain === true,
         };
       }),
+    ),
     comment: (input) =>
       request({
         host: input.host,

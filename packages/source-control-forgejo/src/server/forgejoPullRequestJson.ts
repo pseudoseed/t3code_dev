@@ -6,6 +6,7 @@
  */
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
+import { toIsoUtc } from "@t3tools/source-control-core/server/pullRequestUtils";
 import * as Schema from "effect/Schema";
 import type {
   PullRequestActor,
@@ -420,12 +421,9 @@ function normalizeThreadComment(
 }
 
 /**
- * Line notes grouped into conversations.
- *
- * Forgejo has no thread of its own: a note carries a file, a position, and the review it was
- * written under. Notes on the same line of the same file are one conversation, which is how they
- * are shown on Forgejo's own page. A note whose `position` is gone has drifted off the diff and
- * is marked outdated rather than pinned to a line it no longer belongs on.
+ * Forgejo has no review threads: notes on the same line of the same file are one conversation,
+ * as on Forgejo's own page. A note whose `position` is gone has drifted off the diff and is
+ * marked outdated rather than pinned to a line it no longer belongs on.
  */
 export function normalizeReviewThreads(
   comments: ReadonlyArray<typeof ForgejoReviewCommentSchema.Type>,
@@ -690,10 +688,6 @@ export function forgejoActor(
   return user?.login
     ? { login: user.login, name: user.full_name || null, avatarUrl: user.avatar_url || null }
     : null;
-}
-
-function toIsoUtc(value: string): string {
-  return Option.match(DateTime.make(value), { onNone: () => value, onSome: DateTime.formatIso });
 }
 
 export function forgejoChangeRequest(pr: typeof ForgejoPullRequest.Type) {

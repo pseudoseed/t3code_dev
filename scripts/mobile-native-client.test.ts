@@ -7,6 +7,7 @@ import * as Path from "effect/Path";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { Command } from "effect/cli";
+import { FetchHttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
 import { loadRepoEnv } from "./lib/public-config.ts";
@@ -122,7 +123,9 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
               builtId = bundleId;
             }
           } else if (args.includes("list") && args.includes("devices")) {
-            output = JSON.stringify({ devices: { iOS: [{ udid: "simulator", state: "Booted" }] } });
+            output = JSON.stringify({
+              devices: { iOS: [{ udid: "simulator", name: "iPhone", state: "Booted" }] },
+            });
           } else if (args.includes("install") && args.includes("simctl")) {
             installedId = builtId;
           } else if (args.includes("listapps")) {
@@ -131,7 +134,7 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
             assert.strictEqual(args[3], installedId);
             output = bundle;
           } else {
-            assert.include(["git", "bash", "pod", "xcrun"], command.command);
+            assert.include(["git", "bash", "pod", "xcrun", "ditto"], command.command);
           }
           return ChildProcessSpawner.makeHandle({
             pid: ChildProcessSpawner.ProcessId(1),
@@ -160,6 +163,7 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
               ? Effect.succeed(["Development.xcworkspace"])
               : fs.readDirectory(directory, options),
         }),
+        Effect.provide(FetchHttpClient.layer),
       );
 
       assert.strictEqual(installedId, canonicalId);

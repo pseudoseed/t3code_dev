@@ -132,7 +132,6 @@ describe("ProcessDiagnostics", () => {
               cause: new Error("collector unavailable"),
             }),
           ),
-          validateProcessIdentity: () => Effect.die("unused"),
           retry: Effect.die("unused"),
         }),
       );
@@ -233,7 +232,9 @@ describe("ProcessDiagnostics", () => {
         pid: CHILD_PID,
         signal: "SIGKILL",
         signaled: false,
-        message: Option.some(`Process ${CHILD_PID} is not a signalable T3 backend descendant.`),
+        message: Option.some(
+          `Process ${CHILD_PID} is not a signalable PseudoCode backend descendant.`,
+        ),
       });
 
       const diagnostics = yield* Effect.service(ProcessDiagnostics.ProcessDiagnostics).pipe(

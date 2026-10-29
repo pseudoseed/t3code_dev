@@ -41,10 +41,6 @@ export function resolveWebAssetBrandForChannel(channel: WebAssetChannel): WebAss
   return channel === "nightly" ? "nightly" : "production";
 }
 
-export function resolveWebAssetBrandForPackageVersion(version: string): WebAssetBrand {
-  return /^[^-+]+-(?:nightly|preview)\./.test(version) ? "nightly" : "production";
-}
-
 export interface IconOverride {
   readonly sourceRelativePath: string;
   readonly targetRelativePath: string;
@@ -82,11 +78,9 @@ export function resolveWebIconOverrides(
   brand: WebAssetBrand,
   targetDirectory: string,
 ): ReadonlyArray<IconOverride> {
-  // Fork branding. The apple touch icon is what the boot shell shows while the
-  // app loads, so pointing it at T3CODE_APP_ICON rebrands the loading screen.
-  // Favicons are generated from the same PseudoCode source icon and checked in.
-  // T3CODE_WEB_ICON exists so the web copy can be a small square rather than
-  // the 1024 source the app icons need.
+  // Fork branding: the boot shell shows the apple touch icon, so T3CODE_APP_ICON rebrands the
+  // loading screen. T3CODE_WEB_ICON lets the web copy be a small square instead of the 1024
+  // source the app icons need. Favicons come from the same icon and are checked in.
   const appIconOverride = (process.env.T3CODE_WEB_ICON ?? process.env.T3CODE_APP_ICON)?.trim();
   const sourcePaths = appIconOverride
     ? { ...WEB_ICON_SOURCE_PATHS_BY_BRAND[brand], appleTouchIconPng: appIconOverride }

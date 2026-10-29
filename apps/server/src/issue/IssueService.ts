@@ -179,7 +179,7 @@ const make = Effect.gen(function* () {
   });
 
   return IssueService.of({
-    list: (input) =>
+    list: Effect.fn("IssueService.list")((input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
           resolved.api.getViewer({ cwd: resolved.cwd, host: resolved.host }).pipe(
@@ -224,8 +224,9 @@ const make = Effect.gen(function* () {
           ),
         ),
       ),
+    ),
 
-    detail: (input) =>
+    detail: Effect.fn("IssueService.detail")((input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
           resolved.api
@@ -249,8 +250,9 @@ const make = Effect.gen(function* () {
             ),
         ),
       ),
+    ),
 
-    comment: (input) =>
+    comment: Effect.fn("IssueService.comment")((input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
           resolved.api.capabilities.comment
@@ -271,8 +273,9 @@ const make = Effect.gen(function* () {
               ),
         ),
       ),
+    ),
 
-    create: (input) =>
+    create: Effect.fn("IssueService.create")((input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
           resolved.api.capabilities.create
@@ -293,8 +296,9 @@ const make = Effect.gen(function* () {
               ),
         ),
       ),
+    ),
 
-    setState: (input) =>
+    setState: Effect.fn("IssueService.setState")((input) =>
       resolveProject(input.projectId).pipe(
         Effect.flatMap((resolved) =>
           resolved.api.capabilities.close
@@ -315,6 +319,7 @@ const make = Effect.gen(function* () {
               ),
         ),
       ),
+    ),
   });
 });
 

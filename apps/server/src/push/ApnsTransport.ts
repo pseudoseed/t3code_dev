@@ -211,8 +211,9 @@ export const layer = Layer.effect(
     if (!config) {
       return ApnsTransport.of({
         bundleId: null,
-        send: () =>
+        send: Effect.fn("ApnsTransport.send")(() =>
           Effect.fail(new ApnsTransportError({ message: "Direct APNs is not configured." })),
+        ),
       });
     }
     const sender = yield* Effect.acquireRelease(
@@ -221,7 +222,7 @@ export const layer = Layer.effect(
     );
     return ApnsTransport.of({
       bundleId: config.bundleId,
-      send: (request) =>
+      send: Effect.fn("ApnsTransport.send")((request) =>
         Effect.gen(function* () {
           const now = yield* DateTime.now;
           return yield* Effect.tryPromise({
@@ -232,6 +233,7 @@ export const layer = Layer.effect(
               }),
           });
         }),
+      ),
     });
   }).pipe(
     Effect.catch((error) =>
@@ -239,12 +241,13 @@ export const layer = Layer.effect(
         Effect.as(
           ApnsTransport.of({
             bundleId: null,
-            send: () =>
+            send: Effect.fn("ApnsTransport.send")(() =>
               Effect.fail(
                 new ApnsTransportError({
                   message: "Direct APNs configuration is invalid. Check the server log.",
                 }),
               ),
+            ),
           }),
         ),
       ),

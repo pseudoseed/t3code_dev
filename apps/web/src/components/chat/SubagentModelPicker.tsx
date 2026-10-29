@@ -1,13 +1,9 @@
+import type { ProviderDriverKind } from "@t3tools/contracts";
 import { memo } from "react";
 import { UsersIcon } from "lucide-react";
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { cn } from "~/lib/utils";
-import {
-  ComposerControl,
-  ComposerControlChevron,
-  ComposerControlIcon,
-  type ComposerControlSize,
-} from "./ComposerControl";
+import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { ModelEsque, getTriggerDisplayModelName } from "./providerIconUtils";
 
@@ -20,6 +16,7 @@ export interface SubagentModelControlProps {
    * inside that instance's process, so nothing else is reachable from here.
    */
   instanceModels: ReadonlyArray<ModelEsque>;
+  driverKind: ProviderDriverKind;
   /** Selected subagent model slug, or null when subagents inherit. */
   value: string | null;
   /** Display name of the thread's model, shown as what "Inherit" resolves to. */
@@ -30,10 +27,11 @@ export interface SubagentModelControlProps {
 function subagentModelTriggerLabel(input: {
   value: string | null;
   instanceModels: ReadonlyArray<ModelEsque>;
+  driverKind: ProviderDriverKind;
 }): string {
   if (input.value === null) return "Subagents: inherit";
   const match = input.instanceModels.find((option) => option.slug === input.value);
-  return `Subagents: ${match ? getTriggerDisplayModelName(match) : input.value}`;
+  return `Subagents: ${match ? getTriggerDisplayModelName(match, input.driverKind) : input.value}`;
 }
 
 /**
@@ -66,7 +64,9 @@ export const SubagentModelMenuContent = memo(function SubagentModelMenuContent(
         {props.instanceModels.map((option) => (
           <MenuRadioItem key={option.slug} value={option.slug} hideIndicator closeOnClick>
             <span className="flex w-full min-w-0 items-center justify-between gap-3">
-              <span className="min-w-0 truncate">{getTriggerDisplayModelName(option)}</span>
+              <span className="min-w-0 truncate">
+                {getTriggerDisplayModelName(option, props.driverKind)}
+              </span>
             </span>
           </MenuRadioItem>
         ))}
@@ -98,6 +98,7 @@ export const SubagentModelPicker = memo(function SubagentModelPicker(
   const label = subagentModelTriggerLabel({
     value: props.value,
     instanceModels: props.instanceModels,
+    driverKind: props.driverKind,
   });
 
   return (
@@ -119,12 +120,12 @@ export const SubagentModelPicker = memo(function SubagentModelPicker(
         <span className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden">
           <ComposerControlIcon icon={UsersIcon} size={size} />
           <span className="min-w-0 truncate">{label}</span>
-          <ComposerControlChevron size={size} />
         </span>
       </MenuTrigger>
       <MenuPopup align="start">
         <SubagentModelMenuContent
           instanceModels={props.instanceModels}
+          driverKind={props.driverKind}
           value={props.value}
           threadModelLabel={props.threadModelLabel}
           onChange={props.onChange}

@@ -21,6 +21,7 @@ export function AgentAttentionSettings() {
   const [requesting, setRequesting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- re-reads the browser's notification permission when the window regains focus
   useEffect(() => {
     const refresh = () => setPermission(agentNotificationPermission());
     window.addEventListener("focus", refresh);
@@ -31,7 +32,7 @@ export function AgentAttentionSettings() {
     setFeedback(null);
     try {
       const shown = showAgentAttentionNotification({
-        title: `${APP_DISPLAY_NAME} — Notification test`,
+        title: `${APP_DISPLAY_NAME}: Notification test`,
         body: "You will receive alerts when an agent needs input or approval.",
         tag: "agent-attention:test",
         onClick: () => {},
@@ -52,27 +53,27 @@ export function AgentAttentionSettings() {
     }
   };
 
-  const enableNotifications = async () => {
+  const enableNotifications = () => {
     setRequesting(true);
     setFeedback(null);
-    try {
-      const granted = await requestAgentNotificationPermission();
-      update({ agentAttentionNotifications: granted });
-      setPermission(agentNotificationPermission());
-      if (granted) {
-        // Electron's renderer permission can be granted before macOS has asked.
-        // Sending an alert triggers the native permission prompt on first use.
-        previewNotification();
-      } else {
-        setFeedback("Allow notifications in your browser or system settings, then try again.");
-      }
-    } catch {
-      setFeedback(
-        "Could not request notification permission. Check your browser or system settings.",
-      );
-    } finally {
-      setRequesting(false);
-    }
+    return requestAgentNotificationPermission()
+      .then((granted) => {
+        update({ agentAttentionNotifications: granted });
+        setPermission(agentNotificationPermission());
+        if (granted) {
+          // Electron's renderer permission can be granted before macOS has asked.
+          // Sending an alert triggers the native permission prompt on first use.
+          previewNotification();
+        } else {
+          setFeedback("Allow notifications in your browser or system settings, then try again.");
+        }
+      })
+      .catch(() => {
+        setFeedback(
+          "Could not request notification permission. Check your browser or system settings.",
+        );
+      })
+      .finally(() => setRequesting(false));
   };
 
   const previewSound = () => {

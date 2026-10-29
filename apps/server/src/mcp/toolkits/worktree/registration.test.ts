@@ -1,6 +1,11 @@
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as SqlitePersistence from "../../../persistence/Sqlite.ts";
 import { IssueService } from "../../../issue/IssueService.ts";
+import { DocumentText } from "../../../provider/DocumentText.ts";
+import { PeerForwarding } from "../../../peer/PeerForwarding.ts";
+import { PeerLinkRequests } from "../../../peer/PeerLinkRequests.ts";
+import { PeerLinks } from "../../../peer/PeerLinks.ts";
+import { RemoteDelegation } from "../../../peer/RemoteDelegation.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../../../orchestration-v2/ProjectionStore.ts";
 import * as DeviceService from "../../../device/DeviceService.ts";
@@ -41,6 +46,11 @@ import * as PreviewBrowser from "../../../preview/PreviewBrowser.ts";
 const layerStubServices = Layer.mergeAll(
   SqlitePersistence.layerMemory,
   Layer.mock(IssueService)({}),
+  Layer.mock(DocumentText)({}),
+  Layer.mock(PeerForwarding)({}),
+  Layer.mock(PeerLinkRequests)({}),
+  Layer.mock(PeerLinks)({}),
+  Layer.mock(RemoteDelegation)({}),
   Layer.mock(Orchestrator.OrchestratorV2)({}),
   Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
   Layer.mock(DeviceService.DeviceService)({}),
