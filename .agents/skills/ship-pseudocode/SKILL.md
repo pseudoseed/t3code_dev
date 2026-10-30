@@ -126,6 +126,7 @@ been done.
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ERR_UNKNOWN_FILE_EXTENSION ".ts"`            | Node 20 on PATH. The ship scripts pick Node 26; a hand-run command must too.                                                                                       |
 | `command not found: vp`                       | `node_modules/.bin` missing from PATH.                                                                                                                             |
+| `Rust/Cargo and the requested Rust target`    | Rust missing. `brew install rustup`, then `rustup default stable`; `_common.sh` puts its `cargo` on PATH.                                                          |
 | App bundle named `T3 Code.app`                | `T3CODE_APP_NAME` not exported for the desktop build.                                                                                                              |
 | `skipped macOS notarization`                  | No notarytool keychain profile named `pseudocode`. `ROTATION.md` step 6.                                                                                           |
 | `codesign ... errSecInternalComponent`        | The keychain holding the signing key is locked, so `codesign` sees the identity but cannot use the key.                                                            |

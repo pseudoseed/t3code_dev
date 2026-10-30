@@ -6,15 +6,17 @@ repo_root() {
 
 # /usr/bin first: Xcode's export step passes rsync flags only Apple's rsync accepts.
 # Node 26, the version package.json pins: the build scripts are TypeScript that Node strips types from.
+# Cargo: the desktop build compiles a Rust resource monitor; Homebrew's rustup is keg-only.
 setup_path() {
-  local root="$1" node26
+  local root="$1" node26 rustup_bin
   node26="$(ls -d "$HOME"/.nvm/versions/node/v26.* 2>/dev/null | sort -V | tail -1 || true)"
   [ -n "$node26" ] || node26="$(brew --prefix node@26 2>/dev/null || true)"
   if [ -z "$node26" ] || [ ! -x "$node26/bin/node" ]; then
     echo "Node 26 is required. Install it with: brew install node@26" >&2
     exit 1
   fi
-  export PATH="/usr/bin:$node26/bin:$root/node_modules/.bin:$PATH"
+  rustup_bin="$(brew --prefix rustup 2>/dev/null || true)/bin"
+  export PATH="/usr/bin:$node26/bin:$rustup_bin:$HOME/.cargo/bin:$root/node_modules/.bin:$PATH"
 }
 
 # Branding and identifiers live in .env.local. The desktop build reads T3CODE_APP_NAME and
