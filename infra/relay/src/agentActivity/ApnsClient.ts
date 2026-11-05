@@ -79,20 +79,10 @@ const decodeApnsErrorResponseJson = Schema.decodeUnknownOption(
   ),
 );
 function contentState(state: RelayAgentActivityAggregateState, appScheme?: string) {
-  const compact = {
-    ...state,
-    ...(appScheme ? { appScheme } : {}),
-    activities: [...state.activities],
+  return {
+    name: LIVE_ACTIVITY_NAME,
+    props: JSON.stringify(appScheme ? { ...state, appScheme } : state),
   };
-  const content = () => ({ name: LIVE_ACTIVITY_NAME, props: JSON.stringify(compact) });
-  // Leave space for APS metadata and alerts, including escaped JSON and UTF-8 summaries.
-  while (
-    new TextEncoder().encode(JSON.stringify(content())).byteLength > 3000 &&
-    compact.activities.length
-  ) {
-    compact.activities.pop();
-  }
-  return content();
 }
 
 interface LiveActivityRequestBase {
@@ -145,6 +135,7 @@ function makeLiveActivityRequest(input: MakeLiveActivityRequestInput): ApnsLiveA
           projectTitle: truncateText(row.projectTitle, maxTextLength),
           threadTitle: truncateText(row.threadTitle, maxTextLength),
           modelTitle: truncateText(row.modelTitle, maxTextLength),
+          ...(row.summary ? { summary: truncateText(row.summary, maxTextLength) } : {}),
         })),
       },
       alert: input.alert

@@ -506,7 +506,7 @@ it("opens the correct chat for every workflow phase and unphased member", async 
     durationMs: 5000,
   }));
   const project = (members: typeof agents) => ({
-    thread: { id: "parent", lineage: { relationshipToParent: null } },
+    thread: { id: "parent", lineage: { parentThreadId: null, relationshipToParent: null } },
     runs: [],
     providerThreads: [],
     providerSessions: [],
@@ -559,13 +559,9 @@ it("opens the correct chat for every workflow phase and unphased member", async 
   for (const phase of phaseButtons().slice(0, 2)) await click(phase);
   expect(memberButtons()).toHaveLength(7);
   for (const button of memberButtons()) {
-    expect(button.disabled).toBe(true);
-    await click(button);
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-disabled")).toBeNull();
   }
-  expect(state.navigate).not.toHaveBeenCalled();
-  state.shells = memberShells.map((source) => ({ environmentId: "remote", source }));
-  await update();
-  for (const button of memberButtons()) expect(button.disabled).toBe(false);
   for (const agent of agents) {
     await click(byLabel(`Open ${agent.label} chat`));
     expect(state.navigate).toHaveBeenLastCalledWith({
@@ -935,7 +931,7 @@ it("shows readable models and only differing workspace details in agent tooltips
     id: "parent",
     projectId: "main",
     worktreePath: null,
-    lineage: {},
+    lineage: { parentThreadId: null },
     activeProviderThreadId: null,
   };
   const child = {

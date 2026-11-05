@@ -100,10 +100,10 @@ it.effect(
 it.effect(
   "searches pull request descriptions without repeating filtered rows on the next page",
   () => {
-    const rows = [1, 2, 3].map((number) => ({
+    const rows = [1, 2, 3, 4].map((number) => ({
       number,
       title: "Change",
-      body: number === 2 ? "Repair reconnect" : "Unrelated",
+      body: number % 2 === 0 ? "Repair reconnect" : "Unrelated",
       state: "open",
       merged: false,
       html_url: `https://forgejo.test/acme/web/pulls/${number}`,
@@ -126,7 +126,7 @@ it.effect(
         involvement: "all" as const,
         viewer: "chris",
         query: "reconnect",
-        limit: 2,
+        limit: 1,
       };
       const first = yield* provider.listChangeRequests(target);
       assert.deepStrictEqual(
@@ -134,12 +134,16 @@ it.effect(
         [2],
       );
       assert.strictEqual(first.cursorAdvance, 2);
+      assert.strictEqual(first.truncated, true);
       const second = yield* provider.listChangeRequests({
         ...target,
         cursor: { delivered: 2, updatedBefore: "2026-09-01T00:00:00Z" },
       });
-      assert.deepStrictEqual(second.items, []);
-      assert.strictEqual(second.cursorAdvance, 1);
+      assert.deepStrictEqual(
+        second.items.map((row) => row.number),
+        [4],
+      );
+      assert.strictEqual(second.cursorAdvance, 2);
       assert.strictEqual(second.truncated, false);
     }).pipe(
       Effect.provide(

@@ -87,8 +87,10 @@ describe("ApnsClient", () => {
       const payload = yield* decodeActivityPayload(request.payload);
       const props = payload.aps["content-state"].props;
       expect(props.activeCount).toBe(5);
-      expect(props.activities[0]?.threadId).toBe("thread-0");
-      expect(props.activities.length).toBeLessThan(5);
+      expect(props.activities.map((row) => row.threadId)).toEqual(
+        Array.from({ length: 5 }, (_, i) => `thread-${i}`),
+      );
+      expect(props.activities[0]?.summary).toMatch(/^界+\.\.\.$/);
     }).pipe(Effect.provide(layerTest)),
   );
 

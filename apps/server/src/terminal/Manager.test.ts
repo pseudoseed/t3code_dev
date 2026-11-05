@@ -1470,7 +1470,7 @@ it.layer(
   it.effect("retains encoded history if migration cannot write the bounded file", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      let failNextWrite = true;
+      let failNextWrite = false;
       const limited = FileSystem.FileSystem.of({
         ...fs,
         writeFileString: (filePath, data, options) => {
@@ -1493,6 +1493,7 @@ it.layer(
       const { manager, logsDir } = yield* createManager().pipe(
         Effect.provideService(FileSystem.FileSystem, limited),
       );
+      failNextWrite = true;
       const threadId = "f".repeat(100);
       const oldPath = yield* historyLogPath(logsDir, threadId);
       yield* fs.writeFileString(oldPath, "preserve me\n");

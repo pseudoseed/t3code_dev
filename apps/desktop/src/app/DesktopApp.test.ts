@@ -93,6 +93,7 @@ it.effect(
           Effect.provideService(ElectronApp.ElectronApp, {
             setPath: () => Effect.void,
             whenReady: record("ready"),
+            preventAppSuspension: Effect.void,
           } as unknown as ElectronApp.ElectronApp["Service"]),
           Effect.provideService(ElectronDialog.ElectronDialog, {
             showErrorBox: () => Effect.die("unexpected fatal startup error"),
