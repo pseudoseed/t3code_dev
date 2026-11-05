@@ -10,26 +10,11 @@ afterEach(() => {
 
 describe("web runtime relay telemetry policy", () => {
   it.each([
-    {
-      surface: "desktop opt-out",
-      desktopBridge: { getRelayTelemetryEnabled: () => false },
-      exports: false,
-    },
-    {
-      surface: "desktop enabled",
-      desktopBridge: { getRelayTelemetryEnabled: () => true },
-      exports: true,
-    },
-    {
-      surface: "ordinary browser ignores host opt-out",
-      desktopBridge: undefined,
-      exports: true,
-    },
-  ])("applies $surface before the first relay span", async ({ desktopBridge, exports }) => {
+    { surface: "desktop opt-out", desktopBridge: { getRelayTelemetryEnabled: () => false } },
+    { surface: "desktop enabled", desktopBridge: { getRelayTelemetryEnabled: () => true } },
+    { surface: "ordinary browser", desktopBridge: undefined },
+  ])("never exports relay spans from $surface", async ({ desktopBridge }) => {
     vi.resetModules();
-    vi.stubEnv("T3CODE_TELEMETRY_ENABLED", "false");
-    vi.stubEnv("T3CODE_OTEL_SDK_DISABLED", "true");
-    vi.stubEnv("OTEL_SDK_DISABLED", "true");
     vi.stubEnv("VITE_RELAY_OTLP_TRACES_URL", "https://telemetry.example.test/v1/traces");
     vi.stubEnv("VITE_RELAY_OTLP_TRACES_DATASET", "relay-test");
     vi.stubEnv("VITE_RELAY_OTLP_TRACES_TOKEN", "test-token");
@@ -63,17 +48,9 @@ describe("web runtime relay telemetry policy", () => {
       expect(userSpans).toEqual(["user.work"]);
     } finally {
       setDelegate(null);
-      // Closing the runtime flushes the exporter without waiting for its batch timer.
       await freshRuntime.dispose();
     }
 
-    if (exports) {
-      expect(fetchFn).toHaveBeenCalledOnce();
-      expect(String(fetchFn.mock.calls[0]?.[0])).toBe("https://telemetry.example.test/v1/traces");
-      const payload = new TextDecoder().decode(fetchFn.mock.calls[0]?.[1]?.body as Uint8Array);
-      expect(payload).toContain('"name":"relay.first-operation"');
-    } else {
-      expect(fetchFn).not.toHaveBeenCalled();
-    }
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
