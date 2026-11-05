@@ -12,6 +12,7 @@ import * as DeviceService from "../../../device/DeviceService.ts";
 import * as ServerConfig from "../../../config.ts";
 import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -42,6 +43,8 @@ import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
 import * as PreviewBrowser from "../../../preview/PreviewBrowser.ts";
+import { AssetSigner } from "../../../assets/AssetSigner.ts";
+import { ProjectCloneTracker } from "../../../project/ProjectCloneTracker.ts";
 
 const layerStubServices = Layer.mergeAll(
   SqlitePersistence.layerMemory,
@@ -72,6 +75,8 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
   Layer.mock(ThreadSearch.ThreadSearch)({}),
+  Layer.mock(AssetSigner)({}),
+  Layer.mock(ProjectCloneTracker)({}),
 );
 
 const ToolsListPayload = Schema.fromJsonString(
@@ -189,6 +194,7 @@ it.effect("production mcp layer lists worktree tools over http", () =>
           Layer.provide(NodeServices.layer),
         ),
         NodeServices.layer,
+        NodeCrypto.layer,
       ),
     ),
   ),

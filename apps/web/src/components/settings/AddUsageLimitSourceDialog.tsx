@@ -1,4 +1,9 @@
-import type { EnvironmentId, UnifiedSettings, UsageLimitSourceKind } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  SecretReference,
+  UnifiedSettings,
+  UsageLimitSourceKind,
+} from "@t3tools/contracts";
 import { useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -14,7 +19,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { sourceIdFromUrl } from "./AddUsageLimitSourceDialog.logic";
-import { SecretInput } from "./SecretInput";
+import { SecretSourceInput, useSecretSources } from "./SecretSourceInput";
 import { Label } from "../ui/label";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 
@@ -65,16 +70,20 @@ export function AddUsageLimitSourceDialog({
   const [kind, setKind] = useState<UsageLimitSourceKind>("cliproxy");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
-  const [managementKey, setManagementKey] = useState("");
+  const secretSources = useSecretSources(environmentId);
+  const [keyDraft, setKeyDraft] = useState<string | SecretReference>("");
+  const [keyValid, setKeyValid] = useState(true);
+  const managementKey = typeof keyDraft === "string" ? keyDraft.trim() : keyDraft;
   const spec = KINDS.find((entry) => entry.kind === kind) ?? KINDS[0]!;
   const trimmedUrl = url.trim();
-  const canSave = trimmedUrl.length > 0 && (!spec.needsKey || managementKey.trim().length > 0);
+  const canSave = trimmedUrl.length > 0 && (!spec.needsKey || (keyValid && managementKey !== ""));
 
   const reset = () => {
     setKind("cliproxy");
     setLabel("");
     setUrl("");
-    setManagementKey("");
+    setKeyDraft("");
+    setKeyValid(true);
   };
 
   const save = () => {
@@ -86,7 +95,7 @@ export function AddUsageLimitSourceDialog({
           kind,
           ...(label.trim() ? { label: label.trim() } : {}),
           url: trimmedUrl,
-          managementKey: spec.needsKey ? managementKey.trim() : "",
+          managementKey: spec.needsKey ? managementKey : "",
           enabled: true,
         },
       },
@@ -149,10 +158,14 @@ export function AddUsageLimitSourceDialog({
             {spec.needsKey ? (
               <div className="grid gap-1.5">
                 <Label htmlFor="usage-source-key">Management key</Label>
-                <SecretInput
+                <SecretSourceInput
                   id="usage-source-key"
-                  value={managementKey}
-                  onChange={(event) => setManagementKey(event.target.value)}
+                  aria-label="Management key"
+                  value={keyDraft}
+                  sources={secretSources}
+                  onChange={(event) => setKeyDraft(event.target.value)}
+                  onSecretChange={(secret) => setKeyDraft(secret ?? "")}
+                  onValidityChange={setKeyValid}
                 />
               </div>
             ) : null}

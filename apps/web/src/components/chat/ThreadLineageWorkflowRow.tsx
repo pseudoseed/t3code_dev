@@ -17,6 +17,7 @@ import { AgentElapsed } from "./AgentElapsed";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadRelationshipIcon } from "./ThreadRelationshipIcon";
+import type { ProviderInstanceEntry } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
@@ -59,21 +60,20 @@ function WorkflowMemberRow({
   providerInstanceId,
   provider,
   providers,
+  providerEntries,
   driver,
   onOpen,
-  isThreadAvailable,
 }: {
   member: RuntimeSubagent;
   providerInstanceId: ProviderInstanceId;
   provider: ServerProvider | undefined;
   providers: ReadonlyArray<ServerProvider> | undefined;
+  providerEntries: ReadonlyArray<ProviderInstanceEntry>;
   driver: ProviderDriverKind | undefined;
   onOpen: (threadId: string) => void;
-  isThreadAvailable: (threadId: string) => boolean;
 }) {
   const threadId = member.childThreadId;
-  const canOpen = threadId !== null && isThreadAvailable(threadId);
-  // Historical members have no chat; aria-disabled keeps their metadata reachable on hover/focus.
+  const canOpen = threadId !== null;
   return (
     <li>
       <Tooltip>
@@ -83,13 +83,17 @@ function WorkflowMemberRow({
             <ThreadDetailsControl
               part="row"
               aria-label={`Open ${member.title} chat`}
-              disabled={!canOpen && threadId !== null}
               aria-disabled={!canOpen || undefined}
               onClick={() => canOpen && onOpen(threadId)}
             />
           }
         >
-          <ThreadRelationshipIcon driver={driver} provider={provider} status={member.status} />
+          <ThreadRelationshipIcon
+            driver={driver}
+            provider={provider}
+            providerEntries={providerEntries}
+            status={member.status}
+          />
           <span className="min-w-0 flex-1 truncate">{member.title}</span>
           <span className="sr-only">{member.status}</span>
           {member.startedAt ? (
@@ -132,9 +136,9 @@ export function ThreadLineageWorkflowRow({
   providerInstanceId,
   provider,
   providers,
+  providerEntries,
   driver,
   onOpenThread,
-  isThreadAvailable,
   onStop,
   stopping,
   stopDisabled,
@@ -146,9 +150,9 @@ export function ThreadLineageWorkflowRow({
   readonly providerInstanceId: ProviderInstanceId;
   readonly provider: ServerProvider | undefined;
   readonly providers: ReadonlyArray<ServerProvider> | undefined;
+  readonly providerEntries: ReadonlyArray<ProviderInstanceEntry>;
   readonly driver: ProviderDriverKind | undefined;
   readonly onOpenThread: (threadId: string) => void;
-  readonly isThreadAvailable: (threadId: string) => boolean;
   readonly onStop?: (() => void) | undefined;
   readonly stopping: boolean;
   readonly stopDisabled: boolean;
@@ -267,9 +271,9 @@ export function ThreadLineageWorkflowRow({
                         providerInstanceId={providerInstanceId}
                         provider={provider}
                         providers={providers}
+                        providerEntries={providerEntries}
                         driver={driver}
                         onOpen={onOpenThread}
-                        isThreadAvailable={isThreadAvailable}
                       />
                     ))}
                   </ul>
@@ -284,9 +288,9 @@ export function ThreadLineageWorkflowRow({
               providerInstanceId={providerInstanceId}
               provider={provider}
               providers={providers}
+              providerEntries={providerEntries}
               driver={driver}
               onOpen={onOpenThread}
-              isThreadAvailable={isThreadAvailable}
             />
           ))}
           {phases.length === 0 && group.unphasedMembers.length === 0 ? (

@@ -2,19 +2,15 @@ import { type RemoteOpenTarget } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
 import { readTailscaleSshEnabled, readTailscaleStatus } from "@t3tools/tailscale";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import { makeStaleWhileRevalidate } from "./staleWhileRevalidate.ts";
+
 const SSH_PORT = 22;
-/**
- * Resolution probes Tailscale and sshd (5 s each) on every client's first config frame, while
- * targets change over minutes, so reconnecting clients get the last answer while it refreshes.
- */
 export const REMOTE_OPEN_TARGETS_TTL_MS = 60_000;
 
 export class RemoteOpenTargets extends Context.Service<
@@ -28,18 +24,8 @@ export class RemoteOpenTargets extends Context.Service<
 export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const net = yield* NetService.NetService;
-  const scope = yield* Effect.scope;
-  const cached = yield* Ref.make(
-    Option.none<{
-      readonly targets: ReadonlyArray<RemoteOpenTarget>;
-      readonly resolvedAt: number;
-    }>(),
-  );
-  const refreshing = yield* Ref.make(false);
 
-  const resolveTargetsUncached = Effect.gen(function* () {
-    // No local sshd means no name can work; advertise nothing so clients
-    // render a clear "no SSH route" state instead of links that hang.
+  const discoverTargets = Effect.gen(function* () {
     // Check both loopback families: sshd can be bound IPv6-only.
     const sshdListening = yield* Effect.zipWith(
       net.hasListenerOnHost(SSH_PORT, "127.0.0.1"),
@@ -96,28 +82,12 @@ export const make = Effect.gen(function* () {
     return targets;
   });
 
-  const refresh = Effect.gen(function* () {
-    const targets = yield* resolveTargetsUncached;
-    const resolvedAt = yield* Clock.currentTimeMillis;
-    yield* Ref.set(cached, Option.some({ targets, resolvedAt }));
-    return targets;
-  });
-
-  // Stale-while-revalidate: only the very first call waits on discovery.
-  const resolveTargets = Effect.gen(function* () {
-    const current = yield* Ref.get(cached);
-    if (Option.isNone(current)) {
-      return yield* refresh;
-    }
-    const now = yield* Clock.currentTimeMillis;
-    if (now - current.value.resolvedAt >= REMOTE_OPEN_TARGETS_TTL_MS) {
-      const alreadyRefreshing = yield* Ref.getAndSet(refreshing, true);
-      if (!alreadyRefreshing) {
-        yield* refresh.pipe(Effect.ensuring(Ref.set(refreshing, false)), Effect.forkIn(scope));
-      }
-    }
-    return current.value.targets;
-  });
+  // Advertised on every client connect; probing sshd and tailscaled is slow
+  // on a loaded host, so serve the last result while it refreshes.
+  const resolveTargets = yield* makeStaleWhileRevalidate(
+    discoverTargets,
+    Duration.millis(REMOTE_OPEN_TARGETS_TTL_MS),
+  );
 
   return RemoteOpenTargets.of({
     resolveTargets: Effect.fn("RemoteOpenTargets.resolveTargets")(function () {

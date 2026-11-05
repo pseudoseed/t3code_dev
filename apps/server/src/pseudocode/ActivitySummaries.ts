@@ -13,7 +13,7 @@ import { activitySummaryContext, SUMMARY_INTERVAL_MS } from "./activitySummary.t
 
 type Request = {
   state: AgentAwarenessState;
-  thread: OrchestrationV2ThreadShell;
+  thread: Pick<OrchestrationV2ThreadShell, "id" | "latestRunId">;
   project: Project;
 };
 type Entry = {
@@ -135,7 +135,7 @@ export const makeActivitySummaries = Effect.fn("makeActivitySummaries")(function
   return ActivitySummaries.of({ enrich, changes: Stream.fromPubSub(changes), drain: worker.drain });
 });
 
-function identity(thread: OrchestrationV2ThreadShell, phase: string) {
+function identity(thread: Pick<OrchestrationV2ThreadShell, "latestRunId">, phase: string) {
   return `${thread.latestRunId ?? ""}:${phase}`;
 }
 const make = Effect.gen(function* () {
