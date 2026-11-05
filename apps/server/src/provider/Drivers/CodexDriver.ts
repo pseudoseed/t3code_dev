@@ -1,4 +1,4 @@
-import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { CodexSettings, defaultInstanceIdForDriver, ProviderDriverKind } from "@t3tools/contracts";
 import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import type * as Signature from "effect/crypto/Signature";
@@ -154,7 +154,11 @@ export const CodexDriver: ProviderDriver<
       environment,
       yield* HostProcess.Environment,
     );
-    const environmentHome = processEnv.CODEX_HOME;
+    // Extra accounts keep their own home unless their own environment names one.
+    const environmentHome =
+      instanceId === defaultInstanceIdForDriver(DRIVER_KIND)
+        ? processEnv.CODEX_HOME
+        : (yield* mergeProviderInstanceEnvironment(environment, {})).CODEX_HOME;
     const { providerHomesDir } = yield* ServerConfig.ServerConfig;
     const homeLayout = yield* resolveCodexInstanceHomeLayout(
       !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome?.trim()

@@ -497,6 +497,26 @@ it.layer(layerTest)("CodexDriver", (it) => {
     }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn), Effect.scoped),
   );
 
+  it.effect("applies a host CODEX_HOME to the default instance only", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sharedHome = yield* fs.makeTempDirectoryScoped({ prefix: "t3-codex-host-home-" });
+      const continuationKey = (instanceId: string) =>
+        CodexDriver.create({
+          instanceId: ProviderInstanceId.make(instanceId),
+          displayName: instanceId,
+          enabled: false,
+          environment: [],
+          config: CodexDriver.defaultConfig(),
+        }).pipe(
+          Effect.map((instance) => instance.continuationIdentity.continuationKey),
+          Effect.provideService(HostProcess.Environment, { CODEX_HOME: sharedHome }),
+        );
+      expect(yield* continuationKey("codex")).toBe(`codex:home:${sharedHome}`);
+      expect(yield* continuationKey("codex-extra")).not.toBe(`codex:home:${sharedHome}`);
+    }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn), Effect.scoped),
+  );
+
   for (const fixture of [
     {
       name: "leaves mise npm-backend installations manual-only",
