@@ -100,10 +100,10 @@ it.effect(
 it.effect(
   "searches pull request descriptions without repeating filtered rows on the next page",
   () => {
-    const rows = [1, 2, 3].map((number) => ({
+    const rows = [1, 2, 3, 4].map((number) => ({
       number,
       title: "Change",
-      body: number === 2 ? "Repair reconnect" : "Unrelated",
+      body: number % 2 === 0 ? "Repair reconnect" : "Unrelated",
       state: "open",
       merged: false,
       html_url: `https://forgejo.test/acme/web/pulls/${number}`,
@@ -126,7 +126,7 @@ it.effect(
         involvement: "all" as const,
         viewer: "chris",
         query: "reconnect",
-        limit: 2,
+        limit: 1,
       };
       const first = yield* provider.listChangeRequests(target);
       assert.deepStrictEqual(
@@ -134,12 +134,16 @@ it.effect(
         [2],
       );
       assert.strictEqual(first.cursorAdvance, 2);
+      assert.strictEqual(first.truncated, true);
       const second = yield* provider.listChangeRequests({
         ...target,
         cursor: { delivered: 2, updatedBefore: "2026-09-01T00:00:00Z" },
       });
-      assert.deepStrictEqual(second.items, []);
-      assert.strictEqual(second.cursorAdvance, 1);
+      assert.deepStrictEqual(
+        second.items.map((row) => row.number),
+        [4],
+      );
+      assert.strictEqual(second.cursorAdvance, 2);
       assert.strictEqual(second.truncated, false);
     }).pipe(
       Effect.provide(
@@ -687,5 +691,60 @@ it.effect("reads file revisions from the pull request diff and refuses a truncat
     truncated = true;
     const refused = yield* Effect.flip(provider.getFileRevisions!({ ...reference, paths }));
     assert.strictEqual(refused._tag, "PullRequestProviderError");
+  }),
+);
+
+it.effect("filters listed pull requests by the requested state", () =>
+  Effect.gen(function* () {
+    // Forgejo answers a `state=closed` query with merged and closed-unmerged rows alike.
+    const rows = [true, false].map((merged) => ({
+      number: merged ? 1 : 2,
+      title: `Pull request ${merged ? 1 : 2}`,
+      body: "",
+      html_url: `https://forge.example:3000/maria/project/pulls/${merged ? 1 : 2}`,
+      user: { login: "maria" },
+      state: "closed",
+      merged,
+      head: { ref: "feature", sha: "head-sha", repo: null },
+      base: { ref: "main", sha: "base-sha", repo: null },
+      created_at: "2026-10-12T00:00:00Z",
+      updated_at: "2026-10-12T00:00:00Z",
+      closed_at: "2026-10-13T00:00:00Z",
+      merged_at: merged ? "2026-10-13T00:00:00Z" : null,
+      labels: [],
+    }));
+    const provider = yield* ForgejoPullRequestProvider.make.pipe(
+      Effect.provide(
+        Layer.mock(ForgejoCli)({
+          api: (input) => {
+            const [path, query] = input.path.split("?");
+            assert.strictEqual(path, "repos/maria/project/pulls");
+            const params = new URLSearchParams(query);
+            // A merged list asks Forgejo for closed rows and separates them itself.
+            const state = params.get("state");
+            assert.ok(state === "closed" || state === "open" || state === "all");
+            const page = params.get("page") === "1" && state !== "open" ? rows : [];
+            return Effect.succeed(TestSourceControlHost.processOutput(JSON.stringify(page)));
+          },
+        }),
+      ),
+    );
+    const input = {
+      cwd: "/forgejo",
+      repository: "maria/project",
+      host: "forge.example:3000",
+      involvement: "all" as const,
+      viewer: "maria",
+      limit: 10,
+    };
+    const numbers = (state: "open" | "closed" | "merged" | "all") =>
+      provider
+        .listChangeRequests({ ...input, state })
+        .pipe(Effect.map((page) => page.items.map((item) => item.number)));
+
+    assert.deepStrictEqual(yield* numbers("merged"), [1]);
+    assert.deepStrictEqual(yield* numbers("closed"), [2]);
+    assert.deepStrictEqual(yield* numbers("all"), [1, 2]);
+    assert.deepStrictEqual(yield* numbers("open"), []);
   }),
 );

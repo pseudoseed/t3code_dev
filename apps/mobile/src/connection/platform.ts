@@ -10,6 +10,7 @@ import {
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { managedRelayAccountChanges, managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -72,7 +73,7 @@ class MobileNetworkState extends Context.Service<
     readonly changes: Stream.Stream<MobileNetworkStatus>;
     readonly pathChanges: Stream.Stream<"network-changed">;
   }
->()("@t3/mobile/MobileNetworkState") {}
+>()("@t3tools/mobile/connection/platform/MobileNetworkState") {}
 
 const layerNetworkState = Layer.effect(
   MobileNetworkState,
@@ -144,8 +145,9 @@ const layerWakeups = Layer.effect(
       "application-active-probe" | "application-active-long"
     >();
     yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        let backgroundedAtMs = AppState.currentState === "background" ? Date.now() : null;
+      Effect.gen(function* () {
+        const nowMs = yield* Clock.currentTimeMillis;
+        let backgroundedAtMs = AppState.currentState === "background" ? nowMs : null;
         return AppState.addEventListener("change", (state) => {
           recordConnectionDiagnostic("app-state", state);
           if (state === "background") {
@@ -217,7 +219,7 @@ const layerCapabilities = Layer.effectContext(
       Context.add(
         ClientCapabilities.PrimaryEnvironmentAuth,
         ClientCapabilities.PrimaryEnvironmentAuth.of({
-          bearerToken: Effect.succeed(Option.none()),
+          bearerToken: Effect.succeedNone,
         }),
       ),
       // The relay device id already persists in secure storage; analytics only sends its hash.
@@ -235,7 +237,7 @@ const layerCapabilities = Layer.effectContext(
                   detail: `Could not load the mobile device identity: ${String(cause)}`,
                 }),
             ),
-            Effect.map(Option.some),
+            Effect.asSome,
           ),
         }),
       ),
@@ -248,21 +250,25 @@ const layerCapabilities = Layer.effectContext(
       Context.add(
         ClientCapabilities.SshEnvironmentGateway,
         ClientCapabilities.SshEnvironmentGateway.of({
-          provision: () =>
+          provision: Effect.fn("ClientCapabilities.SshEnvironmentGateway.provision")(() =>
             Effect.fail(
               new ConnectionBlockedError({
                 reason: "unsupported",
                 detail: "SSH environments are only available in the desktop app.",
               }),
             ),
-          prepare: () =>
+          ),
+          prepare: Effect.fn("ClientCapabilities.SshEnvironmentGateway.prepare")(() =>
             Effect.fail(
               new ConnectionBlockedError({
                 reason: "unsupported",
                 detail: "SSH environments are only available in the desktop app.",
               }),
             ),
-          disconnect: () => Effect.void,
+          ),
+          disconnect: Effect.fn("ClientCapabilities.SshEnvironmentGateway.disconnect")(
+            () => Effect.void,
+          ),
         }),
       ),
     );
@@ -282,7 +288,7 @@ const layerProvidedCapabilities = layerCapabilities.pipe(Layer.provide(Runtime.l
 const layerEnvironmentOwnedDataCleanup = Layer.succeed(
   Persistence.EnvironmentOwnedDataCleanup,
   Persistence.EnvironmentOwnedDataCleanup.of({
-    clear: (environmentId) =>
+    clear: Effect.fn("Persistence.EnvironmentOwnedDataCleanup.clear")((environmentId) =>
       Effect.all(
         [
           Effect.promise(() => clearThreadOutboxEnvironment(environmentId)),
@@ -290,14 +296,8 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
           Effect.sync(() => clearThreadComposerErrorsForEnvironment(environmentId)),
         ],
         { concurrency: "unbounded", discard: true },
-      ).pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("Could not clear mobile environment-owned data.", {
-            environmentId,
-            cause,
-          }),
-        ),
       ),
+    ),
   }),
 );
 

@@ -216,6 +216,8 @@ it("stops the entire native workflow through its parent without changing state b
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -292,6 +294,8 @@ it.each([
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -347,6 +351,8 @@ it("loads a workflow script only when opened and keeps the request in its enviro
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -433,6 +439,8 @@ it("keeps historical workflow phases, metrics, and scripts visible without a coo
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -498,7 +506,7 @@ it("opens the correct chat for every workflow phase and unphased member", async 
     durationMs: 5000,
   }));
   const project = (members: typeof agents) => ({
-    thread: { id: "parent", lineage: { relationshipToParent: null } },
+    thread: { id: "parent", lineage: { parentThreadId: null, relationshipToParent: null } },
     runs: [],
     providerThreads: [],
     providerSessions: [],
@@ -531,6 +539,8 @@ it("opens the correct chat for every workflow phase and unphased member", async 
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("remote")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -549,13 +559,9 @@ it("opens the correct chat for every workflow phase and unphased member", async 
   for (const phase of phaseButtons().slice(0, 2)) await click(phase);
   expect(memberButtons()).toHaveLength(7);
   for (const button of memberButtons()) {
-    expect(button.disabled).toBe(true);
-    await click(button);
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-disabled")).toBeNull();
   }
-  expect(state.navigate).not.toHaveBeenCalled();
-  state.shells = memberShells.map((source) => ({ environmentId: "remote", source }));
-  await update();
-  for (const button of memberButtons()) expect(button.disabled).toBe(false);
   for (const agent of agents) {
     await click(byLabel(`Open ${agent.label} chat`));
     expect(state.navigate).toHaveBeenLastCalledWith({
@@ -640,6 +646,8 @@ it("groups and counts a workflow by its run status instead of its coordinator ch
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("test")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -727,6 +735,8 @@ it.each([
       <ThreadRelationshipsPanel
         environmentId={EnvironmentId.make("test")}
         threadId={ThreadId.make("parent")}
+        showLineage
+        showSideChats={false}
       />
     );
     await using screen = await render(panel);
@@ -830,6 +840,8 @@ it("shows the matching child agent details and refreshes them when the agent set
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("test")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -919,7 +931,7 @@ it("shows readable models and only differing workspace details in agent tooltips
     id: "parent",
     projectId: "main",
     worktreePath: null,
-    lineage: {},
+    lineage: { parentThreadId: null },
     activeProviderThreadId: null,
   };
   const child = {
@@ -985,6 +997,8 @@ it("shows readable models and only differing workspace details in agent tooltips
     <ThreadRelationshipsPanel
       environmentId={EnvironmentId.make("test")}
       threadId={ThreadId.make("parent")}
+      showLineage
+      showSideChats={false}
     />
   );
   await using screen = await render(panel);
@@ -1358,7 +1372,12 @@ it("shows the parent's own visible status as parent and child activity change", 
   ];
   state.shells = shells(parent, child);
   const panel = (
-    <ThreadRelationshipsPanel environmentId={environmentId} threadId={ThreadId.make("child")} />
+    <ThreadRelationshipsPanel
+      environmentId={environmentId}
+      threadId={ThreadId.make("child")}
+      showLineage
+      showSideChats={false}
+    />
   );
   await using screen = await render(panel);
   const { update, textNodes } = panelQueries(screen, panel);
@@ -1399,6 +1418,8 @@ it.each(["source", "target"])(
       <ThreadRelationshipsPanel
         environmentId={environmentId}
         threadId={ThreadId.make(currentThreadId)}
+        showLineage
+        showSideChats={false}
       />
     );
     await using screen = await render(null);

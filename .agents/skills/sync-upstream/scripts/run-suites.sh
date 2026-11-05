@@ -18,7 +18,7 @@ if [ "$#" -gt 0 ]; then
   PACKAGES=("$@")
 else
   # shellcheck disable=SC2207
-  PACKAGES=($(git ls-files '*package.json' | grep -v '^\.repos/' | xargs node -e '
+  PACKAGES=($(git -c core.quotePath=false ls-files '*package.json' ':!.repos/**' | grep -v '^\.repos/' | xargs node -e '
     for (const file of process.argv.slice(1)) {
       if (file === "package.json") continue;
       if (require(`./${file}`).scripts?.test) console.log(file.replace(/\/package\.json$/, ""));

@@ -1,5 +1,7 @@
-import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import { CodexSettings, defaultInstanceIdForDriver, ProviderDriverKind } from "@t3tools/contracts";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
+import type * as Signature from "effect/crypto/Signature";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -94,7 +96,9 @@ export type CodexDriverEnv =
   | ProviderHost.ProviderHost
   | ChildProcessSpawner.ChildProcessSpawner
   | ResetCreditCoordinator.ResetCreditCoordinator
-  | Crypto.Crypto
+  | Digest.Digest
+  | SecureRandom.SecureRandom
+  | Signature.Signature
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | ProviderLatestVersions.ProviderLatestVersions
@@ -143,12 +147,23 @@ export const CodexDriver: ProviderDriver<
     const pathService = yield* Path.Path;
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
+    const installation = yield* CodexInstallation.CodexInstallation;
     const modelCatalog = yield* ModelCatalog.ModelCatalog;
     const currentCatalog = modelCatalog.current(DRIVER_KIND);
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const processEnv = yield* mergeProviderInstanceEnvironment(
+      environment,
+      yield* HostProcess.Environment,
+    );
+    // Extra accounts keep their own home unless their own environment names one.
+    const environmentHome =
+      instanceId === defaultInstanceIdForDriver(DRIVER_KIND)
+        ? processEnv.CODEX_HOME
+        : (yield* mergeProviderInstanceEnvironment(environment, {})).CODEX_HOME;
     const { providerHomesDir } = yield* ServerConfig.ServerConfig;
     const homeLayout = yield* resolveCodexInstanceHomeLayout(
-      config,
+      !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome?.trim()
+        ? { ...config, homePath: environmentHome }
+        : config,
       instanceId,
       providerHomesDir,
     ).pipe(
@@ -199,7 +214,10 @@ export const CodexDriver: ProviderDriver<
         enabled,
         config,
       },
-      { onUsageLimits: (update) => snapshot.applyUsageLimits(update) },
+      {
+        onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+        compatibility: installation.compatibility,
+      },
     ).pipe(
       Effect.mapError(
         (cause) =>

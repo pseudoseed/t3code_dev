@@ -1,9 +1,11 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { Command } from "effect/cli";
@@ -107,7 +109,13 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
           let output = "";
           if (args.includes("--eval") || args.includes("prebuild")) {
             // Expo config loads the repo env files again in each subprocess.
-            const config = loadRepoEnv({ baseEnv: command.options.env ?? {}, repoRoot: repo });
+            const baseEnv = Object.fromEntries(
+              Object.entries(command.options.env ?? {}).map(([name, value]) => [
+                name,
+                Redacted.isRedacted(value) ? Redacted.value(value) : value,
+              ]),
+            );
+            const config = loadRepoEnv({ baseEnv, repoRoot: repo });
             const bundleId =
               config.T3CODE_IOS_BUNDLE_ID ?? config.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID;
             assert.strictEqual(config.APP_VARIANT, "development");
@@ -164,7 +172,7 @@ it.layer(NodeServices.layer)("isolated development identity", (it) => {
               ? Effect.succeed(["Development.xcworkspace"])
               : fs.readDirectory(directory, options),
         }),
-        Effect.provide(FetchHttpClient.layer),
+        Effect.provide([FetchHttpClient.layer, NodeCrypto.layer]),
       );
 
       assert.strictEqual(installedId, canonicalId);
