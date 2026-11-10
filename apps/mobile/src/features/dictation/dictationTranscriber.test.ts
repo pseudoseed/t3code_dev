@@ -44,7 +44,8 @@ const TRANSCRIPT: DictationTranscript = {
 function setup(
   input: {
     readonly settings?: Partial<DictationSettings>;
-    readonly system?: "present" | "absent" | "refuses";
+    /** "refuses" fails to prepare; "fails" prepares and then fails on the recording. */
+    readonly system?: "present" | "absent" | "refuses" | "fails";
     readonly systemLocale?: string;
     readonly native?: "present" | "absent";
     readonly locale?: string;
@@ -62,6 +63,7 @@ function setup(
     write: async () => {},
   });
   const systemTranscribe = vi.fn<PreparedVoiceTranscription["transcribe"]>(async () => {
+    if (input.system === "fails") throw new Error("That language is not supported.");
     clock.now += 250;
     return SPOKEN;
   });
@@ -221,7 +223,7 @@ describe("with a downloaded model selected", () => {
     expect(native.transcribe.mock.calls[0]).toContain("en-US");
   });
 
-  it.each(["absent", "refuses"] as const)(
+  it.each(["absent", "refuses", "fails"] as const)(
     "waits for a loading model when the system recognizer %s",
     async (system) => {
       const { dictate, native, lastRun } = setup({ settings, system });
@@ -256,7 +258,7 @@ describe("with a downloaded model selected", () => {
     expect(lastRun()).toMatchObject({ engine: "apple", fallback: "failed" });
   });
 
-  it.each(["absent", "refuses"] as const)(
+  it.each(["absent", "refuses", "fails"] as const)(
     "reports the model's own failure when the system recognizer %s",
     async (system) => {
       const { dictate, native, lastRun } = setup({ settings, system });

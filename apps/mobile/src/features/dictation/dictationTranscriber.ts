@@ -67,7 +67,10 @@ export function createDictationTranscriber(deps: DictationTranscriberDeps): Voic
     fallback: DictationFallback | null,
   ): PreparedVoiceTranscription {
     return {
-      locale: prepared.locale,
+      // Read late: the system recognizer settles its locale while the user talks.
+      get locale() {
+        return prepared.locale;
+      },
       async transcribe(uri, options) {
         const started = deps.now();
         const text = await prepared.transcribe(uri, options);
@@ -115,7 +118,12 @@ export function createDictationTranscriber(deps: DictationTranscriberDeps): Voic
           const system = await prepareSystem(options).catch(() => null);
           throwIfVoiceTranscriptionAborted(signal);
           if (system === null) throw failure;
-          return viaSystem(system, "failed").transcribe(uri, options);
+          try {
+            return await viaSystem(system, "failed").transcribe(uri, options);
+          } catch {
+            throwIfVoiceTranscriptionAborted(signal);
+            throw failure;
+          }
         } finally {
           signal.removeEventListener("abort", cancel);
         }
@@ -186,10 +194,16 @@ export function createDictationTranscriber(deps: DictationTranscriberDeps): Voic
               () => false,
             );
             if (loaded) return model.transcribe(uri, transcribeOptions);
-            return viaSystem(system, loadFailed ? "failed" : "warming-up").transcribe(
-              uri,
-              transcribeOptions,
-            );
+            try {
+              return await viaSystem(system, loadFailed ? "failed" : "warming-up").transcribe(
+                uri,
+                transcribeOptions,
+              );
+            } catch {
+              throwIfVoiceTranscriptionAborted(transcribeOptions.signal);
+              // The system recognizer can refuse the language only now, after the recording.
+              return model.transcribe(uri, transcribeOptions);
+            }
           },
         };
       }
