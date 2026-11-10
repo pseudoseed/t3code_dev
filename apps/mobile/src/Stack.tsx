@@ -145,6 +145,7 @@ import { deriveLayout } from "./lib/layout";
 import { useNativeLayoutMetrics } from "./native/native-layout-metrics";
 import { HORIZONTAL_FORM_SHEET_OPTIONS, formSheetDetents } from "./native/sheet-surface";
 import { workspaceDetailRouter } from "./features/workspace/workspace-detail-selection";
+import { dictationSettingsScreens } from "./features/dictation/dictationSettingsScreens";
 
 // Hiding Android's native header after mount can leave detail panes measured short.
 // These screens render their own Material toolbar, so hide it from the first layout.
@@ -940,6 +941,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     ...SETTINGS_SCREENS,
+    ...dictationSettingsScreens(SETTINGS_PAGE_OPTIONS),
     SettingsLegal: createNativeStackScreen({
       screen: SettingsLegalRouteScreen,
       linking: "settings/legal",
