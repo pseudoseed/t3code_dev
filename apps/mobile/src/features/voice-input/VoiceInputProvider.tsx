@@ -13,7 +13,7 @@ import {
   preferredMicrophoneInput,
   rememberMicrophones,
 } from "../../lib/microphonePriority";
-import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import { getLocalVoiceTranscriber } from "../dictation/voiceTranscriber";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {

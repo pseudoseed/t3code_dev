@@ -28,6 +28,7 @@ import {
   deviceMicrophoneOrder,
   localVoiceTranscriberAtom,
 } from "../voice-input/VoiceInputProvider";
+import { DictationSettingsSection } from "../dictation/DictationSettingsSection";
 
 type MicrophonePermission = "checking" | "granted" | "ask" | "denied";
 
@@ -183,6 +184,7 @@ function MicrophoneSettings() {
         contentContainerClassName="gap-3 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
+        <DictationSettingsSection />
         {permission === "ask" || permission === "denied" ? (
           <>
             <SettingsSection title="Microphone access">

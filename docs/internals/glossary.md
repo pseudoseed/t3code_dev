@@ -48,13 +48,14 @@ Terms whose meaning matters across T3 Code. Architecture and lifecycle constrain
 
 ## Voice input
 
-| Term              | Meaning                                                                                                  |
-| ----------------- | -------------------------------------------------------------------------------------------------------- |
-| Speech model      | The on-device model that turns a recording into text. Selected per device and gated on available memory. |
-| Cleanup model     | A local language model that rewrites a raw transcript as written text. Separate contract, skippable.     |
-| Diarization       | Splitting a recording into stretches of speech attributed to different speakers.                         |
-| Speaker filtering | Using diarization to keep only the speaker a dictation belongs to. Keeps everything when unsure.         |
-| Correction hints  | Preferred spellings and `wrong -> right` pairs sent to the cleanup model.                                |
+| Term             | Meaning                                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Speech model     | What turns a recording into text on the device: the system recognizer or a downloaded Parakeet model, gated on device memory. |
+| Stand-in         | The system recognizer taking a recording the chosen model could not: not downloaded, still loading, or failed.                |
+| Diarization      | Splitting a recording into stretches of speech attributed to different speakers.                                              |
+| Voice profile    | The voiceprint made from the user's enrollment samples. Stored on the device only.                                            |
+| Voice filter     | Diarization plus the voice profile, used to cut other speakers' turns before transcription. Keeps everything when unsure.     |
+| Replacement rule | A heard and written pair applied to every transcript. Written by the user or learned from corrections made before sending.    |
 
 See [voice input](./voice-input.md).
 

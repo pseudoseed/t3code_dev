@@ -191,7 +191,8 @@ later, use the composer's microphone to record, then confirm to transcribe. Text
 inserted where your selection was when recording started, ready for you to review
 and edit before sending.
 
-Voice input uses on-device speech transcription: Apple's on iOS, and compatible
+Voice input uses on-device speech transcription: Apple's or a
+[downloaded model](#dictation-models-on-iphone-and-ipad) on iOS, and compatible
 Google speech services on Android. When it is unavailable for the device or its
 language, the composer has no microphone button and **Settings → Microphone** says
 voice input isn't available. On Android, keep PseudoCode open while recording and
@@ -215,51 +216,38 @@ microphone on iOS. Swipe a device left to forget it. Android may use another inp
 when the preferred microphone cannot be routed. Devices with the same name may share
 a saved preference, but simultaneous same-name inputs remain separately selectable.
 
-### Choosing a speech model
+### Dictation models on iPhone and iPad
 
-**Settings → Voice → Voice Input** lists the speech models your device can run. A small English
-model is built into the app and needs no download. Larger and multilingual models download when you
-pick them, and you can delete any of them later to free the space. A model your device does not have
-the memory for is shown greyed out with the reason.
+**Settings → Microphone → Model** chooses what transcribes your recordings. **Apple** is built
+into iOS 26 and later and needs no download. **Fast**, **Balanced** and **Most accurate** are
+Parakeet models you download once (about 240 MB, 490 MB and 640 MB). They run on the device and
+work offline. Fast is English only; the other two cover 25 European languages. A model that needs
+more memory than the device has cannot be downloaded, and you can delete a model on the same page.
 
-Downloads wait for Wi-Fi unless you turn on **Download over cellular**. Models are large, so this is
-off to begin with.
+A model needs time to get ready the first time it is used after a download or an app update.
+Apple's transcription takes a recording made in that time where it is available, and also any
+recording a model fails on. **Settings → Microphone** shows what the last dictation ran on. On a device without
+Apple's transcription, the microphone button works once a model is downloaded.
 
-Clearing the app cache never deletes voice models. The only way to remove one is to delete it in
-voice settings.
+### Only my voice
 
-### Ignoring other voices
+**Settings → Microphone → Only my voice** removes other people's speech from a recording before it
+is transcribed. Download the voice filter (about 21 MB), then record 3 short samples of your voice.
+It works with a downloaded model, not with Apple, and adds a short wait after each recording.
 
-With Parakeet v3 selected, turn on **Ignore other voices** to remove clearly quieter background
-speech. This needs one extra download. If you already use filtering, **Settings → Voice** offers
-**Update speaker filtering** for the newer 22 MB model. Current filtering stays active until you
-install it, and the update follows your cellular download setting.
+When the filter does not recognise your voice in a recording, it removes nothing. People talking
+over you cannot be separated from you. Your voice profile stays on the device; record it again or
+delete it on the same page.
 
-Voices at similar volume may remain, and voices talking over each other cannot be separated.
-The composer reports how much speech was removed so you can check the transcript before sending.
-These notices do not block editing or sending and disappear automatically.
+### Corrections
 
-### Cleaning up transcripts
+PseudoCode learns from the words you fix. When you correct a dictated word and then send the
+message, the fix is noted. A name or a technical term fixed twice within a week becomes a
+replacement, applied to every later dictation. Fixes to everyday words are listed under
+**Settings → Microphone → Corrections** for you to accept or turn down.
 
-Turn on **Clean up transcripts** and a language model on your device rewrites what you said as
-written text: punctuation, capitalization, and obvious mishearings fixed, filler words removed.
-Long messages are cleaned up a few sentences at a time. If cleanup fails or stops before finishing,
-PseudoCode keeps the original transcription for that part and tells you. Cancel cleanup to use the
-original transcription immediately and continue editing.
-
-Three cleanup models are available, trading speed for quality. You can edit the instructions they
-follow and reset them to the default at any time.
-
-Two lists help with words that get misheard. **Preferred spellings** are kept exactly as you write
-them, which is useful for project and tool names. **Corrections** are `wrong -> right` pairs, one
-per line.
-
-PseudoCode also learns from you. When you fix a word that voice input got wrong and then send the
-message, that fix is remembered and applied to later transcripts. Everything it has learned is listed
-under **Learned from your edits**, and you can delete any entry.
-
-If cleanup fails or takes too long, you get the original transcript instead. You never lose what you
-said.
+Add your own replacements on that page, delete any of them, or turn learning off. **Remove ums and
+uhs** in **Settings → Microphone** drops English filler words from transcripts.
 
 ## Context and cost
 

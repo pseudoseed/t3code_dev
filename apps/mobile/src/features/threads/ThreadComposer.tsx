@@ -122,6 +122,7 @@ import {
   useThreadSettingsSheetPresentation,
   type NavigationWithFinishTransitioning,
 } from "./use-thread-settings-sheet-presentation";
+import { noteMessageSent } from "../dictation/dictationRuntime";
 
 export const COMPOSER_COLLAPSED_CHROME = 60;
 
@@ -699,6 +700,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       return;
     }
     if (sent.value === null) return;
+    noteMessageSent(draftAtSend.text);
     // Arm after send so preference reads and native Activity startup do not delay tap-frame feedback.
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: props.environmentId,
