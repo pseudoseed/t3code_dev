@@ -15,6 +15,32 @@ final class SpeakerFilterTests: XCTestCase {
     XCTAssertEqual(SpeakerFilter.judge(duration: 0.9, distance: 0.1), .unjudged)
   }
 
+  /// A unit vector at `distance` from the profile `[1, 0, 0]`, leaning towards the second or third axis.
+  private func voiceprint(_ distance: Float, stranger: Bool = false) -> [Float] {
+    let along = 1 - distance
+    let across = (1 - along * along).squareRoot()
+    return stranger ? [along, 0, across] : [along, across, 0]
+  }
+
+  func testATurnTheProfileRejectsIsTheUsersWhenItSoundsLikeTheirOtherTurns() {
+    let profile: [Float] = [1, 0, 0]
+    // Noise or another microphone moves every turn away from the profile. The opening words pass
+    // as a short turn; the half minute after them is the same voice and must not be cut.
+    let turns = [turn("a", 0, 1.5), turn("a", 2, 30), turn("b", 30, 35), turn("b", 35, 35.5)]
+    let voices = SpeakerFilter.voices(
+      turns: turns,
+      embeddings: [voiceprint(0.7), voiceprint(0.65), voiceprint(0.65, stranger: true), nil],
+      profile: profile)
+    XCTAssertEqual(voices, [.mine, .mine, .other, .unjudged])
+    XCTAssertEqual(SpeakerFilter.decide(turns: turns, voices: voices), .drop([30...35.5]))
+
+    XCTAssertEqual(
+      SpeakerFilter.voices(
+        turns: [turn("a", 0, 5), turn("b", 5, 10)],
+        embeddings: [voiceprint(0.9), voiceprint(0.9)], profile: profile),
+      [.other, .other])
+  }
+
   func testNothingIsCutUnlessTheUserAndSomeoneElseWereBothHeard() {
     let two = [turn("a", 0, 3), turn("b", 3, 6)]
     XCTAssertEqual(SpeakerFilter.decide(turns: [], voices: []), .unfiltered(.noSpeech))

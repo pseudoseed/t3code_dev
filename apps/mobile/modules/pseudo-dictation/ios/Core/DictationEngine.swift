@@ -422,13 +422,10 @@ actor DictationEngine {
     guard let heard = try? await heardTurns(samples, splitAgainst: profile.embedding) else {
       return (samples, .skipped(.failed))
     }
-    let voices = heard.map { turn -> TurnVoice in
-      guard let embedding = turn.embedding else { return .unjudged }
-      return SpeakerFilter.judge(
-        duration: turn.turn.duration,
-        distance: SpeakerFilter.cosineDistance(embedding, profile.embedding))
-    }
-    switch SpeakerFilter.decide(turns: heard.map(\.turn), voices: voices) {
+    let turns = heard.map(\.turn)
+    let voices = SpeakerFilter.voices(
+      turns: turns, embeddings: heard.map(\.embedding), profile: profile.embedding)
+    switch SpeakerFilter.decide(turns: turns, voices: voices) {
     case .unfiltered(let reason):
       return (samples, .skipped(reason))
     case .drop(let ranges):

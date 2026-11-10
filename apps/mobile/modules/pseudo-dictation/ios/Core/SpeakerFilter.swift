@@ -92,6 +92,30 @@ enum SpeakerFilter {
     return distance <= limit ? .mine : .other
   }
 
+  /// Whose voice each turn is. A turn too short for a voiceprint has nil in `embeddings`.
+  ///
+  /// Noise or another microphone moves the user's own turns away from the profile, which was
+  /// recorded somewhere else. So a turn the profile rejects is held against the turns it accepted
+  /// in this recording, and is the user's when it matches them.
+  static func voices(turns: [SpeakerTurn], embeddings: [[Float]?], profile: [Float]) -> [TurnVoice] {
+    precondition(turns.count == embeddings.count)
+    var voices = zip(turns, embeddings).map { turn, embedding -> TurnVoice in
+      guard let embedding else { return .unjudged }
+      return judge(duration: turn.duration, distance: cosineDistance(embedding, profile))
+    }
+    let mine = voices.indices.filter { voices[$0] == .mine }
+    guard
+      let heard = meanEmbedding(
+        mine.compactMap { embeddings[$0] }, weights: mine.map { Float(turns[$0].duration) })
+    else { return voices }
+    for index in voices.indices where voices[index] == .other {
+      if let embedding = embeddings[index], cosineDistance(embedding, heard) <= matchDistance {
+        voices[index] = .mine
+      }
+    }
+    return voices
+  }
+
   /// The windows that scan a turn, evenly spaced, the last one ending where the turn does.
   static func scanWindows(_ turn: SpeakerTurn) -> [Range<Double>] {
     guard turn.duration >= scanSeconds else { return [] }
