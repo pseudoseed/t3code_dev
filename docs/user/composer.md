@@ -201,8 +201,8 @@ transcribing.
 The first use may download a speech model and needs a network connection.
 Later transcription works offline for that language. On Android, transcription
 processes the full recording at roughly its original duration. Recordings can be up to five
-minutes long. Canceling or an audio interruption discards the recording and
-preserves your existing draft. Navigating to another screen keeps dictation active;
+minutes long. Canceling discards the recording and preserves your existing draft. When a call,
+Siri or another app interrupts a recording, the words spoken before it are added to the draft. Navigating to another screen keeps dictation active;
 use the floating controls to finish or cancel. While recording, the screen stays
 awake; it can sleep normally once recording stops.
 
@@ -235,8 +235,10 @@ Apple's transcription, the microphone button works once a model is downloaded.
 is transcribed. Download the voice filter (about 21 MB), then record 3 short samples of your voice.
 It works with a downloaded model, not with Apple, and adds a short wait after each recording.
 
-When the filter does not recognise your voice in a recording, it removes nothing. People talking
-over you cannot be separated from you. Your voice profile stays on the device; record it again or
+The filter removes a voice that is not yours and is quieter than you, further from the phone. A
+voice as loud as yours stays, so that your own words are never the ones removed. When the filter
+does not recognise your voice in a recording, it removes nothing. People talking over you cannot be
+separated from you. Your voice profile stays on the device; record it again or
 delete it on the same page.
 
 ### Corrections

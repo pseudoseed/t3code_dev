@@ -96,6 +96,7 @@ export class VoiceInputSession {
   private audioLevels = SILENT_LEVELS;
   private releaseKeepAwake: (() => void) | null = null;
   private meteringInterval: ReturnType<typeof setInterval> | null = null;
+  private capturing = false;
 
   constructor(dependencies: VoiceInputSessionDependencies) {
     this.dependencies = dependencies;
@@ -181,6 +182,7 @@ export class VoiceInputSession {
 
   private startRecordingActivity(): void {
     this.releaseKeepAwake = this.dependencies.keepAwake();
+    this.capturing = false;
     this.sampleRecording();
     this.meteringInterval = setInterval(() => this.sampleRecording(), VOICE_METERING_INTERVAL_MS);
   }
@@ -195,7 +197,12 @@ export class VoiceInputSession {
   private sampleRecording(): void {
     if (this.controller.currentState.phase !== "recording") return;
     const sample = this.dependencies.sampleRecording();
-    if (!sample) return;
+    if (!sample) {
+      // The system pauses the recorder for a call or Siri without an event, and never resumes it.
+      if (this.capturing) void this.controller.interruptRecording();
+      return;
+    }
+    this.capturing = true;
 
     const level = normalizeVoiceInputDecibels(sample.metering);
     if (level !== 0 || this.audioLevels.some((sample) => sample !== 0)) {

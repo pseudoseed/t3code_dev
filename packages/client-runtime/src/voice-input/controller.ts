@@ -187,6 +187,8 @@ function transcriptionErrorMessage(error: unknown): string {
 }
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
+const RECORDING_STOPPED_EARLY_MESSAGE =
+  "Voice recording stopped early. The words it captured were added.";
 
 export class VoiceInputController {
   private readonly dependencies: VoiceInputControllerDependencies;
@@ -325,9 +327,7 @@ export class VoiceInputController {
     completedUri: string | null = null,
   ): Promise<void> | void {
     if (this.state.phase !== "recording") return;
-    this.rememberRecordingUri(completedUri);
-    this.recordingUri = completedUri ?? this.recordingUri;
-    return this.discardRecording(message);
+    return this.finishRecording(completedUri !== null, completedUri, message);
   }
 
   appMovedToBackground(): Promise<void> | void {
@@ -371,9 +371,11 @@ export class VoiceInputController {
     }
   }
 
+  /** `interruption` is set when the recording ended without the user stopping it. */
   private async finishRecording(
     alreadyStopped: boolean,
     completedUri: string | null,
+    interruption: string | null = null,
   ): Promise<void> {
     if (this.finishing || this.state.phase !== "recording") return;
     this.finishing = true;
@@ -381,9 +383,14 @@ export class VoiceInputController {
     this.setState({ phase: "transcribing", error: null, errorAction: null });
 
     try {
-      if (!alreadyStopped) await this.dependencies.recorder.stop();
+      if (!alreadyStopped) {
+        const stopping = this.dependencies.recorder.stop();
+        // An interrupted recorder may already be gone; the file it wrote is still there.
+        await (interruption === null ? stopping : stopping.catch(() => {}));
+      }
       await this.releaseAudioSession();
-      this.recordingUri = completedUri ?? this.dependencies.recorder.uri ?? this.recordingUri;
+      // The file capture started in wins: a media-services reset gives the recorder a new, empty one.
+      this.recordingUri = completedUri ?? this.recordingUri ?? this.dependencies.recorder.uri;
       this.rememberRecordingUri(this.recordingUri);
       if (!this.isCurrent(operationToken)) return;
       if (
@@ -407,7 +414,7 @@ export class VoiceInputController {
         );
       } catch (error) {
         if (this.isCurrent(operationToken)) {
-          this.setError(transcriptionErrorMessage(error), "retry");
+          this.setError(interruption ?? transcriptionErrorMessage(error), "retry");
         }
         return;
       }
@@ -427,12 +434,13 @@ export class VoiceInputController {
         return;
       }
       if (result.kind === "empty") {
-        this.setError("No speech was detected.", "retry");
+        this.setError(interruption ?? "No speech was detected.", "retry");
         return;
       }
 
       this.dependencies.commitDraft(result.text, result.selection);
-      this.setState(IDLE_STATE);
+      if (interruption === null) this.setState(IDLE_STATE);
+      else this.setError(RECORDING_STOPPED_EARLY_MESSAGE, "retry");
     } catch {
       if (this.isCurrent(operationToken)) {
         this.setError("Could not finish voice recording.", "retry");

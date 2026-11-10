@@ -501,32 +501,64 @@ describe("VoiceInputController", () => {
     expect(harness.controller.currentState.error).toContain("no longer available");
   });
 
-  it("discards recorder errors and audio interruptions without transcribing", async () => {
-    const transcribe = vi.fn(async () => "ignored");
-    const preparationEntered = deferred<AbortSignal>();
+  it.each([
+    [
+      "a recorder error",
+      (controller: VoiceInputController) =>
+        controller.handleRecorderStatus({
+          isFinished: true,
+          hasError: true,
+          error: "Audio route changed",
+          url: null,
+        }),
+    ],
+    ["the background", (controller: VoiceInputController) => controller.appMovedToBackground()],
+  ])("adds the words captured before %s stopped the recording", async (_name, interrupt) => {
+    const transcribe = vi.fn(async () => "captured words");
     const harness = createHarness({
-      getTranscriber: () => ({
-        prepare: async ({ signal }) => {
-          preparationEntered.resolve(signal);
-          return preparedTranscription(transcribe);
-        },
-      }),
+      getTranscriber: () => ({ prepare: async () => preparedTranscription(transcribe) }),
     });
     await harness.controller.start();
-    const signal = await preparationEntered.promise;
+    // A media-services reset points the recorder at a new, empty file.
     harness.recorder.uri = "file:///reset-empty.m4a";
+    await interrupt(harness.controller);
+
+    expect(transcribe).toHaveBeenCalledWith("file:///voice.m4a", expect.anything());
+    expect(harness.commits).toEqual([
+      { text: "hello captured words", selection: { start: 20, end: 20 } },
+    ]);
+    expect(harness.controller.currentState).toEqual({
+      phase: "error",
+      error: "Voice recording stopped early. The words it captured were added.",
+      errorAction: "retry",
+    });
+    expect(harness.deleted).toEqual(["file:///voice.m4a", "file:///reset-empty.m4a"]);
+  });
+
+  it.each([
+    ["nothing was said", async () => "  "],
+    [
+      "the audio cannot be read",
+      async (): Promise<string> => {
+        throw new Error("unreadable");
+      },
+    ],
+  ])("reports the interruption when %s before it", async (_name, transcribe) => {
+    const harness = createHarness({
+      getTranscriber: () => ({ prepare: async () => preparedTranscription(transcribe) }),
+    });
+    await harness.controller.start();
+    harness.recorder.stop.mockRejectedValueOnce(new Error("recorder released"));
     await harness.controller.handleRecorderStatus({
       isFinished: true,
       hasError: true,
       error: "Audio route changed",
-      url: "file:///voice.m4a",
+      url: null,
     });
 
     expect(harness.commits).toEqual([]);
-    expect(transcribe).not.toHaveBeenCalled();
-    expect(signal.aborted).toBe(true);
     expect(harness.controller.currentState.error).toBe("Audio route changed");
-    expect(harness.deleted).toEqual(["file:///voice.m4a", "file:///reset-empty.m4a"]);
+    expect(harness.deleted).toEqual(["file:///voice.m4a"]);
   });
 
   it("cancels preparation when the app reaches the background", async () => {

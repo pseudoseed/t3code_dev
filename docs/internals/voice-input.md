@@ -28,16 +28,24 @@ the system one and runs a downloaded model through the
 `features/dictation`, `modules/pseudo-dictation` and `plugins/withDictationPods.cjs`. Upstream
 files only import from them, at the end of their import block, so upstream merges stay small.
 
-- The controller awaits preparation before it records, so preparation never waits on a model.
-  The model loads while the user talks, and the system recognizer stands in for a model that is
-  missing, still compiling, or failed on the recording.
+- The controller awaits preparation before it records, so preparation never waits on a model,
+  Apple's included. The model loads while the user talks, and the system recognizer stands in for
+  a model that is missing, still compiling, or failed on the recording. A language Apple cannot
+  take is therefore known only when the recording is transcribed.
+- expo-audio pauses the recorder for an audio-session interruption without an event and never
+  resumes it. The metering loop notices that capture stopped, and the controller transcribes the
+  captured file. That file wins over the recorder's current one, because a media-services reset
+  hands the recorder a new, empty file.
 - FluidAudio is a git pod pinned to a commit and added by the config plugin to the app target
   only. The widget extension must not link it.
 - The engine reaches the network only inside an explicit download.
 - The voice filter never runs on the GPU, because iOS refuses GPU work in the background, where a
   dictation may finish.
 - The thresholds in [SpeakerFilter](../../apps/mobile/modules/pseudo-dictation/ios/Core/SpeakerFilter.swift)
-  come from measurement and lean towards keeping a stranger's words over cutting the user's.
+  come from measurement and lean towards keeping a stranger's words over cutting the user's. A
+  voiceprint alone cut the user's own words in long dictations, so a turn is cut only when it is
+  also clearly quieter than the user. Loudness is a heuristic, not identity: a voice as loud as
+  the user's stays.
   `RealVoiceTests` measures them on recordings of real people; rerun it before changing one.
 - `ios/Core` builds as a Swift package on macOS so `swift test` covers it without a simulator.
   The Expo module file is outside that package and compiles only in an iOS build.

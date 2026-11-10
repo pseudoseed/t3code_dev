@@ -399,6 +399,34 @@ describe("global voice input", () => {
     }
   });
 
+  it("finishes with the captured audio when the recorder stops capturing on its own", async () => {
+    vi.useFakeTimers();
+    try {
+      let sample: VoiceRecordingSample | null = null;
+      const { session, recorder } = createSession({ sampleRecording: () => sample });
+      const commit = vi.fn();
+      const interrupt = vi.spyOn(session.controller, "interruptRecording");
+
+      await session.start(createTarget("first", () => "first", commit, { start: 5, end: 5 }));
+      // Not capturing yet is not a recorder that stopped.
+      vi.advanceTimersByTime(80);
+      expect(interrupt).not.toHaveBeenCalled();
+
+      sample = { durationMillis: 3_000, metering: -20 };
+      vi.advanceTimersByTime(80);
+      // iOS pauses the recorder for a call or Siri and never reports or resumes it.
+      sample = null;
+      vi.advanceTimersByTime(80);
+      expect(interrupt).toHaveBeenCalledOnce();
+      await interrupt.mock.results[0]!.value;
+
+      expect(recorder.stop).toHaveBeenCalled();
+      expect(commit).toHaveBeenCalledWith("first spoken text", { start: 17, end: 17 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("publishes which owners are focused", () => {
     const { session } = createSession();
     const listener = vi.fn();
