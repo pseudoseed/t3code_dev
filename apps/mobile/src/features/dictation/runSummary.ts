@@ -17,6 +17,10 @@ function describeFilter(filter: DictationFilterReport): string {
       return "Only your voice was heard.";
     case "noMatch":
       return "Your voice was not recognised, so nothing was removed.";
+    case "similarLevel":
+      return "Another voice was as loud as yours, so nothing was removed.";
+    case "mostlyOther":
+      return "Most of the recording did not match your voice, so nothing was removed.";
     case "noProfile":
       return "No voice profile is recorded, so nothing was removed.";
     case "notInstalled":

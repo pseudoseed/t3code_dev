@@ -107,6 +107,7 @@ private struct DiarizerBox: @unchecked Sendable {
 private struct HeardTurn: Sendable {
   var turn: SpeakerTurn
   var embedding: [Float]?
+  var level: Float?
 }
 
 private struct EnrollmentClip: Sendable {
@@ -425,7 +426,7 @@ actor DictationEngine {
     let turns = heard.map(\.turn)
     let voices = SpeakerFilter.voices(
       turns: turns, embeddings: heard.map(\.embedding), profile: profile.embedding)
-    switch SpeakerFilter.decide(turns: turns, voices: voices) {
+    switch SpeakerFilter.decide(turns: turns, voices: voices, levels: heard.map(\.level)) {
     case .unfiltered(let reason):
       return (samples, .skipped(reason))
     case .drop(let ranges):
@@ -470,7 +471,13 @@ actor DictationEngine {
           turn, windows: windows, distances: Array(distances.prefix(windows.count)))
       }
     }
-    var heard = turns.map { HeardTurn(turn: $0, embedding: nil) }
+    var heard = turns.map { turn in
+      let from = min(Int(turn.start * Self.sampleRate), samples.count)
+      let to = min(max(Int(turn.end * Self.sampleRate), from), samples.count)
+      return HeardTurn(
+        turn: turn, embedding: nil,
+        level: SpeakerFilter.level(samples[from..<to], sampleRate: Self.sampleRate))
+    }
     let judged = heard.indices.filter {
       heard[$0].turn.duration >= SpeakerFilter.minimumJudgedSeconds
     }

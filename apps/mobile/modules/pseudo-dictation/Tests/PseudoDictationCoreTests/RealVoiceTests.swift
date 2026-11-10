@@ -85,6 +85,14 @@ final class RealVoiceTests: XCTestCase {
     Array(samples.prefix(Int(seconds * DictationEngine.sampleRate)))
   }
 
+  /// The voice 12 dB under `own`: about four times further from the phone than the person holding
+  /// it. The corpus records each reader at a different level, so the gap is set, not assumed.
+  private static func distant(_ samples: [Float], from own: [Float]) -> [Float] {
+    func power(_ clip: [Float]) -> Float { clip.reduce(Float(0)) { $0 + $1 * $1 } / Float(clip.count) }
+    let gain = 0.25 * (power(own) / power(samples)).squareRoot()
+    return samples.map { $0 * gain }
+  }
+
   private func write(_ samples: [Float]) throws -> URL {
     written += 1
     let url = clips.appendingPathComponent("clip-\(written).wav")
@@ -229,6 +237,7 @@ final class RealVoiceTests: XCTestCase {
     let conditions: [(name: String, change: ([Float]) -> [Float])] = [
       ("noise at 5 dB", { Self.noisy($0, snr: 5) }),
       ("narrowband", Self.narrowband),
+      ("narrowband with noise at 5 dB", { Self.noisy(Self.narrowband($0), snr: 5) }),
       ("echo with noise at 10 dB", { Self.noisy(Self.echoing($0), snr: 10) }),
     ]
     var tallies = conditions.map { _ in (own: 0, ownLost: 0, stranger: 0, strangerKept: 0) }
@@ -250,11 +259,12 @@ final class RealVoiceTests: XCTestCase {
             + "\(Int(seconds(alone))) s: lost \(percent(spoken.subtracting(kept).count, spoken.count)), "
             + "cut \(outcome?.droppedSeconds ?? 0) s")
 
-        let own = condition.change(Self.cut(speaker.held[0], 5))
-        let theirs = condition.change(Self.cut(stranger.held[0], 5))
-        let unwanted = try await words(theirs, onlyMyVoice: false).0
-          .subtracting(try await words(own, onlyMyVoice: false).0)
-        let heard = try await words(own + theirs, onlyMyVoice: true).0
+        // The other voice is across the room, under the same noise or through the same headset.
+        let own = Self.cut(speaker.held[0], 8)
+        let theirs = Self.distant(Self.cut(stranger.held[0], 4), from: own)
+        let unwanted = try await words(condition.change(own + theirs), onlyMyVoice: false).0
+          .subtracting(try await words(condition.change(own), onlyMyVoice: false).0)
+        let heard = try await words(condition.change(own + theirs), onlyMyVoice: true).0
         tallies[position].stranger += unwanted.count
         tallies[position].strangerKept += unwanted.intersection(heard).count
       }
@@ -307,10 +317,11 @@ final class RealVoiceTests: XCTestCase {
         let (_, soloOutcome) = try await words(Self.cut(stranger.held[2], 6), onlyMyVoice: true)
         if soloOutcome?.applied == true { strangerSoloCut.append("\(stranger.name) as \(speaker.name)") }
 
-        let own = Self.cut(speaker.held[0], 5)
+        // A dictation is mostly its owner, and anyone else is further from the phone.
+        let own = Self.cut(speaker.held[0], 8)
         let ownSecond = Self.cut(speaker.held[1], 4)
-        let theirs = Self.cut(stranger.held[0], 5)
-        let theirsShort = Self.cut(stranger.held[1], 2)
+        let theirs = Self.distant(Self.cut(stranger.held[0], 4), from: own)
+        let theirsShort = Self.distant(Self.cut(stranger.held[1], 2), from: own)
         let cases: [(name: String, mine: [[Float]], theirs: [Float], samples: [Float])] = [
           ("mine then theirs", [own], theirs, own + theirs),
           ("theirs then mine", [own], theirs, theirs + own),

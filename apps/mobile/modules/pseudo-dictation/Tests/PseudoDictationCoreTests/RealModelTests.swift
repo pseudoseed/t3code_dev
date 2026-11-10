@@ -193,8 +193,12 @@ final class RealModelTests: XCTestCase {
   func testOnlyMyVoiceDropsTheOtherSpeaker() async throws {
     try await download(.fast)
     _ = try await enroll(voice: Self.me)
-    let mine = try DictationEngine.decode(speak(Self.mine, voice: Self.me, name: "mine"))
+    // The user does most of the talking, and the other voice is further from the phone.
+    let mine =
+      try DictationEngine.decode(speak(Self.enrollment[1], voice: Self.me, name: "opening"))
+      + silence(0.6) + DictationEngine.decode(speak(Self.mine, voice: Self.me, name: "mine"))
     let theirs = try DictationEngine.decode(speak(Self.theirs, voice: Self.other, name: "theirs"))
+      .map { $0 * 0.25 }
     let url = try write(mine + silence(0.6) + theirs, name: "both")
 
     let unfiltered = try await engine.transcribe(

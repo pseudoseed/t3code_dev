@@ -230,9 +230,10 @@ function DictationVoice(props: {
       ) : null}
       <Footnote>
         The filter compares each stretch of speech with your voice profile and removes the ones that
-        are someone else. It adds a short wait after each recording. If it does not recognise you,
-        nothing is removed. Your voice profile stays on this device. The filter model is by
-        pyannote, WeSpeaker and BUT Speech@FIT (CC BY 4.0), converted by Fluid Inference.
+        are someone else and quieter than you, further from the phone. A voice as loud as yours
+        stays. It adds a short wait after each recording. If it does not recognise you, nothing is
+        removed. Your voice profile stays on this device. The filter model is by pyannote, WeSpeaker
+        and BUT Speech@FIT (CC BY 4.0), converted by Fluid Inference.
       </Footnote>
     </DictationSettingsPage>
   );

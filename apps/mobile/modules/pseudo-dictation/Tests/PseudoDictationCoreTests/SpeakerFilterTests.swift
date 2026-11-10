@@ -7,6 +7,14 @@ final class SpeakerFilterTests: XCTestCase {
     SpeakerTurn(speaker: speaker, start: start, end: end)
   }
 
+  /// Unless a test says otherwise the user speaks at -20 dB and everyone else 15 dB under them.
+  private func decide(
+    _ turns: [SpeakerTurn], _ voices: [TurnVoice], levels: [Float?]? = nil
+  ) -> SpeakerDecision {
+    SpeakerFilter.decide(
+      turns: turns, voices: voices, levels: levels ?? voices.map { $0 == .mine ? -20 : -35 })
+  }
+
   func testAShortTurnMaySitFurtherFromTheProfile() {
     XCTAssertEqual(SpeakerFilter.judge(duration: 3, distance: 0.5), .mine)
     XCTAssertEqual(SpeakerFilter.judge(duration: 3, distance: 0.7), .other)
@@ -32,7 +40,7 @@ final class SpeakerFilterTests: XCTestCase {
       embeddings: [voiceprint(0.7), voiceprint(0.65), voiceprint(0.65, stranger: true), nil],
       profile: profile)
     XCTAssertEqual(voices, [.mine, .mine, .other, .unjudged])
-    XCTAssertEqual(SpeakerFilter.decide(turns: turns, voices: voices), .drop([30...35.5]))
+    XCTAssertEqual(decide(turns, voices), .drop([30...35.5]))
 
     XCTAssertEqual(
       SpeakerFilter.voices(
@@ -43,34 +51,68 @@ final class SpeakerFilterTests: XCTestCase {
 
   func testNothingIsCutUnlessTheUserAndSomeoneElseWereBothHeard() {
     let two = [turn("a", 0, 3), turn("b", 3, 6)]
-    XCTAssertEqual(SpeakerFilter.decide(turns: [], voices: []), .unfiltered(.noSpeech))
+    XCTAssertEqual(decide([], []), .unfiltered(.noSpeech))
+    XCTAssertEqual(decide(two, [.unjudged, .unjudged]), .unfiltered(.tooShort))
+    XCTAssertEqual(decide(two, [.other, .other]), .unfiltered(.noMatch))
+    XCTAssertEqual(decide(two, [.other, .unjudged]), .unfiltered(.noMatch))
+    XCTAssertEqual(decide(two, [.mine, .mine]), .unfiltered(.onlyYou))
+    XCTAssertEqual(decide(two, [.mine, .unjudged]), .unfiltered(.onlyYou))
+  }
+
+  func testNothingIsCutWhenTheUserWasHeardForLessThanTheSpeechToCut() {
+    // The profile took three words of a half-minute dictation for the user and the rest for
+    // someone else. That is a missed match on their own voice, not a stranger talking for 28 s.
     XCTAssertEqual(
-      SpeakerFilter.decide(turns: two, voices: [.unjudged, .unjudged]), .unfiltered(.tooShort))
-    XCTAssertEqual(SpeakerFilter.decide(turns: two, voices: [.other, .other]), .unfiltered(.noMatch))
+      decide([turn("a", 0, 1.5), turn("a", 2, 30)], [.mine, .other]), .unfiltered(.mostlyOther))
     XCTAssertEqual(
-      SpeakerFilter.decide(turns: two, voices: [.other, .unjudged]), .unfiltered(.noMatch))
-    XCTAssertEqual(SpeakerFilter.decide(turns: two, voices: [.mine, .mine]), .unfiltered(.onlyYou))
+      decide([turn("a", 0, 5), turn("b", 5, 9.2)], [.mine, .other]), .unfiltered(.mostlyOther))
+    XCTAssertEqual(decide([turn("a", 0, 5), turn("b", 5, 9)], [.mine, .other]), .drop([5...9]))
+  }
+
+  func testAVoiceIsCutOnlyWhenItIsClearlyQuieterThanTheUsers() {
+    let turns = [turn("a", 0, 10), turn("a", 10, 14), turn("b", 14, 17)]
+    let voices: [TurnVoice] = [.mine, .other, .other]
+    // A stretch as loud as the user is as close to the phone as they are, so it may be them.
+    XCTAssertEqual(decide(turns, voices, levels: [-20, -22, -26]), .unfiltered(.similarLevel))
+    XCTAssertEqual(decide(turns, voices, levels: [-20, -22, -27]), .drop([14...17]))
+    XCTAssertEqual(decide(turns, voices, levels: [-20, -27, -27]), .drop([10...17]))
+    XCTAssertEqual(decide(turns, voices, levels: [-20, nil, nil]), .unfiltered(.similarLevel))
+    XCTAssertEqual(decide(turns, voices, levels: [nil, -40, -40]), .unfiltered(.similarLevel))
+  }
+
+  func testLevelIsHowLoudAStretchGetsNotItsMean() throws {
+    let rate = 1000.0
+    let loud = [Float](repeating: 0.1, count: 20)
+    let pause = [Float](repeating: 0.001, count: 20)
+    XCTAssertNil(SpeakerFilter.level([], sampleRate: rate))
+    XCTAssertNil(SpeakerFilter.level(loud[..<19], sampleRate: rate))
+    XCTAssertNil(SpeakerFilter.level([Float](repeating: 0, count: 40)[...], sampleRate: rate))
+    // Two frames in ten are speech: the pauses between them do not pull the level down.
+    let halting = (0..<10).flatMap { $0 % 5 == 0 ? loud : pause }
+    XCTAssertEqual(try XCTUnwrap(SpeakerFilter.level(halting[...], sampleRate: rate)), -20, accuracy: 0.001)
+    // One loud frame in twenty is a click, not the voice.
+    let click = (0..<20).flatMap { $0 == 7 ? loud : pause }
+    XCTAssertEqual(try XCTUnwrap(SpeakerFilter.level(click[...], sampleRate: rate)), -60, accuracy: 0.001)
     XCTAssertEqual(
-      SpeakerFilter.decide(turns: two, voices: [.mine, .unjudged]), .unfiltered(.onlyYou))
+      try XCTUnwrap(SpeakerFilter.level((pause + loud + pause)[20..<40], sampleRate: rate)), -20,
+      accuracy: 0.001)
   }
 
   func testOnlyTheOtherVoiceIsCutWhateverTheDiarizerCalledIt() {
     let turns = [turn("a", 0, 3), turn("a", 3.5, 7), turn("a", 7.2, 9)]
-    XCTAssertEqual(
-      SpeakerFilter.decide(turns: turns, voices: [.mine, .other, .mine]), .drop([3.5...7]))
+    XCTAssertEqual(decide(turns, [.mine, .other, .mine]), .drop([3.5...7]))
   }
 
   func testAShortTurnIsCutOnlyWhenItsSpeakerWasAlwaysSomeoneElse() {
     let turns = [
-      turn("a", 0, 3), turn("b", 3, 6), turn("b", 6.2, 6.8), turn("a", 7, 7.5), turn("c", 8, 8.6),
+      turn("a", 0, 5), turn("b", 5, 8), turn("b", 8.2, 8.8), turn("a", 9, 9.5), turn("c", 10, 10.6),
     ]
-    XCTAssertEqual(
-      SpeakerFilter.decide(turns: turns, voices: [.mine, .other, .unjudged, .unjudged, .unjudged]),
-      .drop([3...6, 6.2...6.8]))
+    let voices: [TurnVoice] = [.mine, .other, .unjudged, .unjudged, .unjudged]
+    XCTAssertEqual(decide(turns, voices), .drop([5...8, 8.2...8.8]))
+    XCTAssertEqual(decide(turns, voices, levels: [-20, -35, -22, -35, -35]), .drop([5...8]))
 
-    let merged = [turn("a", 0, 3), turn("a", 3, 6), turn("a", 6.2, 6.8)]
-    XCTAssertEqual(
-      SpeakerFilter.decide(turns: merged, voices: [.mine, .other, .unjudged]), .drop([3...6]))
+    let merged = [turn("a", 0, 4), turn("a", 4, 7), turn("a", 7.2, 7.8)]
+    XCTAssertEqual(decide(merged, [.mine, .other, .unjudged]), .drop([4...7]))
   }
 
   private func assertClose(
@@ -127,24 +169,17 @@ final class SpeakerFilterTests: XCTestCase {
   }
 
   func testSpeechOverTheUsersOwnTurnIsNotCut() {
+    XCTAssertEqual(decide([turn("a", 0, 4), turn("b", 3, 6)], [.mine, .other]), .drop([4...6]))
+    XCTAssertEqual(decide([turn("a", 0, 3), turn("b", 2, 8)], [.other, .mine]), .drop([0...2]))
     XCTAssertEqual(
-      SpeakerFilter.decide(turns: [turn("a", 0, 4), turn("b", 3, 6)], voices: [.mine, .other]),
-      .drop([4...6]))
+      decide([turn("a", 0, 4), turn("b", 1, 3)], [.mine, .other]), .unfiltered(.overlapping))
     XCTAssertEqual(
-      SpeakerFilter.decide(turns: [turn("a", 0, 6), turn("b", 2, 3)], voices: [.other, .mine]),
-      .drop([0...2, 3...6]))
-    XCTAssertEqual(
-      SpeakerFilter.decide(turns: [turn("a", 0, 4), turn("b", 1, 3)], voices: [.mine, .other]),
-      .unfiltered(.overlapping))
-    XCTAssertEqual(
-      SpeakerFilter.decide(turns: [turn("a", 0, 4), turn("b", 3.9, 4.1)], voices: [.mine, .other]),
-      .unfiltered(.overlapping))
+      decide([turn("a", 0, 4), turn("b", 3.9, 4.1)], [.mine, .other]), .unfiltered(.overlapping))
   }
 
   func testTouchingTurnsBecomeOneCut() {
-    let turns = [turn("a", 0, 2), turn("b", 2, 4), turn("c", 4, 6), turn("b", 3.5, 4.5)]
-    XCTAssertEqual(
-      SpeakerFilter.decide(turns: turns, voices: [.mine, .other, .other, .other]), .drop([2...6]))
+    let turns = [turn("a", 0, 6), turn("b", 6, 8), turn("c", 8, 10), turn("b", 7.5, 8.5)]
+    XCTAssertEqual(decide(turns, [.mine, .other, .other, .other]), .drop([6...10]))
   }
 
   func testCosineDistance() {

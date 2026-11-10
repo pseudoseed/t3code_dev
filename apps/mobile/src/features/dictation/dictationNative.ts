@@ -6,6 +6,8 @@ export type DictationFilterSkip =
   | "onlyYou"
   | "tooShort"
   | "overlapping"
+  | "similarLevel"
+  | "mostlyOther"
   | "noProfile"
   | "notInstalled"
   | "failed";
