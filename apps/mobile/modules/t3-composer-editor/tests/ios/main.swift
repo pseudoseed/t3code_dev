@@ -91,6 +91,20 @@ do {
   check(view.text == "abc", "A stale controlled value overwrote newer native typing")
 }
 
+// iOS mounts a new view after display: none (dictation) while JS keeps its revision and draft.
+do {
+  let view = T3ComposerEditorView()
+  view.frame = CGRect(x: 0, y: 0, width: 320, height: 200)
+  view.setControlledDocumentJson(document("dictated", revision: 40, isNativeEcho: true))
+  check(view.text == "dictated", "A remounted editor did not take the draft JS holds: \(view.text)")
+  view.editor.insertText("!")
+  let typed = view.onComposerChange.payloads.last
+  check(
+    (typed?["eventCount"] as? Int ?? 0) > 40,
+    "Typing in a remounted editor must be newer than the parent's revision, or JS drops it"
+  )
+}
+
 // A send clear during an IME composition must not come back when the composition commits.
 do {
   let view = makeEditor("hello ")
