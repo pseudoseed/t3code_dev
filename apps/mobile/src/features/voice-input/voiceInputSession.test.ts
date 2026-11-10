@@ -64,6 +64,7 @@ function createSession(
     configureRecording: async () => {},
     releaseRecording: vi.fn(async () => {}),
     deleteRecording: vi.fn(),
+    keepRecording: (uri) => uri,
     sampleRecording: () => null,
     publishAudioLevels,
     keepAwake,
@@ -241,19 +242,45 @@ describe("global voice input", () => {
     },
   );
 
-  it.each(["changed", "removed"] as const)(
-    "does not overwrite a %s starting draft",
-    async (change) => {
-      const { session } = createSession();
-      let text: string | null = "first";
-      const commit = vi.fn();
-      await session.start(createTarget("first", () => text, commit, { start: 5, end: 5 }));
-      text = change === "removed" ? null : "edited prompt";
-      await session.controller.stop();
-      expect(commit).not.toHaveBeenCalled();
-      expect(session.controller.currentState.error).toContain("draft changed");
-    },
-  );
+  it("adds the words after an edit made to the draft during the recording", async () => {
+    const { session } = createSession();
+    let text = "first";
+    const commit = vi.fn();
+    await session.start(createTarget("first", () => text, commit, { start: 0, end: 0 }));
+    text = "edited prompt";
+    await session.controller.stop();
+    expect(commit).toHaveBeenCalledWith("edited prompt spoken text", { start: 25, end: 25 });
+  });
+
+  it("does not write to a draft that was removed during the recording", async () => {
+    const { session } = createSession();
+    let text: string | null = "first";
+    const commit = vi.fn();
+    await session.start(createTarget("first", () => text, commit, { start: 5, end: 5 }));
+    text = null;
+    await session.controller.stop();
+    expect(commit).not.toHaveBeenCalled();
+    expect(session.controller.currentState.error).toContain("draft is gone");
+  });
+
+  it("retries a failed transcription from the recording, without recording again", async () => {
+    const { session, recorder, prepare } = createSession();
+    const transcribe = vi
+      .fn<PreparedVoiceTranscription["transcribe"]>()
+      .mockRejectedValueOnce(new Error("model failed"))
+      .mockResolvedValue("spoken text");
+    prepare.mockResolvedValue({ locale: "en-US", transcribe });
+    const commit = vi.fn();
+    await session.start(createTarget("first", () => "first", commit, { start: 5, end: 5 }));
+    await session.controller.stop();
+    expect(session.getSnapshot().state.errorAction).toBe("transcribe");
+
+    await session.retry();
+
+    expect(recorder.record).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledWith("first spoken text", { start: 17, end: 17 });
+    expect(session.getSnapshot().state.phase).toBe("idle");
+  });
 
   it("finishes the original draft at the recording limit while it is off screen", async () => {
     const { session, recorder } = createSession();
@@ -266,10 +293,14 @@ describe("global voice input", () => {
       url: recorder.uri,
     });
     expect(commit).toHaveBeenCalledWith("first spoken text", { start: 17, end: 17 });
-    expect(session.controller.currentState.phase).toBe("idle");
+    expect(session.controller.currentState).toEqual({
+      phase: "error",
+      error: "Voice recording reached the 5 minute limit. The words up to it were added.",
+      errorAction: null,
+    });
   });
 
-  it("rejects a transcript when its off-screen draft changes and returns to the original text", async () => {
+  it("adds the transcript at the end when its off-screen draft changed and changed back", async () => {
     const registry = AtomRegistry.make();
     const draft = Atom.make("hello world");
     const unsubscribe = vi.fn();
@@ -292,8 +323,7 @@ describe("global voice input", () => {
     registry.set(draft, "changed");
     registry.set(draft, "hello world");
     await session.controller.stop();
-    expect(commit).not.toHaveBeenCalled();
-    expect(session.controller.currentState.error).toContain("draft changed");
+    expect(commit).toHaveBeenCalledWith("hello world spoken text", { start: 23, end: 23 });
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     registry.dispose();
   });
@@ -399,33 +429,41 @@ describe("global voice input", () => {
     }
   });
 
-  it("finishes with the captured audio when the recorder stops capturing on its own", async () => {
-    vi.useFakeTimers();
-    try {
-      let sample: VoiceRecordingSample | null = null;
-      const { session, recorder } = createSession({ sampleRecording: () => sample });
-      const commit = vi.fn();
-      const interrupt = vi.spyOn(session.controller, "interruptRecording");
+  it.each([
+    ["interruptRecording", 3_000, "stopped early"],
+    // The recorder can stop at the limit before its finish event arrives.
+    ["recordingReachedLimit", 299_950, "5 minute limit"],
+  ] as const)(
+    "finishes with the captured audio through %s when the recorder stops on its own",
+    async (method, durationMillis, notice) => {
+      vi.useFakeTimers();
+      try {
+        let sample: VoiceRecordingSample | null = null;
+        const { session, recorder } = createSession({ sampleRecording: () => sample });
+        const commit = vi.fn();
+        const interrupt = vi.spyOn(session.controller, method);
 
-      await session.start(createTarget("first", () => "first", commit, { start: 5, end: 5 }));
-      // Not capturing yet is not a recorder that stopped.
-      vi.advanceTimersByTime(80);
-      expect(interrupt).not.toHaveBeenCalled();
+        await session.start(createTarget("first", () => "first", commit, { start: 5, end: 5 }));
+        // Not capturing yet is not a recorder that stopped.
+        vi.advanceTimersByTime(80);
+        expect(interrupt).not.toHaveBeenCalled();
 
-      sample = { durationMillis: 3_000, metering: -20 };
-      vi.advanceTimersByTime(80);
-      // iOS pauses the recorder for a call or Siri and never reports or resumes it.
-      sample = null;
-      vi.advanceTimersByTime(80);
-      expect(interrupt).toHaveBeenCalledOnce();
-      await interrupt.mock.results[0]!.value;
+        sample = { durationMillis, metering: -20 };
+        vi.advanceTimersByTime(80);
+        // iOS pauses the recorder for a call or Siri without reporting it.
+        sample = null;
+        vi.advanceTimersByTime(80);
+        expect(interrupt).toHaveBeenCalledOnce();
+        await interrupt.mock.results[0]!.value;
 
-      expect(recorder.stop).toHaveBeenCalled();
-      expect(commit).toHaveBeenCalledWith("first spoken text", { start: 17, end: 17 });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        expect(recorder.stop).toHaveBeenCalled();
+        expect(commit).toHaveBeenCalledWith("first spoken text", { start: 17, end: 17 });
+        expect(session.controller.currentState.error).toContain(notice);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("publishes which owners are focused", () => {
     const { session } = createSession();

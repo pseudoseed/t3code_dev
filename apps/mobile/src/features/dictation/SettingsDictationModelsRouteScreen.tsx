@@ -1,12 +1,22 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import type { VoiceTranscriber } from "@t3tools/client-runtime/voice-input";
+import * as Clipboard from "expo-clipboard";
+import { useFocusEffect } from "@react-navigation/native";
+import { File } from "expo-file-system";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Alert, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { ListActionRow } from "../../components/ui/ListActionRow";
 import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
 import { ListRowLayout } from "../../components/ui/ListRowLayout";
+import { getLocalVoiceTranscriber as getSystemVoiceTranscriber } from "../../native/voiceTranscription";
 import { SettingsSection } from "../settings/components/SettingsSection";
+import {
+  KEPT_VOICE_RECORDINGS,
+  keptVoiceRecordings,
+  type KeptVoiceRecording,
+} from "../voice-input/keptRecordings";
 import { localVoiceTranscriberAtom } from "../voice-input/VoiceInputProvider";
 import { useAppleDictationAvailable } from "./appleDictation";
 import { nativeErrorMessage, type DictationDownloads } from "./dictationDownloads";
@@ -23,6 +33,7 @@ import {
   currentDictationSettings,
   deviceLocale,
   dictationDownloads,
+  makeDictationTranscriber,
   updateDictationSettings,
   useDictationState,
 } from "./dictationRuntime";
@@ -36,11 +47,24 @@ import { describeRun } from "./runSummary";
 
 const TITLE = "Dictation model";
 
-type SampleResult =
-  | { readonly status: "idle" }
+type TrialResult =
   | { readonly status: "running" }
   | { readonly status: "done"; readonly text: string }
   | { readonly status: "failed"; readonly message: string };
+
+const SAMPLE = "sample";
+
+/** `of` is the sample or a kept recording's URI. One result is on screen at a time, so the run details under it are its own. */
+type Trial = { readonly of: string; readonly result: TrialResult };
+
+function recordedAtLabel(recordedAt: number): string {
+  return new Date(recordedAt).toLocaleString([], {
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
 
 export function SettingsDictationModelsRouteScreen() {
   const downloads = dictationDownloads();
@@ -58,7 +82,9 @@ function DictationModels(props: {
   const transcriber = useAtomValue(localVoiceTranscriberAtom);
   const appleMissing = useAppleDictationAvailable() === false;
   const [device] = useState(() => native.deviceInfo());
-  const [sample, setSample] = useState<SampleResult>({ status: "idle" });
+  const [trial, setTrial] = useState<Trial | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [recordings, setRecordings] = useState(keptVoiceRecordings);
   const suggested = recommendedDictationModel({
     physicalMemoryBytes: device.physicalMemoryBytes,
     locale: deviceLocale(),
@@ -68,6 +94,8 @@ function DictationModels(props: {
   useEffect(() => {
     void downloads.refresh();
   }, [downloads]);
+
+  useFocusEffect(useCallback(() => setRecordings(keptVoiceRecordings()), []));
 
   const describe = (model: LocalDictationModel) =>
     model.id === suggested ? `${model.summary} Suggested for this device.` : model.summary;
@@ -108,27 +136,87 @@ function DictationModels(props: {
       ],
     );
 
-  const transcribeSample = async () => {
-    const uri = native.sampleClipUri();
-    if (uri === null || transcriber === null || transcriber === "checking") {
-      setSample({ status: "failed", message: "Dictation is not available right now." });
-      return;
-    }
-    setSample({ status: "running" });
+  const transcribe = async (
+    of: Trial["of"],
+    uri: string,
+    using: VoiceTranscriber,
+    failure: string,
+  ) => {
+    setCopied(false);
+    setTrial({ of, result: { status: "running" } });
     const { signal } = new AbortController();
     try {
-      // Loaded first so the sample runs on the chosen model, not on the stand-in for a cold one.
+      // Loaded first so this runs on the chosen model, not on the stand-in for a cold one.
       if (installed.some((model) => model.id === settings.modelId)) {
         await native.prepare(settings.modelId, DICTATION_PROCESSING);
       }
-      const prepared = await transcriber.prepare({ signal });
-      setSample({ status: "done", text: await prepared.transcribe(uri, { signal }) });
+      const prepared = await using.prepare({ signal });
+      const text = await prepared.transcribe(uri, { signal });
+      setTrial({ of, result: { status: "done", text } });
     } catch (error) {
-      setSample({
-        status: "failed",
-        message: nativeErrorMessage(error, "The sample could not be transcribed."),
-      });
+      setTrial({ of, result: { status: "failed", message: nativeErrorMessage(error, failure) } });
     }
+  };
+
+  const transcribeSample = () => {
+    const uri = native.sampleClipUri();
+    if (uri === null || transcriber === null || transcriber === "checking") {
+      setTrial({
+        of: SAMPLE,
+        result: { status: "failed", message: "Dictation is not available right now." },
+      });
+      return;
+    }
+    void transcribe(SAMPLE, uri, transcriber, "The sample could not be transcribed.");
+  };
+
+  const transcribeRecording = (recording: KeptVoiceRecording) => {
+    if (!new File(recording.uri).exists) {
+      setRecordings(keptVoiceRecordings());
+      setTrial(null);
+      return;
+    }
+    void transcribe(
+      recording.uri,
+      recording.uri,
+      makeDictationTranscriber(getSystemVoiceTranscriber, { ignoreVoiceFilter: true }),
+      "The recording could not be transcribed.",
+    );
+  };
+
+  const running = trial?.result.status === "running" ? trial.of : null;
+  const resultOf = (of: Trial["of"]) => {
+    const result = trial?.of === of ? trial.result : null;
+    if (result?.status === "failed") {
+      return (
+        <Text className="border-t border-border-subtle px-4 py-3 text-sm text-danger-foreground">
+          {result.message}
+        </Text>
+      );
+    }
+    if (result?.status !== "done") return null;
+    const heard = result.text.trim().length > 0;
+    return (
+      <>
+        <View className="gap-1 border-t border-border-subtle px-4 py-3">
+          <Text className="text-base text-foreground" selectable>
+            {heard ? result.text : "No speech was found in this recording."}
+          </Text>
+          {lastRun === null ? null : (
+            <Text className="text-sm text-foreground-muted">{describeRun(lastRun)}</Text>
+          )}
+        </View>
+        {heard && of !== SAMPLE ? (
+          <View className="border-t border-border-subtle">
+            <ListActionRow
+              icon="doc.on.doc"
+              label={copied ? "Copied" : "Copy the text"}
+              onPress={() => void Clipboard.setStringAsync(result.text).then(() => setCopied(true))}
+            />
+          </View>
+        ) : null}
+      </>
+    );
   };
 
   return (
@@ -188,22 +276,36 @@ function DictationModels(props: {
           icon="play"
           label="Transcribe a sample"
           description="Runs a built-in recording through the model in use."
-          loading={sample.status === "running"}
-          onPress={() => void transcribeSample()}
+          loading={running === SAMPLE}
+          disabled={running !== null}
+          onPress={transcribeSample}
         />
-        {sample.status === "done" ? (
-          <View className="gap-1 border-t border-border-subtle px-4 py-3">
-            <Text className="text-base text-foreground">{sample.text}</Text>
-            {lastRun === null ? null : (
-              <Text className="text-sm text-foreground-muted">{describeRun(lastRun)}</Text>
-            )}
-          </View>
-        ) : null}
-        {sample.status === "failed" ? (
-          <Text className="border-t border-border-subtle px-4 py-3 text-sm text-danger-foreground">
-            {sample.message}
-          </Text>
-        ) : null}
+        {resultOf(SAMPLE)}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Recent recordings"
+        footer={`Your last ${KEPT_VOICE_RECORDINGS} dictations stay on this device, canceled ones included. Tap one to transcribe it again with the model in use and without the voice filter.`}
+      >
+        {recordings.length === 0 ? (
+          <ListRowLayout disabled icon="mic" label="No recordings yet" />
+        ) : (
+          recordings.map((recording, index) => (
+            <View
+              key={recording.uri}
+              className={index > 0 ? "border-t border-border-subtle" : undefined}
+            >
+              <ListActionRow
+                icon="arrow.clockwise"
+                label={recordedAtLabel(recording.recordedAt)}
+                loading={running === recording.uri}
+                disabled={running !== null}
+                onPress={() => transcribeRecording(recording)}
+              />
+              {resultOf(recording.uri)}
+            </View>
+          ))
+        )}
       </SettingsSection>
 
       {installed.length === 0 ? null : (

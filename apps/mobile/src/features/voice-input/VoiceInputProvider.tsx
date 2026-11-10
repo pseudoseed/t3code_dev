@@ -20,6 +20,7 @@ import {
   voiceInputBlocksSubmission,
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
+import { keepVoiceRecording } from "./keptRecordings";
 import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { VoiceInputSession } from "./voiceInputSession";
@@ -134,6 +135,7 @@ const voiceInputAtom = Atom.make((get) => {
       audioToken = null;
     },
     deleteRecording: (uri) => new File(uri).delete(),
+    keepRecording: keepVoiceRecording,
     sampleRecording: () => {
       const status = recorder.getStatus();
       return status?.isRecording

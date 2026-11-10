@@ -135,7 +135,11 @@ export class VoiceInputSession {
     if (ownerKey !== null && this.ownerKey === ownerKey) this.controller.cancel();
   }
 
+  /** Does what the error on screen offers: the kept recording again, or a new recording. */
   retry(): Promise<void> {
+    if (this.controller.currentState.errorAction === "transcribe") {
+      return this.controller.retranscribe();
+    }
     return this.target ? this.start(this.target) : Promise.resolve();
   }
 
@@ -198,8 +202,14 @@ export class VoiceInputSession {
     if (this.controller.currentState.phase !== "recording") return;
     const sample = this.dependencies.sampleRecording();
     if (!sample) {
-      // The system pauses the recorder for a call or Siri without an event, and never resumes it.
-      if (this.capturing) void this.controller.interruptRecording();
+      if (!this.capturing) return;
+      // The recorder stops at the limit just before it says so, and the system pauses it for a
+      // call or Siri without saying so at all. Either way the words so far are transcribed now.
+      if (this.snapshot.elapsedSeconds >= VOICE_RECORDING_LIMIT_SECONDS - 1) {
+        void this.controller.recordingReachedLimit();
+      } else {
+        void this.controller.interruptRecording();
+      }
       return;
     }
     this.capturing = true;

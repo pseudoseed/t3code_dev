@@ -70,6 +70,7 @@ it.each([
     configureRecording: async () => {},
     releaseRecording: async () => {},
     deleteRecording: () => {},
+    keepRecording: (uri) => uri,
     readDraft: () => draft,
     commitDraft: commit,
     onStateChange: () => {},
@@ -77,7 +78,11 @@ it.each([
   await controller.start();
   if (phase === "transcription") await controller.stop();
 
-  expect(controller.currentState).toMatchObject({ phase: "error", errorAction: "retry" });
+  // Once something was recorded, the error offers the kept recording instead of a new one.
+  expect(controller.currentState).toMatchObject({
+    phase: "error",
+    errorAction: phase === "transcription" ? "transcribe" : "retry",
+  });
   expect(commit).not.toHaveBeenCalled();
   expect(draft.text).toBe("Preserved draft.");
   expect(controller.currentState.error).toMatch(expected);

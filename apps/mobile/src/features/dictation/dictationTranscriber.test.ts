@@ -49,6 +49,7 @@ function setup(
     readonly systemLocale?: string;
     readonly native?: "present" | "absent";
     readonly locale?: string;
+    readonly ignoreVoiceFilter?: boolean;
   } = {},
 ) {
   const clock = { now: 1_000 };
@@ -89,6 +90,7 @@ function setup(
     now: () => clock.now,
     pending,
     newRequestId: () => "request-1",
+    ignoreVoiceFilter: input.ignoreVoiceFilter,
   });
   const abort = new AbortController();
   const dictate = async () => {
@@ -164,6 +166,17 @@ describe("with a downloaded model selected", () => {
     );
     expect(native.prepare).toHaveBeenCalledWith("parakeet-v3", "auto");
     expect(getSystemTranscriber).not.toHaveBeenCalled();
+
+    const again = setup({ settings, ignoreVoiceFilter: true });
+    await again.dictate();
+    expect(again.native.transcribe).toHaveBeenCalledWith(
+      expect.any(String),
+      URI,
+      "parakeet-v3",
+      "auto",
+      false,
+      "en-US",
+    );
     expect(lastRun()).toEqual({
       at: 1_000,
       engine: "parakeet-v3",

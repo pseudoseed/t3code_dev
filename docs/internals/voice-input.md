@@ -8,8 +8,17 @@ environment-backed transcription is not implemented.
 The [shared controller](../../packages/client-runtime/src/voice-input/controller.ts)
 owns the operation while the client supplies capture and transcription. Preparation
 binds the transcriber and resolved locale for the whole recording. Draft ownership,
-text, and revision are captured before recording and checked before insertion, so
-a late transcript cannot overwrite a draft that was edited or replaced.
+text, and revision are captured before recording and checked before insertion. A
+transcript is dropped only when its draft is gone or belongs to another owner. In a
+draft that was edited, the recorded caret means nothing, so the words go at its end.
+
+Recordings outlive their dictation. The controller hands the file to `keepRecording`
+as soon as the recorder stops, before transcription, and cleanup never deletes it.
+Whatever goes wrong afterwards (a thrown transcription, an empty result, a dropped
+transcript, words the voice filter removed) is then recoverable: `retranscribe` runs
+the latest file again, and mobile Settings runs any of the last few without the
+voice filter. Mobile keeps several, not one, because the next recording is often the
+user trying again, and it must not destroy the one they want back.
 
 Cancellation invalidates a result immediately, but resources stay owned until the
 underlying work settles. Apple's native transcription call cannot be interrupted
@@ -32,10 +41,13 @@ files only import from them, at the end of their import block, so upstream merge
   Apple's included. The model loads while the user talks, and the system recognizer stands in for
   a model that is missing, still compiling, or failed on the recording. A language Apple cannot
   take is therefore known only when the recording is transcribed.
-- expo-audio pauses the recorder for an audio-session interruption without an event and never
-  resumes it. The metering loop notices that capture stopped, and the controller transcribes the
-  captured file. That file wins over the recorder's current one, because a media-services reset
-  hands the recorder a new, empty file.
+- expo-audio pauses the recorder for an audio-session interruption without an event, and resumes
+  it only if the system later says capture may continue. The metering loop notices that capture
+  stopped, and the controller transcribes the captured file at once instead of waiting. That file
+  wins over the recorder's current one, because a media-services reset hands the recorder a new,
+  empty file.
+- At the five-minute limit the recorder stops just before it reports that it finished. A stop in
+  the last second is therefore treated as the limit, not as an interruption.
 - FluidAudio is a git pod pinned to a commit and added by the config plugin to the app target
   only. The widget extension must not link it.
 - The engine reaches the network only inside an explicit download.

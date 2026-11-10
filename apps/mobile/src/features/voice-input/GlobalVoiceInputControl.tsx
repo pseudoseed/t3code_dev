@@ -91,7 +91,7 @@ function EdgeDictationPill(props: {
   const presentation = resolveVoiceComposerPresentation(voice.state, voice.elapsedSeconds);
   const phase = voice.state.phase;
   const isError = phase === "error";
-  const openSettings = isError && voice.state.errorAction === "settings";
+  const errorAction = isError ? voice.state.errorAction : null;
   const label = voice.label ?? "Draft";
 
   return (
@@ -200,13 +200,19 @@ function EdgeDictationPill(props: {
                 </Pressable>
               </>
             ) : isError ? (
-              voice.isAvailable ? (
+              voice.isAvailable && errorAction !== null ? (
                 <Pressable
-                  accessibilityLabel={openSettings ? "Open microphone settings" : "Retry dictation"}
+                  accessibilityLabel={
+                    errorAction === "settings"
+                      ? "Open microphone settings"
+                      : errorAction === "transcribe"
+                        ? "Transcribe again"
+                        : "Retry dictation"
+                  }
                   accessibilityRole="button"
                   className="size-[30px] items-center justify-center active:opacity-70"
                   onPress={() => {
-                    if (!openSettings) {
+                    if (errorAction !== "settings") {
                       void voice.session.retry();
                       return;
                     }
@@ -214,7 +220,11 @@ function EdgeDictationPill(props: {
                     void Linking.openSettings();
                   }}
                 >
-                  <SymbolView name="mic" size={16} tintColorClassName="accent-icon" />
+                  <SymbolView
+                    name={errorAction === "transcribe" ? "arrow.clockwise" : "mic"}
+                    size={16}
+                    tintColorClassName="accent-icon"
+                  />
                 </Pressable>
               ) : null
             ) : (

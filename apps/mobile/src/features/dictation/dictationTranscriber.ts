@@ -28,6 +28,8 @@ export interface DictationTranscriberDeps {
   readonly now: () => number;
   readonly pending: PendingDictations;
   readonly newRequestId: () => string;
+  /** For a recording transcribed again: the filter may be what removed its words. */
+  readonly ignoreVoiceFilter?: boolean;
 }
 
 const NO_MODEL_MESSAGE = "Download a dictation model in Settings > Microphone.";
@@ -105,7 +107,7 @@ export function createDictationTranscriber(deps: DictationTranscriberDeps): Voic
             uri,
             modelId,
             DICTATION_PROCESSING,
-            store.getSnapshot().settings.onlyMyVoice,
+            !deps.ignoreVoiceFilter && store.getSnapshot().settings.onlyMyVoice,
             locale,
           );
         } catch (cause) {

@@ -321,6 +321,8 @@ function VoiceActionButton(props: {
 
 export function ComposerDictationError(props: {
   readonly error: string | null;
+  /** Set when the recording behind the error is still there to transcribe again. */
+  readonly onTranscribeAgain?: (() => void) | null;
   readonly onDismiss: () => void;
 }) {
   if (!props.error) return null;
@@ -329,6 +331,22 @@ export function ComposerDictationError(props: {
       <Text accessibilityRole="alert" className="min-w-0 flex-1 text-sm text-danger-foreground">
         {props.error}
       </Text>
+      {props.onTranscribeAgain ? (
+        <Pressable
+          accessibilityLabel="Transcribe again"
+          accessibilityRole="button"
+          className="size-7 items-center justify-center active:opacity-70"
+          hitSlop={8}
+          onPress={props.onTranscribeAgain}
+        >
+          <SymbolView
+            name="arrow.clockwise"
+            size={14}
+            tintColorClassName="accent-icon"
+            type="monochrome"
+          />
+        </Pressable>
+      ) : null}
       <Pressable
         accessibilityLabel="Dismiss voice input error"
         accessibilityRole="button"

@@ -62,6 +62,7 @@ function createDictation() {
     configureRecording: async () => {},
     releaseRecording: async () => {},
     deleteRecording: () => {},
+    keepRecording: (uri) => uri,
     readDraft: () => ({
       ownerKey: "environment:thread",
       text: "",

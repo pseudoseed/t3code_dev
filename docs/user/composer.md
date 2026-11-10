@@ -201,10 +201,16 @@ transcribing.
 The first use may download a speech model and needs a network connection.
 Later transcription works offline for that language. On Android, transcription
 processes the full recording at roughly its original duration. Recordings can be up to five
-minutes long. Canceling discards the recording and preserves your existing draft. When a call,
-Siri or another app interrupts a recording, the words spoken before it are added to the draft. Navigating to another screen keeps dictation active;
+minutes long; at the limit the recording stops and the words up to it are added. Canceling leaves
+your draft as it was. When a call, Siri or another app interrupts a recording, the words spoken
+before it are added to the draft. If the draft changed while you were dictating, the words are
+added at its end. Navigating to another screen keeps dictation active;
 use the floating controls to finish or cancel. While recording, the screen stays
 awake; it can sleep normally once recording stops.
+
+Your last 5 recordings stay on the device, canceled ones included. When transcription fails, the
+error offers **Transcribe again**, which runs the same recording so you do not have to repeat
+yourself.
 
 Choose a preferred order in **Settings → Microphone**. Voice input requests the first
 connected microphone in the list. The list mixes kinds (built-in, other wired, other
@@ -228,6 +234,10 @@ A model needs time to get ready the first time it is used after a download or an
 Apple's transcription takes a recording made in that time where it is available, and also any
 recording a model fails on. **Settings → Microphone** shows what the last dictation ran on. On a device without
 Apple's transcription, the microphone button works once a model is downloaded.
+
+When a dictation came out empty, cut short or wrong, open **Settings → Microphone → Model** and
+tap it under **Recent recordings**. It runs through the model in use, without the voice filter,
+and the text is shown for you to copy.
 
 ### Only my voice
 
