@@ -889,6 +889,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         >
           <ComposerDictationError
             error={voiceInput.state.phase === "error" ? voiceInput.state.error : null}
+            onTranscribeAgain={voiceInput.transcribeAgain}
             onDismiss={voiceInput.cancel}
           />
           {isExpanded ? editingAttachments : null}

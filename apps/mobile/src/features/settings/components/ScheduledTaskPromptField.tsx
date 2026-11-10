@@ -58,6 +58,7 @@ export function ScheduledTaskPromptField(props: {
       </View>
       <ComposerDictationError
         error={voice.state.phase === "error" ? voice.state.error : null}
+        onTranscribeAgain={voice.transcribeAgain}
         onDismiss={voice.cancel}
       />
       {showsDictation ? (

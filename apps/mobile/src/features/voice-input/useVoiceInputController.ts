@@ -74,6 +74,8 @@ export function useVoiceInputController(input: {
     freezesEditor: isBusy,
     blocksSubmission: isBusy,
     start,
+    /** Null unless the error on screen kept its recording. */
+    transcribeAgain: state.errorAction === "transcribe" ? () => void session.retry() : null,
     stop: global.stop,
     cancel: global.cancel,
   };

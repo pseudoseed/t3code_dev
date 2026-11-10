@@ -49,6 +49,7 @@ export function deviceLocale(): string {
 
 export function makeDictationTranscriber(
   getSystemTranscriber: () => Promise<VoiceTranscriber | null>,
+  options: { readonly ignoreVoiceFilter?: boolean } = {},
 ): VoiceTranscriber {
   const { store, pending } = dictationRuntime();
   return createDictationTranscriber({
@@ -59,6 +60,7 @@ export function makeDictationTranscriber(
     getLocale: deviceLocale,
     now: Date.now,
     newRequestId: () => `dictation-${Date.now()}-${++requests}`,
+    ignoreVoiceFilter: options.ignoreVoiceFilter,
   });
 }
 

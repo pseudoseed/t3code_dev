@@ -85,6 +85,14 @@ final class RealVoiceTests: XCTestCase {
     Array(samples.prefix(Int(seconds * DictationEngine.sampleRate)))
   }
 
+  /// The voice 12 dB under `own`: about four times further from the phone than the person holding
+  /// it. The corpus records each reader at a different level, so the gap is set, not assumed.
+  private static func distant(_ samples: [Float], from own: [Float]) -> [Float] {
+    func power(_ clip: [Float]) -> Float { clip.reduce(Float(0)) { $0 + $1 * $1 } / Float(clip.count) }
+    let gain = 0.25 * (power(own) / power(samples)).squareRoot()
+    return samples.map { $0 * gain }
+  }
+
   private func write(_ samples: [Float]) throws -> URL {
     written += 1
     let url = clips.appendingPathComponent("clip-\(written).wav")
@@ -92,9 +100,16 @@ final class RealVoiceTests: XCTestCase {
     return url
   }
 
-  private func words(_ samples: [Float], onlyMyVoice: Bool) async throws -> (Set<String>, FilterOutcome?) {
+  private func words(
+    _ samples: [Float], onlyMyVoice: Bool, model: DictationModel = .fast, asPhoneRecording: Bool = false
+  ) async throws -> (Set<String>, FilterOutcome?) {
+    var url = try write(samples)
+    if asPhoneRecording {
+      url = url.deletingPathExtension().appendingPathExtension("m4a")
+      try writePhoneRecording(samples, to: url)
+    }
     let transcript = try await engine.transcribe(
-      requestId: UUID().uuidString, url: try write(samples), model: .fast, processing: .auto,
+      requestId: UUID().uuidString, url: url, model: model, processing: .auto,
       onlyMyVoice: onlyMyVoice, language: "en-US")
     let words = transcript.text.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
     return (Set(words), transcript.filter)
@@ -139,6 +154,133 @@ final class RealVoiceTests: XCTestCase {
     XCTAssertLessThanOrEqual(Double(mixAccepted.count) / Double(mixes), 0.05)
   }
 
+  // MARK: Long recordings
+
+  /// People dictate for longer than any other clip here, and the phone hands over AAC, not WAV.
+  func testAHalfMinuteOfSpeechFromThePhoneIsTranscribedInFull() async throws {
+    try await engine.download(.voiceFilter, processing: .auto, onProgress: { _ in })
+    var lost: [String] = []
+    for model in [DictationModel.fast, .balanced, .accurate] {
+      try await engine.download(model, processing: .auto, onProgress: { _ in })
+      for speaker in speakers.prefix(4) {
+        try await engine.saveVoiceProfile(try speaker.enrollment.map(write))
+        var recording: [Float] = []
+        var expected: Set<String> = []
+        for utterance in speaker.held where seconds(recording) < 30 {
+          recording += utterance
+          expected.formUnion(try await words(utterance, onlyMyVoice: false, model: model).0)
+        }
+        XCTAssertGreaterThanOrEqual(seconds(recording), 30)
+        for onlyMyVoice in [false, true] {
+          let (heard, outcome) = try await words(
+            recording, onlyMyVoice: onlyMyVoice, model: model, asPhoneRecording: true)
+          let missing = expected.subtracting(heard).count
+          print(
+            "MEASURE long, \(model.rawValue) \(speaker.name) \(Int(seconds(recording))) s, filter "
+              + "\(onlyMyVoice): lost \(percent(missing, expected.count)), "
+              + "cut \(outcome?.droppedSeconds ?? 0) s")
+          if Double(missing) / Double(expected.count) > 0.05 {
+            lost.append("\(model.rawValue) \(speaker.name) filter \(onlyMyVoice): \(percent(missing, expected.count))")
+          }
+        }
+      }
+    }
+    XCTAssertEqual(lost, [])
+  }
+
+  // MARK: Sound unlike enrollment
+
+  /// White noise under the speech, `snr` decibels below it. The seed is fixed so runs agree.
+  private static func noisy(_ samples: [Float], snr: Float) -> [Float] {
+    let power = samples.reduce(Float(0)) { $0 + $1 * $1 } / Float(samples.count)
+    let peak = (3 * power).squareRoot() / pow(10, snr / 20)
+    var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+    return samples.map { sample in
+      state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      return sample + peak * (Float(state >> 40) / Float(1 << 24) * 2 - 1)
+    }
+  }
+
+  /// Roughly a telephone headset: the top and the bottom of the voice are gone.
+  private static func narrowband(_ samples: [Float]) -> [Float] {
+    var output = samples
+    var low: Float = 0
+    var lower: Float = 0
+    var rumble: Float = 0
+    for index in samples.indices {
+      low += 0.72 * (samples[index] - low)
+      lower += 0.72 * (low - lower)
+      rumble = 0.89 * rumble + 0.11 * lower
+      output[index] = index % 2 == 0 ? lower - rumble : output[index - 1]
+    }
+    return output
+  }
+
+  /// A small room with hard walls.
+  private static func echoing(_ samples: [Float]) -> [Float] {
+    var output = samples
+    for (delay, gain) in [(464, Float(0.55)), (592, 0.5), (688, 0.45), (1104, 0.4)] {
+      var echo = [Float](repeating: 0, count: samples.count)
+      for index in samples.indices.dropFirst(delay) {
+        echo[index] = gain * (samples[index - delay] + echo[index - delay])
+        output[index] += 0.35 * echo[index]
+      }
+    }
+    return output
+  }
+
+  /// The profile is recorded once, somewhere quiet. People then dictate in a car, in a kitchen or
+  /// over a headset, where their voice sits further from it, and that must not cost them words.
+  func testTheFilterKeepsTheSpeakersWordsWhereTheSoundIsUnlikeEnrollment() async throws {
+    try await engine.download(.fast, processing: .auto, onProgress: { _ in })
+    try await engine.download(.voiceFilter, processing: .auto, onProgress: { _ in })
+    let conditions: [(name: String, change: ([Float]) -> [Float])] = [
+      ("noise at 5 dB", { Self.noisy($0, snr: 5) }),
+      ("narrowband", Self.narrowband),
+      ("narrowband with noise at 5 dB", { Self.noisy(Self.narrowband($0), snr: 5) }),
+      ("echo with noise at 10 dB", { Self.noisy(Self.echoing($0), snr: 10) }),
+    ]
+    var tallies = conditions.map { _ in (own: 0, ownLost: 0, stranger: 0, strangerKept: 0) }
+
+    for (index, speaker) in speakers.prefix(8).enumerated() {
+      try await engine.saveVoiceProfile(try speaker.enrollment.map(write))
+      let stranger = speakers[(index + speakers.count / 2) % speakers.count]
+      var alone: [Float] = []
+      for utterance in speaker.held where seconds(alone) < 30 { alone += utterance }
+
+      for (position, condition) in conditions.enumerated() {
+        let recording = condition.change(alone)
+        let spoken = try await words(recording, onlyMyVoice: false).0
+        let (kept, outcome) = try await words(recording, onlyMyVoice: true)
+        tallies[position].own += spoken.count
+        tallies[position].ownLost += spoken.subtracting(kept).count
+        print(
+          "MEASURE unlike enrollment, \(condition.name), \(speaker.name) alone for "
+            + "\(Int(seconds(alone))) s: lost \(percent(spoken.subtracting(kept).count, spoken.count)), "
+            + "cut \(outcome?.droppedSeconds ?? 0) s")
+
+        // The other voice is across the room, under the same noise or through the same headset.
+        let own = Self.cut(speaker.held[0], 8)
+        let theirs = Self.distant(Self.cut(stranger.held[0], 4), from: own)
+        let unwanted = try await words(condition.change(own + theirs), onlyMyVoice: false).0
+          .subtracting(try await words(condition.change(own), onlyMyVoice: false).0)
+        let heard = try await words(condition.change(own + theirs), onlyMyVoice: true).0
+        tallies[position].stranger += unwanted.count
+        tallies[position].strangerKept += unwanted.intersection(heard).count
+      }
+    }
+
+    for (condition, tally) in zip(conditions, tallies) {
+      print(
+        "MEASURE unlike enrollment, \(condition.name): speaker's words lost "
+          + "\(percent(tally.ownLost, tally.own)), stranger's words kept "
+          + "\(percent(tally.strangerKept, tally.stranger))")
+      XCTAssertLessThanOrEqual(Double(tally.ownLost) / Double(tally.own), 0.05, condition.name)
+      XCTAssertLessThanOrEqual(
+        Double(tally.strangerKept) / Double(tally.stranger), 0.15, condition.name)
+    }
+  }
+
   // MARK: Voice filter
 
   func testTheFilterKeepsTheSpeakersWordsAndDropsTheStrangers() async throws {
@@ -175,10 +317,11 @@ final class RealVoiceTests: XCTestCase {
         let (_, soloOutcome) = try await words(Self.cut(stranger.held[2], 6), onlyMyVoice: true)
         if soloOutcome?.applied == true { strangerSoloCut.append("\(stranger.name) as \(speaker.name)") }
 
-        let own = Self.cut(speaker.held[0], 5)
+        // A dictation is mostly its owner, and anyone else is further from the phone.
+        let own = Self.cut(speaker.held[0], 8)
         let ownSecond = Self.cut(speaker.held[1], 4)
-        let theirs = Self.cut(stranger.held[0], 5)
-        let theirsShort = Self.cut(stranger.held[1], 2)
+        let theirs = Self.distant(Self.cut(stranger.held[0], 4), from: own)
+        let theirsShort = Self.distant(Self.cut(stranger.held[1], 2), from: own)
         let cases: [(name: String, mine: [[Float]], theirs: [Float], samples: [Float])] = [
           ("mine then theirs", [own], theirs, own + theirs),
           ("theirs then mine", [own], theirs, theirs + own),

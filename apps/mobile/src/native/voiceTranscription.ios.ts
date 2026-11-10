@@ -43,24 +43,52 @@ export async function getLocalVoiceTranscriber(): Promise<VoiceTranscriber | nul
 }
 
 async function prepareVoiceTranscription(
-  locale: string,
+  deviceLocale: string,
   { signal }: VoiceTranscriptionOptions,
 ): Promise<PreparedVoiceTranscription> {
   throwIfVoiceTranscriptionAborted(signal);
-  if (!AppleTranscription.isAvailable(locale)) {
+  if (!AppleTranscription.isAvailable(deviceLocale)) {
     throw new VoiceTranscriptionError({
       code: "unavailable",
       message: "Voice transcription requires a supported device with iOS 26 or later.",
     });
   }
 
+  let locale = deviceLocale;
+  // Not awaited: recording starts now and Apple's model loads while the user talks.
+  const model = prepareLocale(deviceLocale, signal).then((supported) => {
+    locale = supported;
+  });
+  // Recorder setup can fail before the recording is transcribed.
+  void model.catch(() => {});
+
+  async function ready(signal: AbortSignal) {
+    throwIfVoiceTranscriptionAborted(signal);
+    const cancelled = Promise.withResolvers<void>();
+    const cancel = () => cancelled.resolve();
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      await Promise.race([model, cancelled.promise]);
+      throwIfVoiceTranscriptionAborted(signal);
+      return locale;
+    } finally {
+      signal.removeEventListener("abort", cancel);
+    }
+  }
+  return {
+    get locale() {
+      return locale;
+    },
+    transcribe: async (uri, options) =>
+      transcribeVoiceRecording(uri, await ready(options.signal), options),
+  };
+}
+
+async function prepareLocale(locale: string, signal: AbortSignal): Promise<string> {
   try {
     const supportedLocale = await AppleTranscription.prepare(locale);
     throwIfVoiceTranscriptionAborted(signal);
-    return {
-      locale: supportedLocale,
-      transcribe: (uri, options) => transcribeVoiceRecording(uri, supportedLocale, options),
-    };
+    return supportedLocale;
   } catch (error) {
     throwIfVoiceTranscriptionAborted(signal);
     if (getNativeErrorCode(error) === "AppleTranscriptionUnsupportedLocale") {

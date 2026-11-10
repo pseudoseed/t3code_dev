@@ -107,6 +107,7 @@ private struct DiarizerBox: @unchecked Sendable {
 private struct HeardTurn: Sendable {
   var turn: SpeakerTurn
   var embedding: [Float]?
+  var level: Float?
 }
 
 private struct EnrollmentClip: Sendable {
@@ -422,13 +423,10 @@ actor DictationEngine {
     guard let heard = try? await heardTurns(samples, splitAgainst: profile.embedding) else {
       return (samples, .skipped(.failed))
     }
-    let voices = heard.map { turn -> TurnVoice in
-      guard let embedding = turn.embedding else { return .unjudged }
-      return SpeakerFilter.judge(
-        duration: turn.turn.duration,
-        distance: SpeakerFilter.cosineDistance(embedding, profile.embedding))
-    }
-    switch SpeakerFilter.decide(turns: heard.map(\.turn), voices: voices) {
+    let turns = heard.map(\.turn)
+    let voices = SpeakerFilter.voices(
+      turns: turns, embeddings: heard.map(\.embedding), profile: profile.embedding)
+    switch SpeakerFilter.decide(turns: turns, voices: voices, levels: heard.map(\.level)) {
     case .unfiltered(let reason):
       return (samples, .skipped(reason))
     case .drop(let ranges):
@@ -473,7 +471,13 @@ actor DictationEngine {
           turn, windows: windows, distances: Array(distances.prefix(windows.count)))
       }
     }
-    var heard = turns.map { HeardTurn(turn: $0, embedding: nil) }
+    var heard = turns.map { turn in
+      let from = min(Int(turn.start * Self.sampleRate), samples.count)
+      let to = min(max(Int(turn.end * Self.sampleRate), from), samples.count)
+      return HeardTurn(
+        turn: turn, embedding: nil,
+        level: SpeakerFilter.level(samples[from..<to], sampleRate: Self.sampleRate))
+    }
     let judged = heard.indices.filter {
       heard[$0].turn.duration >= SpeakerFilter.minimumJudgedSeconds
     }

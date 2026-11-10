@@ -20,6 +20,8 @@ enum FilterSkip: String, Sendable {
   case onlyYou
   case tooShort
   case overlapping
+  case similarLevel
+  case mostlyOther
   case noProfile
   case notInstalled
   case failed
@@ -49,6 +51,13 @@ enum SpeakerFilter {
   static let scanSeconds = 3.0
   static let scanWindowSeconds = 1.5
   static let scanHopSeconds = 0.5
+  /// A voice is cut only when it is this much quieter than the user's: further from the phone.
+  /// One as loud as theirs may be their own, missed by the profile.
+  static let quieterDecibels: Float = 6
+  static let levelFrameSeconds = 0.02
+  static let levelQuantile = 0.9
+  /// The user has to be heard for this many times the length of the speech that is cut.
+  static let dominanceRatio = 1.25
 
   static func normalized(_ vector: [Float]) -> [Float] {
     let length = vector.reduce(Float(0)) { $0 + $1 * $1 }.squareRoot()
@@ -92,6 +101,30 @@ enum SpeakerFilter {
     return distance <= limit ? .mine : .other
   }
 
+  /// Whose voice each turn is. A turn too short for a voiceprint has nil in `embeddings`.
+  ///
+  /// Noise or another microphone moves the user's own turns away from the profile, which was
+  /// recorded somewhere else. So a turn the profile rejects is held against the turns it accepted
+  /// in this recording, and is the user's when it matches them.
+  static func voices(turns: [SpeakerTurn], embeddings: [[Float]?], profile: [Float]) -> [TurnVoice] {
+    precondition(turns.count == embeddings.count)
+    var voices = zip(turns, embeddings).map { turn, embedding -> TurnVoice in
+      guard let embedding else { return .unjudged }
+      return judge(duration: turn.duration, distance: cosineDistance(embedding, profile))
+    }
+    let mine = voices.indices.filter { voices[$0] == .mine }
+    guard
+      let heard = meanEmbedding(
+        mine.compactMap { embeddings[$0] }, weights: mine.map { Float(turns[$0].duration) })
+    else { return voices }
+    for index in voices.indices where voices[index] == .other {
+      if let embedding = embeddings[index], cosineDistance(embedding, heard) <= matchDistance {
+        voices[index] = .mine
+      }
+    }
+    return voices
+  }
+
   /// The windows that scan a turn, evenly spaced, the last one ending where the turn does.
   static func scanWindows(_ turn: SpeakerTurn) -> [Range<Double>] {
     guard turn.duration >= scanSeconds else { return [] }
@@ -128,16 +161,45 @@ enum SpeakerFilter {
     return zip(edges, edges.dropFirst()).map { SpeakerTurn(speaker: turn.speaker, start: $0, end: $1) }
   }
 
-  /// What to cut from a recording. Only turns judged to be another voice go, and only where no
-  /// kept turn overlaps them. A turn too short to judge goes when its speaker's judged turns were
-  /// all another voice. With no turn judged to be the user, nothing is cut: a missed match on
-  /// their own voice must not lose the dictation.
-  static func decide(turns: [SpeakerTurn], voices: [TurnVoice]) -> SpeakerDecision {
-    precondition(turns.count == voices.count)
+  /// How loud a stretch gets, in decibels: the power of its loudest tenth of 20 ms frames. The
+  /// mean would fall with every pause in it and rise with the noise under it. Nil when there is
+  /// nothing to measure.
+  static func level(_ samples: ArraySlice<Float>, sampleRate: Double) -> Float? {
+    let frame = max(Int(levelFrameSeconds * sampleRate), 1)
+    var powers: [Float] = []
+    var start = samples.startIndex
+    while start + frame <= samples.endIndex {
+      powers.append(samples[start..<(start + frame)].reduce(Float(0)) { $0 + $1 * $1 } / Float(frame))
+      start += frame
+    }
+    guard !powers.isEmpty else { return nil }
+    powers.sort()
+    let power = powers[min(Int(Double(powers.count) * levelQuantile), powers.count - 1)]
+    return power > 0 ? 10 * log10(power) : nil
+  }
+
+  /// What to cut from a recording. A voiceprint alone has cut the user's own words, so a turn
+  /// goes only when three things agree: it was judged to be another voice (or is too short to
+  /// judge and its speaker's judged turns all were), it is clearly quieter than the user, and the
+  /// user was heard for longer than everything cut. No kept turn may overlap it. With no turn
+  /// judged to be the user, nothing is cut.
+  static func decide(turns: [SpeakerTurn], voices: [TurnVoice], levels: [Float?]) -> SpeakerDecision {
+    precondition(turns.count == voices.count && turns.count == levels.count)
     if turns.isEmpty { return .unfiltered(.noSpeech) }
     if voices.allSatisfy({ $0 == .unjudged }) { return .unfiltered(.tooShort) }
     if !voices.contains(.mine) { return .unfiltered(.noMatch) }
     if !voices.contains(.other) { return .unfiltered(.onlyYou) }
+
+    let mine = turns.indices.filter { voices[$0] == .mine && turns[$0].end > turns[$0].start }
+    var power: Float = 0
+    var measured: Float = 0
+    for index in mine {
+      guard let level = levels[index] else { continue }
+      power += pow(10, level / 10) * Float(turns[index].duration)
+      measured += Float(turns[index].duration)
+    }
+    guard measured > 0, power > 0 else { return .unfiltered(.similarLevel) }
+    let userLevel = 10 * log10(power / measured)
 
     var judgedBySpeaker: [String: Set<TurnVoice>] = [:]
     for (turn, voice) in zip(turns, voices) where voice != .unjudged {
@@ -145,14 +207,21 @@ enum SpeakerFilter {
     }
     var dropped: [ClosedRange<Double>] = []
     var kept: [ClosedRange<Double>] = []
-    for (turn, voice) in zip(turns, voices) where turn.end > turn.start {
-      let isOther = voice == .other || (voice == .unjudged && judgedBySpeaker[turn.speaker] == [.other])
-      if isOther { dropped.append(turn.start...turn.end) } else { kept.append(turn.start...turn.end) }
+    for (index, turn) in turns.enumerated() where turn.end > turn.start {
+      let isOther =
+        voices[index] == .other
+        || (voices[index] == .unjudged && judgedBySpeaker[turn.speaker] == [.other])
+      let isQuieter = levels[index].map { userLevel - $0 > quieterDecibels } ?? false
+      if isOther && isQuieter { dropped.append(turn.start...turn.end) } else { kept.append(turn.start...turn.end) }
     }
+    if dropped.isEmpty { return .unfiltered(.similarLevel) }
     let ranges = subtract(merged(dropped), merged(kept)).filter {
       $0.upperBound - $0.lowerBound >= minimumDropSeconds
     }
-    return ranges.isEmpty ? .unfiltered(.overlapping) : .drop(ranges)
+    if ranges.isEmpty { return .unfiltered(.overlapping) }
+    let userSeconds = seconds(merged(mine.map { turns[$0].start...turns[$0].end }))
+    if userSeconds < seconds(ranges) * dominanceRatio { return .unfiltered(.mostlyOther) }
+    return .drop(ranges)
   }
 
   static func merged(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
