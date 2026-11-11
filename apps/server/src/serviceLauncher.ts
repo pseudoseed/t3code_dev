@@ -344,6 +344,20 @@ async function copyWithoutOpening(source: string, destination: string): Promise<
   if (!(await runCp([source, destination]))) throw new Error(`cp ${source} failed.`);
 }
 
+// A V1 update reports its own database path, while the trial seeds a separate
+// V2 database. Record absence before it starts; existing V2 work is not ours.
+async function recordV2DatabaseAbsence(stagingDir: string, dbPath: string): Promise<void> {
+  const v2Path = v2DatabasePath(dbPath);
+  if (v2Path === undefined) return;
+  const present = await Promise.all(
+    DB_FILE_SUFFIXES.map((suffix) => pathExists(`${v2Path}${suffix}`)),
+  );
+  if (present.some(Boolean)) return;
+  const markerPath = NodePath.join(stagingDir, V2_ABSENT_MARKER);
+  await NodeFSP.writeFile(markerPath, "", { mode: 0o600 });
+  await syncFile(markerPath);
+}
+
 // Copies the main file while the server runs; an open read transaction stops SQLite resetting the WAL,
 // which `finish` copies after the stop and which overrides any page the copy caught mid-checkpoint.
 // `-shm` is left out: its backfill count would make SQLite trust those pages. Past the WAL size gate,
@@ -405,6 +419,8 @@ async function startOnlineDatabaseBackup(
       await copyWithoutOpening(wal, walCopy);
       await syncFile(walCopy);
       release();
+      await recordV2DatabaseAbsence(stagingDir, pending.dbPath);
+      await syncDirectory(stagingDir);
       await NodeFSP.rename(stagingDir, backupDir);
       await syncDirectory(NodePath.dirname(backupDir));
     } catch (cause) {
@@ -430,19 +446,7 @@ async function backupDatabaseOnce(baseDir: string, pending: PendingServiceUpdate
       await copyDatabaseFile(source, destination);
       await syncFile(destination);
     }
-    // A V1 update reports its own database path, while the trial seeds a separate
-    // V2 database. Record absence before it starts; existing V2 work is not ours.
-    const v2Path = v2DatabasePath(pending.dbPath);
-    if (
-      v2Path !== undefined &&
-      !(await Promise.all(DB_FILE_SUFFIXES.map((suffix) => pathExists(`${v2Path}${suffix}`)))).some(
-        Boolean,
-      )
-    ) {
-      const markerPath = NodePath.join(stagingDir, V2_ABSENT_MARKER);
-      await NodeFSP.writeFile(markerPath, "", { mode: 0o600 });
-      await syncFile(markerPath);
-    }
+    await recordV2DatabaseAbsence(stagingDir, pending.dbPath);
     await syncDirectory(stagingDir);
     await NodeFSP.rename(stagingDir, backupDir);
     await syncDirectory(NodePath.dirname(backupDir));

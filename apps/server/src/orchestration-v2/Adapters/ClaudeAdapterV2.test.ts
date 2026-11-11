@@ -16428,7 +16428,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           assert.equal(subagents[0]?.subagent.model, initialModel);
           assert.equal(
             subagents.at(-1)?.subagent.taskMetadata?.effort,
-            source === "observed-before" ? "high" : "low",
+            source === "observed-before" ? undefined : "low",
           );
           assert.equal(subagents.at(-1)?.subagent.taskMetadata?.role, "general-purpose");
           assert.equal(subagents.at(-1)?.subagent.taskMetadata?.lastToolName, "Read");

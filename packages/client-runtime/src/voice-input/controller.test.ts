@@ -102,6 +102,7 @@ describe("environment voice input", () => {
       .mockRejectedValueOnce(new Error("inference failed"))
       .mockResolvedValueOnce("recovered text");
     const harness = createHarness({
+      keepRecording: undefined,
       retryFailedRecording: true,
       getTranscriber: () => ({ prepare: async () => preparedTranscription(transcribe) }),
     });
@@ -123,6 +124,7 @@ describe("environment voice input", () => {
 
   it("deletes retained failed audio when the user cancels instead of retrying", async () => {
     const harness = createHarness({
+      keepRecording: undefined,
       retryFailedRecording: true,
       getTranscriber: () => ({
         prepare: async () =>
@@ -634,6 +636,7 @@ describe("VoiceInputController", () => {
     const start = vi.fn(() => transcript.promise);
     const transcribe = vi.fn(async () => "replayed audio");
     const harness = createHarness({
+      keepRecording: undefined,
       getTranscriber: () => ({
         prepare: async () => ({ locale: "en-US", start, transcribe }),
       }),
@@ -667,6 +670,7 @@ describe("VoiceInputController", () => {
           },
         }),
       }),
+      keepRecording: undefined,
       deleteRecording: () => released.resolve(undefined),
     });
     await harness.controller.start();
@@ -692,6 +696,7 @@ describe("VoiceInputController", () => {
       getTranscriber: () => ({
         prepare: async () => ({ ...preparedTranscription(), start: () => transcript.promise }),
       }),
+      keepRecording: undefined,
       deleteRecording: () => released.resolve(undefined),
     });
     await harness.controller.start();
@@ -713,6 +718,41 @@ describe("VoiceInputController", () => {
     await next.controller.start();
     expect(next.controller.currentState.phase).toBe("recording");
     await next.controller.interruptRecording();
+  });
+
+  it("keeps the recording after a live inference failure so it can be transcribed again", async () => {
+    const transcript = deferred<string>();
+    const kept = deferred<void>();
+    const transcribe = vi.fn(async () => "recovered words");
+    const harness = createHarness({
+      getTranscriber: () => ({
+        prepare: async () => ({
+          ...preparedTranscription(transcribe),
+          start: () => transcript.promise,
+        }),
+      }),
+      keepRecording: (uri) => {
+        kept.resolve(undefined);
+        return uri === "file:///voice.m4a" ? KEPT_URI : uri;
+      },
+    });
+    await harness.controller.start();
+    transcript.reject(
+      new VoiceTranscriptionError({
+        code: "transcription-failed",
+        message: "Speech quota reached.",
+      }),
+    );
+    await kept.promise;
+    expect(harness.controller.currentState).toMatchObject({
+      phase: "error",
+      errorAction: "transcribe",
+    });
+    expect(harness.deleted).toEqual([]);
+
+    await harness.controller.retranscribe();
+    expect(transcribe).toHaveBeenCalledWith(KEPT_URI, { signal: expect.any(AbortSignal) });
+    expect(harness.commits[0]?.text).toBe("hello recovered words");
   });
 
   it("ignores a late transcript after the draft owner changes", async () => {

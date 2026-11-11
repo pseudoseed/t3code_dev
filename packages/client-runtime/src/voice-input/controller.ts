@@ -79,7 +79,7 @@ export type VoiceInputControllerDependencies = {
   readonly releaseRecording: () => Promise<void>;
   readonly deleteRecording: (uri: string) => void;
   /** Moves a finished recording to where recordings are kept, and returns where it is now. */
-  readonly keepRecording?: (uri: string) => string;
+  readonly keepRecording?: ((uri: string) => string) | undefined;
   /** Keep a recording whose transcription failed so the next start retries it without recording again. */
   readonly retryFailedRecording?: boolean;
   /**

@@ -80,6 +80,7 @@ describe("renderGhosttySnapshot", () => {
     const fillRectCalls: number[][] = [];
     const context = {
       canvas: { width: 200, height: 80 },
+      getTransform: () => ({ a: 1, d: 1 }),
       beginPath: () => {},
       clip: () => {},
       fillRect: (...args: number[]) => fillRectCalls.push(args),
@@ -136,6 +137,7 @@ describe("renderGhosttySnapshot", () => {
     const fillTextCalls: unknown[][] = [];
     const context = {
       canvas: { width: 200, height: 40 },
+      getTransform: () => ({ a: 1, d: 1 }),
       beginPath: () => {},
       clip: () => {},
       fillRect: () => {},
@@ -185,6 +187,7 @@ describe("renderGhosttySnapshot", () => {
     const fillTextCalls: unknown[][] = [];
     const context = {
       canvas: { width: 200, height: 40 },
+      getTransform: () => ({ a: 1, d: 1 }),
       beginPath: () => {},
       clip: () => {},
       fillRect: () => {},
@@ -237,6 +240,7 @@ describe("renderGhosttySnapshot", () => {
     const clearedRows: number[] = [];
     const context = {
       canvas: { width: 200, height: 80 },
+      getTransform: () => ({ a: 1, d: 1 }),
       beginPath: () => {},
       clip: () => {},
       fillRect: (_left: number, top: number, _width: number, height: number) => {
@@ -314,6 +318,7 @@ describe("renderGhosttySnapshot prompt rows", () => {
     let style = "";
     const context = {
       canvas: { width: 200, height: 80 },
+      getTransform: () => ({ a: 1, d: 1 }),
       beginPath: () => {},
       clip: () => {},
       fillRect: (...rect: number[]) => fills.push({ style, rect }),
@@ -349,7 +354,7 @@ describe("renderGhosttySnapshot prompt rows", () => {
       promptAccent: "rgb(0, 0, 255)",
     });
     const banded = fills.filter((fill) => fill.style === "rgba(0, 0, 255, 0.07)");
-    expect(banded).toEqual([{ style: "rgba(0, 0, 255, 0.07)", rect: [0, 4, 24, 20] }]);
+    expect(banded).toEqual([{ style: "rgba(0, 0, 255, 0.07)", rect: [0, 4, 200, 20] }]);
     // The accent bar sits in the left padding, beside the prompt row only.
     const accents = fills.filter((fill) => fill.style === "rgb(0, 0, 255)");
     expect(accents).toEqual([{ style: "rgb(0, 0, 255)", rect: [0, 4, 2, 20] }]);
@@ -357,7 +362,7 @@ describe("renderGhosttySnapshot prompt rows", () => {
 
   it("clears each row from x=0 so a scrolled-away accent bar cannot linger", () => {
     const fills = render([GHOSTTY_ROW_SEMANTIC.none]);
-    expect(fills[0]).toEqual({ style: "rgb(0, 0, 0)", rect: [0, 4, 24, 20] });
+    expect(fills[0]).toEqual({ style: "rgb(0, 0, 0)", rect: [0, 4, 200, 20] });
   });
 
   it("gives a continuation row the band but no accent bar", () => {

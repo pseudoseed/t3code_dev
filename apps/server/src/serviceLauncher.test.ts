@@ -803,9 +803,12 @@ if (context.update?.status === "pending") {
         assert.deepEqual(observed.backupsAtStop, journalMode === "wal" ? [["database"]] : []);
         assert.isAbove(observed.rows, 501);
         // Only the online copy holds no -shm: the offline fallback copies the one the server left.
+        // Both paths record that no V2 database existed, so a rollback removes the trial's copy.
         assert.deepEqual(
           JSON.parse(yield* fs.readFileString(`${observationsPath}.trial`)),
-          journalMode === "wal" ? ["database", "database-wal"] : ["database"],
+          journalMode === "wal"
+            ? [".v2-database-absent", "database", "database-wal"]
+            : [".v2-database-absent", "database"],
         );
         const restored = new NodeSqlite.DatabaseSync(databasePath);
         try {

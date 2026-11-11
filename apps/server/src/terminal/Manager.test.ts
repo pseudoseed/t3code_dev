@@ -2113,20 +2113,28 @@ it.layer(
 
   it.effect("starts bash as a login shell on macOS only", () =>
     Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      // Non-login bash gets the shell integration rcfile; a login shell would ignore it.
       for (const [platform, shell, args] of [
         ["darwin", "/bin/bash", ["-l"]],
         ["darwin", "/opt/homebrew/bin/bash", ["-l"]],
-        ["linux", "/bin/bash", undefined],
+        ["linux", "/bin/bash", "integration"],
         ["win32", "C:\\Program Files\\Git\\bin\\bash.exe", undefined],
         ["darwin", "/bin/zsh", ["-o", "nopromptsp"]],
         ["linux", "/bin/zsh", ["-o", "nopromptsp"]],
         ["win32", "pwsh.exe", ["-NoLogo"]],
       ] as const) {
-        const { manager, ptyAdapter } = yield* createManager(5, {
+        const { manager, ptyAdapter, baseDir } = yield* createManager(5, {
           shellResolver: () => shell,
         }).pipe(Effect.provide(layerWithHostPlatform(platform)));
         yield* manager.open(openInput());
-        expect.soft(ptyAdapter.spawnInputs[0]?.args, `${platform} ${shell}`).toEqual(args);
+        expect
+          .soft(ptyAdapter.spawnInputs[0]?.args, `${platform} ${shell}`)
+          .toEqual(
+            args === "integration"
+              ? ["--rcfile", join(baseDir, "userdata", "shell-integration", "bash-rc"), "-i"]
+              : args,
+          );
       }
     }),
   );
