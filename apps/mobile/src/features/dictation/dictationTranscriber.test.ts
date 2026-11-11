@@ -129,7 +129,7 @@ describe("with Apple dictation selected", () => {
     const { dictate } = setup({ system: "absent" });
     await expect(dictate()).rejects.toMatchObject({
       code: "unavailable",
-      message: "Download a dictation model in Settings > Microphone.",
+      message: "Download a dictation model in Settings > Voice.",
     });
   });
 

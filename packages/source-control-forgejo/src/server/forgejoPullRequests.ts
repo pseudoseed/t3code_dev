@@ -36,13 +36,31 @@ export const ForgejoRepoRefSchema = Schema.Struct({
 
 export const ForgejoPullBranchSchema = Schema.Struct({
   ref: TrimmedNonEmptyString,
+  label: Schema.optional(Schema.String),
   sha: Schema.optional(Schema.String),
   repo: Schema.optional(Schema.NullOr(ForgejoRepoRefSchema)),
 });
 
+// Once a pull request's head branch is deleted, Forgejo reports `ref` as `refs/pull/<N>/head`
+// and keeps the branch name only in `label`. An AGit pull request (`flow` 1) has no branch, only a
+// `user/topic` label, and without `repo` (a deleted fork) the label could name any repository's
+// branch, so the ref stays in both cases.
+export function forgejoHeadBranch(pr: {
+  readonly flow?: number | undefined;
+  readonly head: {
+    readonly ref: string;
+    readonly label?: string | undefined;
+    readonly repo?: unknown;
+  };
+}) {
+  const { ref, label, repo } = pr.head;
+  return ref.startsWith("refs/pull/") && label && repo != null && pr.flow !== 1 ? label : ref;
+}
+
 export const ForgejoPullRequestSchema = Schema.Struct({
   number: PositiveInt,
   draft: Schema.optional(Schema.Boolean),
+  flow: Schema.optional(Schema.Int),
   closed_at: Schema.optional(Schema.NullOr(Schema.String)),
   merged_at: Schema.optional(Schema.NullOr(Schema.String)),
   title: TrimmedNonEmptyString,
@@ -85,7 +103,7 @@ export function normalizeForgejoPullRequestRecord(
     title: raw.title,
     url: raw.html_url,
     baseRefName: raw.base.ref,
-    headRefName: raw.head.ref,
+    headRefName: forgejoHeadBranch(raw),
     state: normalizeState(raw.state, raw.merged ?? null),
     ...((raw.head.sha ?? "").trim().length > 0 ? { headSha: (raw.head.sha ?? "").trim() } : {}),
     closedAt: raw.closed_at ?? null,

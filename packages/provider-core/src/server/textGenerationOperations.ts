@@ -21,6 +21,8 @@ import {
   sanitizeThreadTitle,
 } from "./textGenerationUtils.ts";
 
+export const TranscriptionPostProcessingOutput = Schema.Struct({ transcription: Schema.String });
+
 export type Operation = keyof ProviderTextGeneration;
 
 export interface Request<S extends Schema.Top> {
@@ -69,6 +71,19 @@ export const decodeJsonReply = <S extends Schema.Top>(
         }),
     ),
   );
+};
+
+export const generatedThreadTitle = (raw: string) => {
+  const title = sanitizeThreadTitle(raw);
+  // Some models echo the output schema's key instead of a title.
+  return title.toLowerCase() === "title"
+    ? Effect.fail(
+        new TextGenerationError({
+          operation: "generateThreadTitle",
+          detail: 'The model returned the placeholder title "title".',
+        }),
+      )
+    : Effect.succeed(title);
 };
 
 export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
@@ -152,10 +167,21 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
       }),
     });
     return {
-      title: sanitizeThreadTitle(generated.title),
+      title: yield* generatedThreadTitle(generated.title),
       ...(generated.needsRefinement ? { needsRefinement: true } : {}),
     };
   });
+
+  const generateTranscriptionPostProcessing: ProviderTextGeneration["generateTranscriptionPostProcessing"] =
+    Effect.fn(`${name}.generateTranscriptionPostProcessing`)(function* (input) {
+      return yield* run({
+        operation: "generateTranscriptionPostProcessing",
+        cwd: input.cwd,
+        prompt: input.prompt,
+        outputSchema: TranscriptionPostProcessingOutput,
+        modelSelection: input.modelSelection,
+      });
+    });
 
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = Effect.fn(
     `${name}.generateReviewGuide`,
@@ -191,5 +217,6 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    generateTranscriptionPostProcessing,
   } satisfies ProviderTextGeneration;
 }

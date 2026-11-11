@@ -196,6 +196,26 @@ private final class ComposerTextView: UITextView {
     return super.canPerformAction(action, withSender: sender)
   }
 
+  override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
+    guard isEditable, !isReadOnly else { return false }
+    // UIKit checks canPaste before forwarding a drag to UITextDropDelegate.
+    if !itemProviders.isEmpty,
+       itemProviders.allSatisfy({ $0.canLoadObject(ofClass: UIImage.self) }) {
+      return true
+    }
+    return super.canPaste(itemProviders)
+  }
+
+  override func paste(itemProviders: [NSItemProvider]) {
+    guard isEditable, !isReadOnly else { return }
+    if !itemProviders.isEmpty,
+       itemProviders.allSatisfy({ $0.canLoadObject(ofClass: UIImage.self) }) {
+      loadImages(from: itemProviders)
+      return
+    }
+    super.paste(itemProviders: itemProviders)
+  }
+
   override func paste(_ sender: Any?) {
     guard !isReadOnly else {
       return
@@ -426,7 +446,9 @@ private final class ComposerTextView: UITextView {
 }
 
 public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDropDelegate, UIGestureRecognizerDelegate {
-  private let textView = ComposerTextView()
+  // This view reads `layoutManager`, which otherwise swaps a live TextKit 2 view to
+  // TextKit 1 mid-edit; that swap can leave typed text laid out but never drawn.
+  private let textView = ComposerTextView(usingTextLayoutManager: false)
   private let placeholderLabel = UILabel()
   private var value = ""
   private var tokensJson = "[]"
@@ -445,6 +467,8 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
   private var isReadOnly = false
   private var isApplyingControlledValue = false
   private var nativeEventCount = 0
+  // Count of the latest intercepted paste, so a flush can tell whether JS has received it.
+  private var lastPasteEventCount = 0
   private var hasControlledDocument = false
   private var resetGeneration = 0
   private var lastContentSize = CGSize.zero
@@ -482,6 +506,14 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     textView.alwaysBounceVertical = false
     textView.showsVerticalScrollIndicator = true
     textView.adjustsFontForContentSizeCategory = true
+    if #available(iOS 26.0, *) {
+      // UIKit can attach a nearby bar's scroll edge effect to this text view; its backdrop
+      // then draws over the typed text while the caret stays visible.
+      let edges = [textView.topEdgeEffect, textView.leftEdgeEffect, textView.bottomEdgeEffect, textView.rightEdgeEffect]
+      for edge in edges {
+        edge.isHidden = true
+      }
+    }
     textView.onPasteImages = { [weak self] urls in
       self?.onComposerPasteImages(["uris": urls])
     }
@@ -489,6 +521,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       guard let self else { return }
       let selection = self.sourceSelection()
       self.nativeEventCount += 1
+      self.lastPasteEventCount = self.nativeEventCount
       var payload: [String: Any] = context
       payload["value"] = self.textView.serializedText()
       payload["eventCount"] = self.nativeEventCount
@@ -500,6 +533,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
       guard let self else { return }
       let selection = self.sourceSelection()
       self.nativeEventCount += 1
+      self.lastPasteEventCount = self.nativeEventCount
       self.onComposerPasteText([
         "value": self.textView.serializedText(),
         "eventCount": self.nativeEventCount,
@@ -667,6 +701,8 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     }
     if isReset {
       resetGeneration = document.resetGeneration
+      // JS drops a paste from before the reset by generation, so the flush must not wait for it.
+      lastPasteEventCount = 0
       endComposition()
     }
     // iOS destroys this view under display: none and mounts a fresh one while JS keeps its
@@ -795,6 +831,17 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
 
   func blurEditor() {
     textView.resignFirstResponder()
+  }
+
+  func readState() -> [String: Any] {
+    let selection = sourceSelection()
+    return [
+      "value": value,
+      "selection": ["start": selection.start, "end": selection.end],
+      "eventCount": nativeEventCount,
+      "resetGeneration": resetGeneration,
+      "pasteEventCount": lastPasteEventCount,
+    ]
   }
 
   func setSelection(start: Int, end: Int) {

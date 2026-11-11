@@ -85,8 +85,10 @@ start of the composer to edit the most recently queued message. Change
 
 Mobile has the same choice under **Settings → Chat**. While a turn is
 running the send button shows which action it will take. Long-press it to use the
-other action for a single message, or hold `Cmd` while sending from a hardware
-keyboard. The button only offers Steer when the running agent supports it.
+other action for a single message. From a hardware keyboard, `Cmd+Return`
+(`Ctrl+Return` on Android) uses the other action, or `Cmd+Shift+Return`
+(`Ctrl+Shift+Return`) when Return inserts a new line. The button only offers
+Steer when the running agent supports it.
 
 ## Queue messages offline on mobile
 
@@ -156,6 +158,16 @@ the text is an unedited recalled prompt, with the caret on the first visual line
 the last visual line for `ArrowDown`, counting wrapped lines. Editing a recalled prompt turns it
 into a normal draft.
 
+## Suggested next prompt
+
+Turn on **Suggest next prompt** in Settings > Labs. After a Claude or Codex turn completes, the
+empty composer shows a predicted next message. Press `Tab` to fill it in, then edit or send it, or
+press `Escape` to dismiss it. Each suggestion is one extra request that reuses the turn's prompt
+cache, so it uses a little of your plan's usage. Claude skips suggestions on the first turn of a
+thread and near usage limits. Codex needs version 0.165 or later; if PseudoCode manages
+Codex, update it in Settings > Providers. Codex follows a change to the setting at once; open Claude
+threads follow it after they restart. Suggestions show on web and desktop.
+
 ## Edit an earlier prompt
 
 On web and desktop, choose **Edit from here** beneath a sent message to rewind
@@ -184,23 +196,37 @@ Stashes containing uploaded files must be restored in their original environment
 Those files are retained for 24 hours. After an upload expires, restore the prompt
 and use **Attach again** or remove the missing file before sending.
 
+## Voice input on web and desktop
+
+Use the composer's microphone or `mod+shift+d` to dictate into your draft. Audio
+is transcribed on an environment you choose in **Settings → Voice**; nothing is
+sent until you choose one. See [Voice input](./voice-input.md).
+
 ## Voice input on mobile
 
-On supported iPhones with iOS 26 or later and Android devices with Android 12 or
-later, use the composer's microphone to record, then confirm to transcribe. Text is
+Use the composer's microphone to record, then confirm to transcribe. Text is
 inserted where your selection was when recording started, ready for you to review
 and edit before sending.
 
-Voice input uses on-device speech transcription: Apple's or a
-[downloaded model](#dictation-models-on-iphone-and-ipad) on iOS, and compatible
-Google speech services on Android. When it is unavailable for the device or its
-language, the composer has no microphone button and **Settings → Microphone** says
-voice input isn't available. On Android, keep PseudoCode open while recording and
-transcribing.
+By default, audio stays on the phone. Local transcription needs a supported iPhone
+with iOS 26 or later, or Android 12 or later with compatible Google speech services.
+On iOS it uses Apple's transcription or a
+[downloaded model](#dictation-models-on-iphone-and-ipad).
+To use a paired environment instead, open **Settings → Voice → Transcribe on**,
+choose the environment, and confirm. Finished recordings go only to that environment,
+even when a draft belongs to another one. This also works on phones without local
+speech recognition. If the chosen environment disconnects, dictation stops; it never
+switches hosts. Choose **This device** to revoke access and discard pending audio.
+For [cloud dictation](./voice-input.md#choose-where-audio-goes), open **Cloud providers**
+under the environment in **Settings → Voice** and confirm which provider may receive recordings.
+On Android, keep PseudoCode open while recording and transcribing.
 
-The first use may download a speech model and needs a network connection.
-Later transcription works offline for that language. On Android, transcription
-processes the full recording at roughly its original duration. Recordings can be up to five
+On-device dictation may need a network connection to download a speech model the
+first time. After that it works offline for that language. iPhone dictates in the
+first of your preferred languages (**Settings → General → Language & Region**)
+that Apple’s speech model supports. If none is supported, it tries the app’s
+language. Android transcribes on the device while you
+record and finishes after you stop. Recordings can be up to five
 minutes long; at the limit the recording stops and the words up to it are added. Canceling leaves
 your draft as it was. When a call, Siri or another app interrupts a recording, the words spoken
 before it are added to the draft. If the draft changed while you were dictating, the words are
@@ -212,7 +238,7 @@ Your last 5 recordings stay on the device, canceled ones included. When transcri
 error offers **Transcribe again**, which runs the same recording so you do not have to repeat
 yourself.
 
-Choose a preferred order in **Settings → Microphone**. Voice input requests the first
+Choose a preferred order in **Settings → Voice**. Voice input requests the first
 connected microphone in the list. The list mixes kinds (built-in, other wired, other
 Bluetooth, and CarPlay on iOS) with wired and Bluetooth devices you have dictated
 with, listed by name. Drag to rank them together:
@@ -222,9 +248,11 @@ microphone on iOS. Swipe a device left to forget it. Android may use another inp
 when the preferred microphone cannot be routed. Devices with the same name may share
 a saved preference, but simultaneous same-name inputs remain separately selectable.
 
+The transcript stays in your draft until you send the message to the agent.
+
 ### Dictation models on iPhone and iPad
 
-**Settings → Microphone → Model** chooses what transcribes your recordings. **Apple** is built
+**Settings → Voice → Model** chooses what transcribes your recordings. **Apple** is built
 into iOS 26 and later and needs no download. **Fast**, **Balanced** and **Most accurate** are
 Parakeet models you download once (about 240 MB, 490 MB and 640 MB). They run on the device and
 work offline. Fast is English only; the other two cover 25 European languages. A model that needs
@@ -232,16 +260,16 @@ more memory than the device has cannot be downloaded, and you can delete a model
 
 A model needs time to get ready the first time it is used after a download or an app update.
 Apple's transcription takes a recording made in that time where it is available, and also any
-recording a model fails on. **Settings → Microphone** shows what the last dictation ran on. On a device without
+recording a model fails on. **Settings → Voice** shows what the last dictation ran on. On a device without
 Apple's transcription, the microphone button works once a model is downloaded.
 
-When a dictation came out empty, cut short or wrong, open **Settings → Microphone → Model** and
+When a dictation came out empty, cut short or wrong, open **Settings → Voice → Model** and
 tap it under **Recent recordings**. It runs through the model in use, without the voice filter,
 and the text is shown for you to copy.
 
 ### Only my voice
 
-**Settings → Microphone → Only my voice** removes other people's speech from a recording before it
+**Settings → Voice → Only my voice** removes other people's speech from a recording before it
 is transcribed. Download the voice filter (about 21 MB), then record 3 short samples of your voice.
 It works with a downloaded model, not with Apple, and adds a short wait after each recording.
 
@@ -256,10 +284,10 @@ delete it on the same page.
 PseudoCode learns from the words you fix. When you correct a dictated word and then send the
 message, the fix is noted. A name or a technical term fixed twice within a week becomes a
 replacement, applied to every later dictation. Fixes to everyday words are listed under
-**Settings → Microphone → Corrections** for you to accept or turn down.
+**Settings → Voice → Corrections** for you to accept or turn down.
 
 Add your own replacements on that page, delete any of them, or turn learning off. **Remove ums and
-uhs** in **Settings → Microphone** drops English filler words from transcripts.
+uhs** in **Settings → Voice** drops English filler words from transcripts.
 
 ## Context and cost
 
@@ -314,30 +342,35 @@ session** in the command palette on web and desktop. The conversation continues,
 and your next message starts the agent again with the new setup.
 
 Provider commands must start the message to run. PseudoCode commands such as
-`/model` and `/plan`, and skill mentions, work on any line.
+`/model` and skill mentions work on any line.
 
 Send `/compact` in an existing conversation to reduce context usage when the
-provider supports it, even with the context meter turned off.
+provider supports it.
 
-On web and desktop, turn on **Settings → Labs → Legacy → Context
-window indicator (legacy)** to see context usage. The meter is off by default
-and appears once the provider reports usage. Open it for usage details and
-**Compact context** when the provider supports compaction.
+Send `/clear` on its own, or pick it from the slash menu, to start a fresh session
+in the same thread. Your next message goes to a new provider session that doesn't see the
+earlier messages, and the thread marks where it began with **New session**.
+Earlier messages and diffs stay in the thread. Dismiss the notice above the
+composer to keep the current session instead.
+
+On web and desktop, turn on **Context window** in **Settings → Appearance →
+Thread details** to see context usage in the thread details card. It appears
+once the provider reports usage.
 
 Claude instances can also compact idle threads for you. See
 [compact long conversations](./providers-claude.md#compact-long-conversations).
 
 ## Goals
 
-With Codex and Claude, send `/goal` followed by what "done" means, for example
+With Codex, Claude, and OpenCode 2.2.5 or later, send `/goal` followed by what "done" means, for example
 `/goal all tests in packages/api pass`. The agent keeps working across turns
 until it judges the goal met. The thread shows **Goal** while it works, and a
 line at the end of the thread (above the composer on mobile) shows the goal and
 its progress.
 
 - `/goal` alone shows the current goal. `/goal clear` removes it.
-- Codex also supports `/goal pause` and `/goal resume`. Stopping a Codex goal
-  pauses it, and so does Codex ending its work without meeting the goal.
+- Codex and OpenCode also support `/goal pause` and `/goal resume`. Stopping
+  their goal pauses it. Codex also pauses when its work ends without meeting the goal.
 - Stopping Claude ends the current turn, but the goal stays set. Claude checks it
   again at the end of your next message.
 - Sending a new goal, or `/goal resume`, while the agent works stops the current
@@ -379,6 +412,10 @@ environment must be connected and up to date. The transcript includes the visibl
 saved text context at the time of the drop; later messages and the contents of attached files
 are not copied. The agent can read the saved transcript after the source disconnects. Normal
 file attachment limits apply.
+
+Type `@` and part of a model or provider name, such as `@opus`, to name that model for the
+agent, for example when delegating. It does not change the thread's model. Join words with
+`:`, `/` or `-`, as in `@opus:opencode`.
 
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing

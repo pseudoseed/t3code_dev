@@ -71,7 +71,7 @@ function DictationCorrections() {
     <DictationSettingsPage title={TITLE}>
       <SettingsSection>
         <ListToggleRow
-          icon="sparkles"
+          icon="pencil"
           label="Learn from my corrections"
           description="Notices the words you fix before sending. A name or a term fixed twice becomes a replacement. Everyday words are suggested first."
           value={settings.learnCorrections}

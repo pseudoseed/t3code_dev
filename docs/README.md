@@ -13,12 +13,15 @@
 - [Keyboard shortcuts](./user/keybindings.md)
 - [Copy on select](./user/copy-on-select.md)
 - [Terminals on mobile](./user/mobile-terminal.md)
+- [Voice input](./user/voice-input.md)
+- [Text generation models](./user/text-generation.md)
 - [SnapShots](./user/snap-shot.md)
 - [Visual replies](./user/html-renders.md)
 - [Import browser sessions](./user/browser-import.md)
 - [Use T3 Code as your default browser](./user/default-browser.md)
 - [Devices](./user/devices.md)
 - [Usage and limits](./user/usage.md)
+- [Secrets](./user/secrets.md)
 - [Product usage data](./user/telemetry.md)
 - [Remote access](./user/remote-access.md)
 - [Guest links](./user/guest-links.md)
@@ -64,6 +67,7 @@ source alone does not explain. Most code changes do not need an internal documen
 ### Runbooks
 
 - [Development and local builds](./operations/development.md)
+- [Scenarios: real-app proof for a fix](./operations/scenarios.md)
 - [T3 Connect setup](./operations/connect-setup.md)
 - [Release](./operations/release.md)
 - [Observability](./operations/observability.md)

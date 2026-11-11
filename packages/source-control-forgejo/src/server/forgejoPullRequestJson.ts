@@ -27,6 +27,7 @@ import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 
 import { dedupeChecks } from "@t3tools/source-control-core/server/pullRequestChecks";
 import type { ProviderChangeRequest } from "@t3tools/source-control-core/server/PullRequestProvider";
+import { forgejoHeadBranch } from "./forgejoPullRequests.ts";
 
 /**
  * Forgejo answers with a full user record; only these three are read. Optional throughout
@@ -604,6 +605,7 @@ export const ForgejoRepository = Schema.Struct({
 });
 const Branch = Schema.Struct({
   ref: Schema.String,
+  label: Schema.optional(Schema.String),
   sha: Schema.String,
   repo: Schema.NullOr(ForgejoRepository),
 });
@@ -615,6 +617,7 @@ export const ForgejoPullRequest = Schema.Struct({
   user: Schema.NullOr(ForgejoUser),
   state: Schema.String,
   draft: Schema.optional(Schema.Boolean),
+  flow: Schema.optional(Schema.Int),
   merged: Schema.Boolean,
   mergeable: Schema.optional(Schema.Boolean),
   is_locked: Schema.optional(Schema.Boolean),
@@ -698,7 +701,7 @@ export function forgejoChangeRequest(pr: typeof ForgejoPullRequest.Type) {
     title: pr.title,
     url: pr.html_url,
     author: forgejoActor(pr.user),
-    headBranch: pr.head.ref,
+    headBranch: forgejoHeadBranch(pr),
     baseBranch: pr.base.ref,
     headRepositoryNameWithOwner: pr.head.repo?.full_name ?? null,
     state: pr.merged ? "merged" : pr.state === "closed" ? "closed" : "open",
@@ -712,7 +715,11 @@ export function forgejoChangeRequest(pr: typeof ForgejoPullRequest.Type) {
     closedAt: pr.closed_at === null ? null : toIsoUtc(pr.closed_at),
     mergedAt: pr.merged_at === null ? null : toIsoUtc(pr.merged_at),
     reviewRequestLogins: (pr.requested_reviewers ?? []).map((user) => user.login),
-    labels: (pr.labels ?? []).map((label) => ({ name: label.name, color: label.color ?? null })),
+    labels: (pr.labels ?? []).map((label) => ({
+      name: label.name,
+      color: label.color ?? null,
+      description: label.description || null,
+    })),
   } satisfies ProviderChangeRequest;
 }
 

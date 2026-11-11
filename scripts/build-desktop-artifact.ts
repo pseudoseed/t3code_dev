@@ -1014,14 +1014,15 @@ export const LINUX_FILE_EXCLUSIONS = [
   "!**/node_modules/node-pty/prebuilds/darwin-*/**/*",
 ] as const;
 
-// node-pty bundles both Darwin architectures; only universal apps need both.
+// Native packages (node-pty, objc-js) ship prebuilds for both Darwin architectures; only universal
+// apps need both. macOS 27 warns that an arm64 app holding x64-only code won't open on macOS 28.
 export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
   if (arch === undefined || arch === "universal") {
     return [...MAC_FILE_EXCLUSIONS];
   }
 
   const unusedArch = arch === "arm64" ? "x64" : "arm64";
-  return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/node-pty/prebuilds/darwin-${unusedArch}/**/*`];
+  return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
 }
 // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
 export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
@@ -2833,7 +2834,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     // Disable smart unpack so native packages' JS/metadata stay archived and avoid slowing NSIS with loose files.
     ...(platform === "win"
       ? { asar: { smartUnpack: false }, asarUnpack: [WINDOWS_NATIVE_ASAR_UNPACK_GLOB] }
-      : {}),
+      : { asarUnpack: ["**/node_modules/@transcribe-cpp/**/*.{dylib,so,so.*}"] }),
     extraResources: [
       ...DESKTOP_EXTRA_RESOURCES,
       ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),
@@ -2869,6 +2870,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       extendInfo: {
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
         NSLocalNetworkUsageDescription: `${resolveDesktopBrandName()} connects to devices on your local network for remote environments and commands run by terminals and coding agents.`,
+        NSCalendarsUsageDescription: `Commands you run in ${resolveDesktopBrandName()} may need access to your calendars.`,
+        NSCalendarsFullAccessUsageDescription: `Commands you run in ${resolveDesktopBrandName()} may need to read and write your calendar events.`,
+        NSCalendarsWriteOnlyAccessUsageDescription: `Commands you run in ${resolveDesktopBrandName()} may need to add events to your calendars.`,
         NSScreenCaptureUsageDescription: `${resolveDesktopBrandName()} captures the active window when you use the window capture shortcut.`,
         // The desktop app hosts the server for phones and browsers. macOS App
         // Nap throttles an app whose windows are hidden or occluded, and the
@@ -2950,7 +2954,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ],
       desktop: {
         entry: {
-          StartupWMClass: "t3code",
+          // Match Electron's WM_CLASS from setDesktopName so docks use this launcher.
+          StartupWMClass: "com.t3tools.T3Code",
         },
       },
     };
