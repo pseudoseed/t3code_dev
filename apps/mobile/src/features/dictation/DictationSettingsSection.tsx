@@ -11,7 +11,7 @@ import { updateDictationSettings, useDictationState } from "./dictationRuntime";
 import { Footnote } from "./DictationSettingsPage";
 import { describeRun } from "./runSummary";
 
-/** The fork's dictation settings, shown on the Microphone page. */
+/** The fork's dictation settings, shown on the Voice page. */
 export function DictationSettingsSection() {
   return dictationNative === null ? null : <DictationSettings />;
 }
@@ -57,7 +57,7 @@ function DictationSettings() {
         </View>
         <View className="border-t border-border-subtle">
           <ListToggleRow
-            icon="sparkles"
+            icon="text.word.spacing"
             label="Remove ums and uhs"
             value={settings.removeFillers}
             onValueChange={(removeFillers) => updateDictationSettings({ removeFillers })}

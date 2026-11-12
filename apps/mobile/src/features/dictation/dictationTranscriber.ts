@@ -32,7 +32,7 @@ export interface DictationTranscriberDeps {
   readonly ignoreVoiceFilter?: boolean;
 }
 
-const NO_MODEL_MESSAGE = "Download a dictation model in Settings > Microphone.";
+const NO_MODEL_MESSAGE = "Download a dictation model in Settings > Voice.";
 
 const ignore = () => {};
 

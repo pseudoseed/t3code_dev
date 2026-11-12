@@ -50,14 +50,15 @@ function fillSolidPowerlineSeparator(
   text: string,
   left: number,
   top: number,
-  metrics: GhosttyCellMetrics,
+  width: number,
+  height: number,
 ): void {
-  const right = left + metrics.width;
+  const right = left + width;
   const [base, point] = text === POWERLINE_SOLID_RIGHT ? [left, right] : [right, left];
   context.beginPath();
   context.moveTo(base, top);
-  context.lineTo(point, top + metrics.height / 2);
-  context.lineTo(base, top + metrics.height);
+  context.lineTo(point, top + height / 2);
+  context.lineTo(base, top + height);
   context.closePath();
   context.fill();
 }
@@ -158,6 +159,12 @@ export function renderGhosttySnapshot(options: {
   const promptAccent = options.promptAccent;
   const hoveredLinkRange = options.hoveredLinkRange ?? null;
   const originY = options.originY ?? padding;
+  // Rows start on whole device pixels and clear the full canvas width, so repainting
+  // a row replaces every pixel the last frame drew in it, including a cursor's edges.
+  const transform = context.getTransform();
+  const rowTop = (row: number) =>
+    Math.round((originY + row * metrics.height) * transform.d) / transform.d;
+  const rowWidth = context.canvas.width / transform.a;
   const rowsToDraw = forceFull
     ? Array.from({ length: snapshot.rows }, (_, index) => index)
     : [...snapshot.dirtyRows];
@@ -185,24 +192,22 @@ export function renderGhosttySnapshot(options: {
   for (const rowIndex of rowsToDraw) {
     const row = snapshot.rowData[rowIndex];
     if (!row) continue;
-    const top = originY + rowIndex * metrics.height;
+    const top = rowTop(rowIndex);
+    const height = rowTop(rowIndex + 1) - top;
 
-    // Cleared from x=0 so the prompt gutter never keeps a stale accent bar when
-    // an output row scrolls into a position a prompt row used to hold.
-    const rowWidth = padding + snapshot.cols * metrics.width;
     context.fillStyle = cssColor(snapshot.background);
-    context.fillRect(0, top, rowWidth, metrics.height);
+    context.fillRect(0, top, rowWidth, height);
 
     // Painted before cell backgrounds so a program's own colors still win.
     const semantic = row.semanticPrompt ?? GHOSTTY_ROW_SEMANTIC.none;
     if (semantic !== GHOSTTY_ROW_SEMANTIC.none) {
       if (promptBackground !== undefined) {
         context.fillStyle = promptBackground;
-        context.fillRect(0, top, rowWidth, metrics.height);
+        context.fillRect(0, top, rowWidth, height);
       }
       if (promptAccent !== undefined && semantic === GHOSTTY_ROW_SEMANTIC.prompt) {
         context.fillStyle = promptAccent;
-        context.fillRect(0, top, PROMPT_GUTTER_WIDTH, metrics.height);
+        context.fillRect(0, top, PROMPT_GUTTER_WIDTH, height);
       }
     }
 
@@ -227,11 +232,11 @@ export function renderGhosttySnapshot(options: {
         const width = (backgroundEnd - backgroundStart) * metrics.width;
         if (!ghosttyColorsEqual(first.background, snapshot.background)) {
           context.fillStyle = cssColor(first.background);
-          context.fillRect(left, top, width, metrics.height);
+          context.fillRect(left, top, width, height);
         }
         if (first.selected) {
           context.fillStyle = selectionBackground;
-          context.fillRect(left, top, width, metrics.height);
+          context.fillRect(left, top, width, height);
         }
       }
       backgroundStart = backgroundEnd;
@@ -253,7 +258,8 @@ export function renderGhosttySnapshot(options: {
             first.text,
             padding + runStart * metrics.width,
             top,
-            metrics,
+            metrics.width,
+            height,
           );
         }
         runStart += 1;
@@ -271,7 +277,7 @@ export function renderGhosttySnapshot(options: {
           padding + runStart * metrics.width,
           top,
           (runEnd - runStart) * metrics.width,
-          metrics.height,
+          height,
         );
         context.clip();
         context.font = fontForCell(first, fontSize, fontFamily);
@@ -312,25 +318,26 @@ export function renderGhosttySnapshot(options: {
 
   if (cursorOn && snapshot.cursorVisible && snapshot.cursorX >= 0 && snapshot.cursorY >= 0) {
     const left = padding + snapshot.cursorX * metrics.width;
-    const top = originY + snapshot.cursorY * metrics.height;
+    const top = rowTop(snapshot.cursorY);
+    const height = rowTop(snapshot.cursorY + 1) - top;
     context.fillStyle = cssColor(snapshot.cursor);
     if (!focused) {
       context.strokeStyle = cssColor(snapshot.cursor);
-      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, metrics.height - 1);
+      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, height - 1);
     } else if (snapshot.cursorStyle === 0) {
-      context.fillRect(left, top, 2, metrics.height);
+      context.fillRect(left, top, 2, height);
     } else if (snapshot.cursorStyle === 2) {
-      context.fillRect(left, top + metrics.height - 2, metrics.width, 2);
+      context.fillRect(left, top + height - 2, metrics.width, 2);
     } else if (snapshot.cursorStyle === 3) {
       context.strokeStyle = cssColor(snapshot.cursor);
-      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, metrics.height - 1);
+      context.strokeRect(left + 0.5, top + 0.5, metrics.width - 1, height - 1);
     } else {
-      context.fillRect(left, top, metrics.width, metrics.height);
+      context.fillRect(left, top, metrics.width, height);
       const cell = snapshot.rowData[snapshot.cursorY]?.cells[snapshot.cursorX];
       if (cell?.text) {
         context.fillStyle = cssColor(snapshot.background);
         if (isSolidPowerlineSeparator(cell.text)) {
-          fillSolidPowerlineSeparator(context, cell.text, left, top, metrics);
+          fillSolidPowerlineSeparator(context, cell.text, left, top, metrics.width, height);
         } else {
           context.font = fontForCell(cell, fontSize, fontFamily);
           context.fillText(cell.text, left, top + metrics.baseline, metrics.width);

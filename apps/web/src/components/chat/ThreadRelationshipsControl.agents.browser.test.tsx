@@ -1034,10 +1034,12 @@ it("shows readable models and only differing workspace details in agent tooltips
   expect(text()).not.toContain("Worktree");
   expect(text()).not.toContain("Workspace");
 
+  // An app-owned agent with no reported model is named by its own thread's selection;
+  // a provider-native one has no selection to fall back on.
   for (const [model, expected] of [
-    [null, "Not reported"],
-    ["", "Not reported"],
-    ["   ", "Not reported"],
+    [null, "My GPT"],
+    ["", "My GPT"],
+    ["   ", "My GPT"],
     ["model-alias", "My GPT"],
     ["gpt-5.5", "GPT-5.5"],
     ["custom/model-v1", "custom/model-v1"],
@@ -1048,13 +1050,22 @@ it("shows readable models and only differing workspace details in agent tooltips
     };
     await update();
     expect(text()).toContain(expected);
-    if (!model?.trim() || model === "gpt-5.5" || model === "custom/model-v1") {
+    if (model === "gpt-5.5" || model === "custom/model-v1") {
       expect(text()).not.toContain(" · high");
     } else {
       expect(text()).toContain(`${expected} · high`);
     }
     expect(text()).not.toContain("Unknown");
-    if (!model?.trim()) expect(text()).not.toContain("My GPT");
+    if (!model?.trim()) {
+      state.projection = {
+        ...nativeProjection,
+        subagents: [{ ...nativeProjection.subagents[0], model }],
+      };
+      await update();
+      expect(text()).toContain("Not reported");
+      expect(text()).not.toContain("My GPT");
+      expect(text()).not.toContain("Unknown");
+    }
   }
 
   for (const driver of [
@@ -1068,8 +1079,8 @@ it("shows readable models and only differing workspace details in agent tooltips
     "acpRegistry",
   ]) {
     state.projection = {
-      ...projection,
-      subagents: [{ ...projection.subagents[0], driver, model: null }],
+      ...nativeProjection,
+      subagents: [{ ...nativeProjection.subagents[0], driver, model: null }],
     };
     await update();
     expect(text()).toContain("Not reported");
@@ -1131,7 +1142,7 @@ it("shows readable models and only differing workspace details in agent tooltips
     ["cursor", fastMode, false, ""],
     ["opencode", fastMode, true, "Fast mode on"],
     ["cursor", fastMode, "true", ""],
-    ["cursor", serviceTier, "priority", ""],
+    ["cursor", serviceTier, "priority", "Fast mode on"],
   ] as const) {
     state.configs.set("test", {
       providers: [

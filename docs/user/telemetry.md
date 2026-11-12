@@ -4,6 +4,17 @@ PseudoCode sends no product usage events, relay traces, or crash reports to Pseu
 third party, on any surface: desktop, web, the `t3` CLI, and the iOS and Android apps. Diagnostics
 leave your machine only when you point them at a receiver yourself, as below.
 
+## Agent activity for mobile notifications
+
+When **Publish agent activity** is enabled on a host, it sends project and thread titles, model
+names, activity status, and environment and thread identifiers to the Cloud Connect relay for
+[mobile notifications and live activities](./mobile-notifications.md). This is separate from
+product usage data.
+
+To stop publishing, turn off **Publish agent activity** under **Settings > Sharing & access** on
+the host. Turning off notifications on a phone controls that phone's alerts, not the host's
+publishing setting.
+
 ## Export diagnostics to your own receiver
 
 To send traces, metrics, or logs to an OpenTelemetry receiver, open

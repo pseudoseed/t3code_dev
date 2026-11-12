@@ -17,11 +17,11 @@ import type { ReactNode } from "react";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
-import { formatContextWindowTokens } from "../../lib/contextWindow";
+import { formatContextWindowTokens, formatThreadCostUsd } from "../../lib/contextWindow";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
+import { formatContextWindowCompactionMessage } from "./compaction.logic";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 
 const PACE_LABEL: Record<LimitPace, string> = {
@@ -95,6 +95,8 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
       ? (threshold / maxTokens) * 100
       : null;
   const usedTokens = formatContextWindowTokens(usage.usedTokens);
+  const cost = formatThreadCostUsd(usage.costUsd ?? null);
+  const costNoun = usage.costSource === "modelPriced" ? "Estimated cost" : "Cost";
   return (
     <ThreadDetailsSection
       headingId="thread-details-context-heading"
@@ -127,12 +129,31 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
               ) : null}
               {threshold !== null && threshold > 0 ? (
                 <span className="text-muted-foreground">
-                  {formatContextWindowCompactionMessage(null, threshold)}
+                  {formatContextWindowCompactionMessage(threshold)}
                 </span>
               ) : null}
             </>
           }
         />
+        {cost ? (
+          <UsageRow
+            label="Cost"
+            fill={null}
+            tone={null}
+            muted
+            value={cost}
+            tooltip={
+              <>
+                <span className="text-foreground">
+                  {costNoun}: {cost}
+                </span>
+                <span className="text-muted-foreground">
+                  API-equivalent cost for this thread. Subscription plans bill separately.
+                </span>
+              </>
+            }
+          />
+        ) : null}
       </div>
     </ThreadDetailsSection>
   );

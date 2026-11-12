@@ -5,22 +5,22 @@ import { SettingsDictationCorrectionsRouteScreen } from "./SettingsDictationCorr
 import { SettingsDictationModelsRouteScreen } from "./SettingsDictationModelsRouteScreen";
 import { SettingsDictationVoiceRouteScreen } from "./SettingsDictationVoiceRouteScreen";
 
-/** The fork's dictation pages, opened from Settings > Microphone. */
+/** The fork's dictation pages, opened from Settings > Voice. */
 export function dictationSettingsScreens(options: AppScreenOptions) {
   return {
     SettingsDictationModels: createNativeStackScreen({
       screen: SettingsDictationModelsRouteScreen,
-      linking: "settings/microphone/model",
+      linking: "settings/voice/model",
       options: { ...options, title: "Dictation model" },
     }),
     SettingsDictationVoice: createNativeStackScreen({
       screen: SettingsDictationVoiceRouteScreen,
-      linking: "settings/microphone/voice",
+      linking: "settings/voice/voice",
       options: { ...options, title: "Only my voice" },
     }),
     SettingsDictationCorrections: createNativeStackScreen({
       screen: SettingsDictationCorrectionsRouteScreen,
-      linking: "settings/microphone/corrections",
+      linking: "settings/voice/corrections",
       options: { ...options, title: "Corrections" },
     }),
   };

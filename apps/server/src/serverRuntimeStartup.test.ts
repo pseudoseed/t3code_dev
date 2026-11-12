@@ -127,7 +127,7 @@ const runBootstrapStartup = (
         Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ shutdown: Effect.void }),
         Layer.mock(AgentAwarenessRelay.AgentAwarenessRelay)({ start: () => Effect.void }),
         directPush,
-        Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({ runOnce: Effect.never }),
+        Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({ runOnce: () => Effect.never }),
         Layer.mock(ServerLifecycleEvents.ServerLifecycleEvents)({
           publish: (event) =>
             Effect.sync(() => {
