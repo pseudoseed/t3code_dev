@@ -90,6 +90,7 @@ See [00_development.md](docs/operations/00_development.md) for setup, ports, see
 
 - Never make a PR unless the developer explicitly asks you to do so.
 - `origin` is not always GitHub. Check `git remote get-url origin` before your first forge command and use that forge's CLI and skill. See [Forge mirror](docs/operations/00_development.md#forge-mirror-optional).
+- In the PseudoCode fork (`origin` is `pseudoseed/t3code_dev`), `gh repo set-default --view` must print `pseudoseed/t3code_dev` before you open a PR; run `gh repo set-default pseudoseed/t3code_dev` if it does not. Without it, `pull_request_create` and `gh` pick the `upstream` remote and open the PR on `pingdotgg/t3code`.
 - Conventional commit titles, plain language: `fix(web): new threads no longer spike CPU`.
 - Body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
 - UI changes need before/after images; motion or timing needs a short video. Upload PR evidence to GitHub—never commit PR-only screenshots or assets.
